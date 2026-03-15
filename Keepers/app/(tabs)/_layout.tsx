@@ -1,38 +1,51 @@
-import { Tabs } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { Tabs } from 'expo-router';
+
+import { useAppTheme } from '../../hooks/useAppTheme';
 
 export default function TabLayout() {
+  const { theme } = useAppTheme();
+
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#ffd33d',
+        tabBarActiveTintColor: theme.tabActive,
+        tabBarInactiveTintColor: theme.tabInactive,
         headerStyle: {
-          backgroundColor: '#25292e'
+          backgroundColor: theme.headerBg,
         },
         headerShadowVisible: false,
-        headerTintColor: '#fff',
+        headerTintColor: theme.headerText,
+        sceneStyle: {
+          backgroundColor: theme.background,
+        },
         tabBarStyle: {
-          backgroundColor: '#25292e'
-        }
+          backgroundColor: theme.tabBg,
+          borderTopColor: theme.border,
+        },
       }}
     >
-      <Tabs.Screen 
-        name="index" 
-        options={{ 
+      <Tabs.Screen
+        name="index"
+        options={{
           title: 'Home',
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'home-sharp' : 'home-outline'} color={color} size={24}/>
-          ) 
-        }} 
+            <Ionicons name={focused ? 'home-sharp' : 'home-outline'} color={color} size={24} />
+          ),
+        }}
       />
-      <Tabs.Screen 
-        name="about" 
-        options={{ 
+      <Tabs.Screen
+        name="about"
+        options={{
           title: 'About',
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'information-circle' : 'information-circle-outline'} color={color} size={24}/>
-          ) 
-        }} 
+            <Ionicons
+              name={focused ? 'information-circle' : 'information-circle-outline'}
+              color={color}
+              size={24}
+            />
+          ),
+        }}
       />
     </Tabs>
   );
