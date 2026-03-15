@@ -39,7 +39,6 @@ export default function App() {
         stackSize={3}
         cardVerticalMargin={height * 0.04}
         cardHorizontalMargin={20}
-        animateOverlayLabelsOpacity
         animateCardOpacity
       />
     </View>
