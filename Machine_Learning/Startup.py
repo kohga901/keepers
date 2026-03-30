@@ -10,7 +10,7 @@ It takes a new image (one that isn't already in your catalog), turns it into a v
 EMBEDDING_DIM = 512
 # IndexFlatL2 is exact KNN using euclidean distance
 # "Flat" means no compression, searches every vector
-# Good enough for catalogs under 1 million items
+# Good enough for an image folder under 1 million items
 # We init here:
 index = faiss.IndexFlatL2(EMBEDDING_DIM)
 
@@ -18,8 +18,17 @@ index = faiss.IndexFlatL2(EMBEDDING_DIM)
 # That means the shape is (num_items, 512)
 # data must be float32, float64 doesn't cut it (we'll crash if we try)
 catalog_embeddings = np.load("catalog_embeddings.npy").astype(np.float32)
+# There is a normalize method @KO can u figure out what that is? look into normalize_L2 for Faiss?
+# We CAN normalize in the indexing script after line 62? Or u can do it herev 
+# norm = 
+# embedding / norm?
+# or 
+
+# np.save at the end tho
+
 
 # all item vectors should be appeneded to the index
+# index is like google 512-dimension vectors get fed into FAISS
 index.add(catalog_embeddings) # type: ignore 
 # the catalog ids need to be loaded from our database:
 # gabe this is for you man
@@ -32,3 +41,7 @@ index.add(catalog_embeddings) # type: ignore
 # product_page_url: So the user can go buy the item.
 
 # processed_flag: (Crucial!) A true/false column that tells your indexing script, "I've already turned this photo into a vector, don't do it again."
+
+# we never set processed flag to true but we'll have to do that for every image, probably right before we run the indexingScript.py
+catalogs_ids = []
+
