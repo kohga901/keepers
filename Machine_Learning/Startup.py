@@ -43,5 +43,29 @@ index.add(catalog_embeddings) # type: ignore
 # processed_flag: (Crucial!) A true/false column that tells your indexing script, "I've already turned this photo into a vector, don't do it again."
 
 # we never set processed flag to true but we'll have to do that for every image, probably right before we run the indexingScript.py
-catalogs_ids = []
+catalog_ids = []
 
+# n is the neighbors
+def get_recommendation_for_every_user(user_profiles: dict, n: int = 20, ) -> dict:
+    """
+    T
+    """
+    user_ids = list(user_profiles.keys())
+    profiles = [user_profiles[uid] for uid in user_ids]
+    #profiles = list(map(user_profiles.get, user_profiles))
+
+    # STACK all profiles into 2d Matrix
+    # doing this is like what we did to the clothes in indexingScirp
+    # This is how we do multiple queries
+    profiles_matrix = np.array(profiles, dtype=np.float32) #npstack dont work here
+
+    assert profiles_matrix.ndim == 2
+    assert profiles_matrix.shape[1] == index.d
+
+    distancies, indices = index.search(profiles_matrix, k=n)  # type: ignore 
+
+    recommendations = {}
+    for i, user_id in enumerate(user_ids):
+          recommendations[user_id] = [catalog_ids[idx] for idx in indices[i]]
+
+    return recommendations
