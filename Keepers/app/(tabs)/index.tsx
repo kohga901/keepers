@@ -1,10 +1,13 @@
-import { Text, View, StyleSheet } from 'react-native';
- import { Link } from 'expo-router'; 
+import { StyleSheet, Text, View } from 'react-native';
+
+import { useAppTheme } from '../../hooks/useAppTheme';
 
 export default function Index() {
+  const { theme } = useAppTheme();
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.text}>Home screen</Text>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
+      <Text style={[styles.text, { color: theme.text }]}>Home screen</Text>
     </View>
   );
 }
@@ -12,16 +15,11 @@ export default function Index() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#25292e',
     alignItems: 'center',
     justifyContent: 'center',
   },
   text: {
-    color: '#fff',
-  },
-  button: {
-    fontSize: 20,
-    textDecorationLine: 'underline',
-    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
   },
 });
