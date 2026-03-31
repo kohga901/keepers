@@ -47,6 +47,19 @@ export default function TabLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="likelist"
+        options={{
+          title: 'Like List',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? 'heart' : 'heart-outline'}
+              color={color}
+              size={24}
+            />
+          ),
+        }}
+      />
     </Tabs>
   );
 }

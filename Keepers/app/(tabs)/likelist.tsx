@@ -2,12 +2,12 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { useAppTheme } from '../../hooks/useAppTheme';
 
-export default function Index() {
+export default function LikeList() {
   const { theme } = useAppTheme();
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <Text style={[styles.text, { color: theme.text }]}>Settings</Text>
+      <Text style={[styles.text, { color: theme.text }]}>Liked Items</Text>
     </View>
   );
 }
