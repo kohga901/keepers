@@ -28,7 +28,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="likelist"
         options={{
-          title: 'Like List',
+          title: 'Liked History',
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
               name={focused ? 'heart' : 'heart-outline'}
@@ -39,7 +39,7 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="about"
+        name="swiper"
         options={{
           title: 'Swiper',
           tabBarIcon: ({ color, focused }) => (
@@ -54,7 +54,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="stylewraps"
         options={{
-          title: 'Wrapped',
+          title: 'Style Wraps',
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
               name={focused ? 'receipt' : 'receipt-outline'}
@@ -66,7 +66,7 @@ export default function TabLayout() {
       />
 
       <Tabs.Screen
-        name="index"
+        name="settings"
         options={{
           title: 'Settings',
           tabBarIcon: ({ color, focused }) => (
