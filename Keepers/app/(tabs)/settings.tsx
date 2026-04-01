@@ -2,7 +2,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { useAppTheme } from '../../hooks/useAppTheme';
 
-export default function Index() {
+export default function Settings() {
   const { theme } = useAppTheme();
 
   return (
