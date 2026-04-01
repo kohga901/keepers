@@ -2,6 +2,9 @@ import React from "react";
 import { View, Text, StyleSheet, Dimensions } from "react-native";
 import Swiper from "react-native-deck-swiper";
 import { Image } from 'expo-image';
+import { useAppTheme } from '../../hooks/useAppTheme';
+import { Redirect } from 'expo-router';
+
 
 
 const { height } = Dimensions.get("window");
@@ -15,8 +18,11 @@ const cards = [
 ];
 
 export default function App() {
+    const { theme } = useAppTheme();
+    return <Redirect href="/likelist" />;
+
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
       <Swiper
         cards={cards}
         renderCard={(card) => {
@@ -43,7 +49,7 @@ export default function App() {
         onSwiped={(cardIndex) => { console.log(cardIndex); }}
         onSwipedAll={() => { console.log("onSwipedAll"); }}
         cardIndex={0}
-        backgroundColor={"#F5FCFF"}
+        backgroundColor={theme.background}
         stackSize={3}
         cardVerticalMargin={height * 0.04}
         cardHorizontalMargin={20}
@@ -83,7 +89,6 @@ const blurhash =
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F5FCFF",
     alignItems: "center",
     justifyContent: "center",
   },
