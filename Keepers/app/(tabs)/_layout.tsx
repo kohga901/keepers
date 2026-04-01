@@ -1,3 +1,11 @@
+/**
+ * File: _layout.tsx
+ * Description: Defines the layout for the tab navigator in the app,
+ *  including the header and theme. Also creates the tab naviagator with icons and styling.  
+ * Author: Kai Markley & Gabriel Min
+ * Date: 2026-04-01
+ */
+
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router';
 

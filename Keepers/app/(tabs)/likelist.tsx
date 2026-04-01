@@ -1,3 +1,10 @@
+/**
+ * File: likelist.tsx
+ * Description: Currently a placeholder for the liked and disliked history of the user.
+ * Author: Kai Markley
+ * Date: 2026-04-01
+ */
+
 import React, { useState} from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
