@@ -1,3 +1,10 @@
+/**
+ * File: _layout.tsx
+ * Description: Defines the layout for the tab navigator in the Keepers app, including the header and theme.
+ * Author: Kai Markley & Gabriel Min
+ * Date: 2026-04-01
+ */
+
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { lightTheme } from '../constants/theme';

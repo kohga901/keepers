@@ -1,3 +1,10 @@
+/**
+ * File: settings.tsx
+ * Description: Currently a placeholder for the settings.
+ * Author: Kai Markley
+ * Date: 2026-04-01
+ */
+
 import { StyleSheet, Text, View } from 'react-native';
 
 import { useAppTheme } from '../../hooks/useAppTheme';

@@ -1,3 +1,10 @@
+/**
+ * File: swiper.tsx
+ * Description: Displays swipeable clothing cards for users to like or dislike.
+ * Author: Kai Markley & Gabriel Min
+ * Date: 2026-04-01
+ */
+
 import React from "react";
 import { View, Text, StyleSheet, Dimensions } from "react-native";
 import Swiper from "react-native-deck-swiper";
