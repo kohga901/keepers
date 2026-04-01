@@ -1,5 +1,5 @@
 (async () => {
-  const MAX_ITEMS = 5; // null = all cards, or set a number like 50
+  const MAX_ITEMS = null; // null = all cards, or set a number like 50
   const CARD_SELECTOR = "div.njFjte";
   const OFFER_LIST_SELECTOR = "div[data-ntof][role='list']";
   const TITLE_SELECTOR = "div.gkQHve";
@@ -48,16 +48,76 @@
     return "https://www.google.com/search?udm=28&q=" + encodeURIComponent(itemName || "");
   }
 
-  function inferGender(itemName) {
-    const lowered = (itemName || "").toLowerCase();
-    if (/(women|women's|womens|lady|ladies|female|girl|girls)/.test(lowered)) {
+  function inferGenderFromText(value) {
+    const lowered = (value || "").toLowerCase();
+    if (!lowered) {
+      return "";
+    }
+
+    const hasWomen = /\b(women|women's|womens|woman|lady|ladies|female|girl|girls)\b/.test(
+      lowered
+    );
+    const hasMen = /\b(men|men's|mens|man|male|boy|boys)\b/.test(lowered);
+    const hasUnisex = /\bunisex\b/.test(lowered);
+
+    if (hasUnisex || (hasWomen && hasMen)) {
+      return "unisex";
+    }
+    if (hasWomen) {
       return "women";
     }
-    if (/(men|men's|mens|male|boy|boys)/.test(lowered)) {
+    if (hasMen) {
       return "men";
     }
-    if (/unisex/.test(lowered)) {
+
+    return "";
+  }
+
+  function inferGenderFromWebListing(itemWebListing) {
+    const href = clean(itemWebListing || "");
+    if (!href) {
+      return "";
+    }
+
+    const parts = [];
+    try {
+      const urlObj = new URL(href);
+      parts.push(urlObj.hostname);
+      parts.push(urlObj.pathname);
+      parts.push(urlObj.search);
+
+      for (const [key, value] of urlObj.searchParams.entries()) {
+        parts.push(key);
+        parts.push(value);
+      }
+    } catch {
+      parts.push(href);
+    }
+
+    const combined = parts
+      .join(" ")
+      .replace(/[-_/=+?&.]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    return inferGenderFromText(combined);
+  }
+
+  function inferGender(itemName, itemWebListing) {
+    const fromName = inferGenderFromText(itemName);
+    const fromUrl = inferGenderFromWebListing(itemWebListing);
+
+    if (fromName === "unisex" || fromUrl === "unisex") {
       return "unisex";
+    }
+    if (fromName && fromUrl && fromName !== fromUrl) {
+      return "unisex";
+    }
+    if (fromName) {
+      return fromName;
+    }
+    if (fromUrl) {
+      return fromUrl;
     }
     return "unknown";
   }
@@ -100,14 +160,6 @@
 
     const fromText = clean(card.textContent || "").match(PRICE_RE);
     return fromText ? clean(fromText[0]) : "";
-  }
-
-  function decodeHtmlEntities(value) {
-    if (!value) {
-      return "";
-    }
-    htmlEntityDecoder.innerHTML = value;
-    return clean(htmlEntityDecoder.value || htmlEntityDecoder.textContent || "");
   }
 
   function splitSrcset(srcset) {
@@ -486,11 +538,12 @@
     const itemImg = extractImage(offerCtx && offerCtx.listEl ? offerCtx.listEl : null);
     const itemWebListing =
       (offerCtx && offerCtx.firstExternal) || buildGoogleFallback(itemName);
+    const itemGender = inferGender(itemName, itemWebListing);
 
     rows.push({
       item_name: itemName,
       item_price: itemPrice,
-      item_gender: inferGender(itemName),
+      item_gender: itemGender,
       item_img: itemImg,
       item_web_listing: itemWebListing,
     });
