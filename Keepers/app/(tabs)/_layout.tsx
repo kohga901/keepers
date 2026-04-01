@@ -26,21 +26,52 @@ export default function TabLayout() {
       }}
     >
       <Tabs.Screen
-        name="index"
+        name="likelist"
         options={{
-          title: 'Home',
+          title: 'Like List',
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'home-sharp' : 'home-outline'} color={color} size={24} />
+            <Ionicons
+              name={focused ? 'heart' : 'heart-outline'}
+              color={color}
+              size={24}
+            />
           ),
         }}
       />
       <Tabs.Screen
         name="about"
         options={{
-          title: 'About',
+          title: 'Swiper',
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
-              name={focused ? 'information-circle' : 'information-circle-outline'}
+              name={focused ? 'shirt' : 'shirt-outline'}
+              color={color}
+              size={24}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="stylewraps"
+        options={{
+          title: 'Wrapped',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? 'receipt' : 'receipt-outline'}
+              color={color}
+              size={24}
+            />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: 'Settings',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? 'settings' : 'settings-outline'}
               color={color}
               size={24}
             />
