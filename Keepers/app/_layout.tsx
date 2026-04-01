@@ -22,7 +22,7 @@ export default function RootLayout() {
             headerShown: true,
             title: 'K E E P E R S',
             headerTintColor: theme.headerText,
-            fontSize: 50,
+            
           }}
         />
       </Stack>

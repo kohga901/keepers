@@ -3,7 +3,6 @@ import { View, Text, StyleSheet, Dimensions } from "react-native";
 import Swiper from "react-native-deck-swiper";
 import { Image } from 'expo-image';
 import { useAppTheme } from '../../hooks/useAppTheme';
-import { Redirect } from 'expo-router';
 
 
 
@@ -19,7 +18,6 @@ const cards = [
 
 export default function App() {
     const { theme } = useAppTheme();
-    return <Redirect href="/likelist" />;
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
