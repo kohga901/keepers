@@ -1,36 +1,17 @@
 (async () => {
   const MAX_ITEMS = 5; // null = all cards, or set a number like 50
   const CARD_SELECTOR = "div.njFjte";
+  const OFFER_LIST_SELECTOR = "div[data-ntof][role='list']";
   const TITLE_SELECTOR = "div.gkQHve";
   const PRICE_RE = /\$[0-9][0-9,]*(?:\.[0-9]{2})?/;
   const ENCRYPTED_IMAGE_RE = /encrypted-tbn\d\.gstatic\.com\/shopping/i;
-  const DETAIL_IMG_SELECTOR = "img.KfAt4d";
+  const DETAIL_IMG_SELECTOR = "img.KfAt4d, img.kfAt4d";
   const IMAGE_ICON_RE = /(favicon|faviconv2|googlelogo|\/images\/icons\/|\/branding\/)/i;
-  const CARD_HTML_RE =
-    /<div[^>]*class="[^"]*njFjte[^"]*"[^>]*aria-label="(?<label>[^"]+)"[^>]*>/gi;
-  const ENCRYPTED_IMAGE_HTML_RE =
-    /https:\/\/encrypted-tbn\d\.gstatic\.com\/shopping\?q=tbn:[^"\s<]+/gi;
 
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const clean = (v) => (v || "").replace(/\s+/g, " ").trim();
   const jitter = (min, max) => min + Math.floor(Math.random() * (max - min + 1));
   const htmlEntityDecoder = document.createElement("textarea");
-
-  function decodeEmbeddedMarkup(rawHtml) {
-    if (!rawHtml) {
-      return "";
-    }
-
-    let decoded = rawHtml.replace(/\\x([0-9a-fA-F]{2})/g, (_, hex) =>
-      String.fromCharCode(Number.parseInt(hex, 16))
-    );
-    decoded = decoded.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) =>
-      String.fromCharCode(Number.parseInt(hex, 16))
-    );
-    decoded = decoded.replace(/\\\//g, "/");
-    decoded = decoded.replace(/\\"/g, '"').replace(/\\'/g, "'");
-    return decoded;
-  }
 
   function toAbsUrl(href) {
     try {
@@ -65,10 +46,6 @@
 
   function buildGoogleFallback(itemName) {
     return "https://www.google.com/search?udm=28&q=" + encodeURIComponent(itemName || "");
-  }
-
-  function cleanUrl(value) {
-    return decodeHtmlEntities(value || "").trim();
   }
 
   function inferGender(itemName) {
@@ -131,115 +108,6 @@
     }
     htmlEntityDecoder.innerHTML = value;
     return clean(htmlEntityDecoder.value || htmlEntityDecoder.textContent || "");
-  }
-
-  function normalizeLookupText(value) {
-    return decodeHtmlEntities(value)
-      .toLowerCase()
-      .replace(/&/g, " and ")
-      .replace(/[^a-z0-9$]+/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-  }
-
-  function findBestEncryptedImageNearCard(html, cardStart, cardEnd) {
-    const contextStart = Math.max(0, cardStart - 4000);
-    const contextEnd = Math.min(html.length, cardEnd + 5000);
-    const context = html.slice(contextStart, contextEnd);
-
-    let bestUrl = "";
-    let bestScore = Number.POSITIVE_INFINITY;
-    let match = null;
-
-    ENCRYPTED_IMAGE_HTML_RE.lastIndex = 0;
-    while ((match = ENCRYPTED_IMAGE_HTML_RE.exec(context)) !== null) {
-      const absolutePos = contextStart + match.index;
-      const score = absolutePos >= cardEnd ? absolutePos - cardEnd : cardStart - absolutePos + 800;
-
-      if (score < bestScore) {
-        bestScore = score;
-        bestUrl = decodeHtmlEntities(match[0]);
-      }
-    }
-
-    return cleanUrl(bestUrl);
-  }
-
-  function buildHtmlProximityImageEntries(html) {
-    const entries = [];
-    if (!html) {
-      return entries;
-    }
-
-    CARD_HTML_RE.lastIndex = 0;
-    let match = null;
-    while ((match = CARD_HTML_RE.exec(html)) !== null) {
-      const rawLabel = match.groups && match.groups.label ? match.groups.label : "";
-      const label = decodeHtmlEntities(rawLabel);
-      const key = normalizeLookupText(label);
-      if (!key) {
-        continue;
-      }
-
-      const cardStart = match.index;
-      const cardEnd = match.index + match[0].length;
-      const imageUrl = findBestEncryptedImageNearCard(html, cardStart, cardEnd);
-
-      entries.push({
-        key,
-        imageUrl,
-        cardStart,
-        cardEnd,
-      });
-    }
-
-    return entries;
-  }
-
-  function buildHtmlEntryLookupByKey(entries) {
-    const lookup = new Map();
-    for (let i = 0; i < entries.length; i += 1) {
-      const entry = entries[i];
-      const list = lookup.get(entry.key) || [];
-      list.push({ index: i, imageUrl: entry.imageUrl || "" });
-      lookup.set(entry.key, list);
-    }
-    return lookup;
-  }
-
-  function findHtmlProximityImageForCard(card, cardIndex, htmlEntries, htmlEntryLookup) {
-    if (!card || !htmlEntries || htmlEntries.length === 0) {
-      return "";
-    }
-
-    const byIndex = htmlEntries[cardIndex];
-    if (byIndex && byIndex.imageUrl) {
-      return cleanUrl(byIndex.imageUrl);
-    }
-
-    const ariaLabel = clean(card.getAttribute("aria-label") || "");
-    const key = normalizeLookupText(ariaLabel);
-    if (!key) {
-      return "";
-    }
-
-    const candidates = (htmlEntryLookup && htmlEntryLookup.get(key)) || [];
-    if (candidates.length === 0) {
-      return "";
-    }
-
-    let best = { distance: Number.POSITIVE_INFINITY, imageUrl: "" };
-    for (const candidate of candidates) {
-      if (!candidate.imageUrl) {
-        continue;
-      }
-      const distance = Math.abs(candidate.index - cardIndex);
-      if (distance < best.distance) {
-        best = { distance, imageUrl: candidate.imageUrl };
-      }
-    }
-
-    return cleanUrl(best.imageUrl || "");
   }
 
   function splitSrcset(srcset) {
@@ -333,73 +201,6 @@
     return score;
   }
 
-  function isLikelyTinyImage(img) {
-    if (!img) {
-      return false;
-    }
-
-    const className = String(img.className || "");
-    if (/\bXNo5Ab\b/i.test(className)) {
-      return true;
-    }
-
-    const naturalW = Number(img.naturalWidth || 0);
-    const naturalH = Number(img.naturalHeight || 0);
-    if (naturalW > 0 && naturalH > 0 && (naturalW <= 64 || naturalH <= 64)) {
-      return true;
-    }
-
-    const rect = img.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0 && (rect.width <= 32 || rect.height <= 32);
-  }
-
-  function backgroundImageUrls(styleValue) {
-    if (!styleValue) {
-      return [];
-    }
-    const urls = [];
-    const re = /url\(("|')?(?<url>[^"')]+)("|')?\)/gi;
-    let match = null;
-    while ((match = re.exec(styleValue)) !== null) {
-      const u = clean(match.groups && match.groups.url ? match.groups.url : "");
-      if (u) {
-        urls.push(u);
-      }
-    }
-    return urls;
-  }
-
-  function collectImageUrls(rootEl) {
-    if (!rootEl) {
-      return [];
-    }
-
-    const urls = [];
-
-    for (const img of Array.from(rootEl.querySelectorAll("img"))) {
-      if (isLikelyTinyImage(img)) {
-        continue;
-      }
-
-      urls.push(...splitSrcset(img.srcset || ""));
-      urls.push(...splitSrcset(img.getAttribute("srcset") || ""));
-      urls.push(...splitSrcset(img.getAttribute("data-srcset") || ""));
-      urls.push(clean(img.currentSrc || ""));
-      urls.push(clean(img.src || ""));
-      urls.push(clean(img.getAttribute("src") || ""));
-      urls.push(clean(img.getAttribute("data-src") || ""));
-    }
-
-    for (const el of Array.from(rootEl.querySelectorAll("[style*='background-image']"))) {
-      urls.push(...backgroundImageUrls(el.getAttribute("style") || ""));
-      urls.push(...backgroundImageUrls(window.getComputedStyle(el).backgroundImage || ""));
-    }
-
-    return Array.from(new Set(urls))
-      .filter(Boolean)
-      .filter((u) => /^https?:\/\//i.test(u));
-  }
-
   function pickBestImageUrl(urls) {
     if (!urls || urls.length === 0) {
       return "";
@@ -451,130 +252,36 @@
     return Array.from(new Set(urls)).filter((u) => /^https?:\/\//i.test(u));
   }
 
-  function bestKfAt4dImage(card, offerListEl) {
-    if (!card) {
-      return "";
-    }
+  function extractImage(offerListEl) {
+    const roots = [];
 
-    const cardRect = card.getBoundingClientRect();
-    const cardCx = cardRect.left + cardRect.width / 2;
-    const cardCy = cardRect.top + cardRect.height / 2;
-
-    let panelRoot = null;
     if (offerListEl) {
-      panelRoot =
+      const panelRoot =
         offerListEl.closest("[role='dialog'], [role='complementary'], aside, section") ||
         offerListEl.parentElement ||
         offerListEl;
+      roots.push(panelRoot);
     }
 
-    const scopes = [
-      { root: card, bonus: 5000 },
-      ...(panelRoot ? [{ root: panelRoot, bonus: 3500 }] : []),
-      { root: document, bonus: 0 },
-    ];
+    roots.push(document);
 
-    const seen = new Set();
-    let best = { score: Number.NEGATIVE_INFINITY, url: "" };
-
-    for (const scope of scopes) {
-      const imgs = Array.from(scope.root.querySelectorAll(DETAIL_IMG_SELECTOR));
-      for (const img of imgs) {
-        if (seen.has(img)) {
-          continue;
-        }
-        seen.add(img);
-
-        if (!isVisibleImage(img)) {
-          continue;
-        }
-
-        const url = pickBestImageUrl(imageUrlsFromImg(img));
-        if (!url) {
-          continue;
-        }
-
-        const rect = img.getBoundingClientRect();
-        const cx = rect.left + rect.width / 2;
-        const cy = rect.top + rect.height / 2;
-        const dist = Math.hypot(cx - cardCx, cy - cardCy);
-        const area = rect.width * rect.height;
-        const naturalArea = Number(img.naturalWidth || 0) * Number(img.naturalHeight || 0);
-        const score =
-          scope.bonus +
-          scoreImageUrl(url) +
-          Math.min(area, 80000) +
-          Math.min(220, naturalArea / 5000) -
-          dist * 2 -
-          (isLikelyTinyImage(img) ? 220 : 0);
-
-        if (score > best.score) {
-          best = { score, url };
-        }
-      }
-    }
-
-    return best.url;
-  }
-
-  function extractImage(card, cardIndex, offerListEl, htmlEntries, htmlEntryLookup) {
-    const imageCandidates = [];
-
-    const fromHtmlProximity = findHtmlProximityImageForCard(
-      card,
-      cardIndex,
-      htmlEntries,
-      htmlEntryLookup
-    );
-    if (fromHtmlProximity) {
-      imageCandidates.push({ url: fromHtmlProximity, source: "html-proximity" });
-    }
-
-    const fromDetail = bestKfAt4dImage(card, offerListEl);
-    if (fromDetail) {
-      imageCandidates.push({ url: fromDetail, source: "detail" });
-    }
-
-    const fromCard = pickBestImageUrl(collectImageUrls(card));
-    if (fromCard) {
-      imageCandidates.push({ url: fromCard, source: "card" });
-    }
-
-    if (offerListEl) {
-      let panelRoot = offerListEl;
-      for (let i = 0; i < 3 && panelRoot.parentElement; i += 1) {
-        panelRoot = panelRoot.parentElement;
-      }
-      const fromPanel = pickBestImageUrl(collectImageUrls(panelRoot));
-      if (fromPanel) {
-        imageCandidates.push({ url: fromPanel, source: "panel" });
-      }
-    }
-
-    if (imageCandidates.length === 0) {
-      return "";
-    }
-
-    imageCandidates.sort((a, b) => {
-      const sourceBonus = (source) => {
-        if (source === "html-proximity") {
-          return 90;
-        }
-        if (source === "card") {
-          return 35;
-        }
-        if (source === "detail") {
-          return 25;
-        }
-        return 10;
-      };
-
-      return (
-        scoreImageUrl(b.url) + sourceBonus(b.source) - (scoreImageUrl(a.url) + sourceBonus(a.source))
+    // After clicking an njFjte card, the detail pane only exposes that card's KfAt4d image.
+    for (const root of roots) {
+      const visibleDetail = Array.from(root.querySelectorAll(DETAIL_IMG_SELECTOR)).find((img) =>
+        isVisibleImage(img)
       );
-    });
+      const detailImg = visibleDetail || root.querySelector(DETAIL_IMG_SELECTOR);
+      if (!detailImg) {
+        continue;
+      }
 
-    return imageCandidates[0].url;
+      const picked = pickBestImageUrl(imageUrlsFromImg(detailImg));
+      if (picked) {
+        return picked;
+      }
+    }
+
+    return "";
   }
 
   function normalizeName(value) {
@@ -658,105 +365,36 @@
     return "";
   }
 
-  function listContextText(listEl) {
-    if (!listEl) {
-      return "";
-    }
-    const contextRoot =
-      listEl.closest("[role='dialog'], [role='complementary'], aside, section") ||
-      listEl.parentElement ||
-      listEl;
-    return clean(contextRoot.textContent || "").slice(0, 3500);
-  }
-
-  function offerCandidateSignature(candidate) {
-    if (!candidate || !candidate.listEl) {
-      return "";
-    }
-
-    const topHrefs = Array.from(
-      candidate.listEl.querySelectorAll("a[data-hveid][data-ved][href], a[href^='http']")
-    )
-      .slice(0, 4)
-      .map((a) => toAbsUrl(a.getAttribute("href") || a.href || ""))
-      .join("|");
-
-    return [
-      candidate.dataNtof || "",
-      topHrefs,
-      clean(candidate.listEl.textContent || "").slice(0, 140),
-    ].join("::");
-  }
-
-  function isVisible(el) {
-    if (!el) {
-      return false;
-    }
-    const style = window.getComputedStyle(el);
-    if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") {
-      return false;
-    }
-    const rect = el.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < window.innerHeight;
-  }
-
-  function scoreOfferListCandidates(expectedItemName) {
-    const expected = clean(expectedItemName || "").toLowerCase();
-    const lists = Array.from(document.querySelectorAll("[role='list']"));
-    const candidates = [];
-
-    for (const listEl of lists) {
-      const rect = listEl.getBoundingClientRect();
-      const visible = isVisible(listEl);
-      const dataNtof = dataNtofForList(listEl);
-      const firstExternal = firstExternalHrefFromList(listEl);
-      const contextText = listContextText(listEl);
-      const loweredContext = contextText.toLowerCase();
-
-      let score = 0;
-      if (visible) score += 100;
-      if (dataNtof) score += 70;
-      if (firstExternal) score += 60;
-      if (rect.left >= window.innerWidth * 0.35) score += 25;
-      score += Math.min(20, Math.max(0, rect.height) / 60);
-
-      if (expected) {
-        const expectedSlice = expected.slice(0, 40);
-        if (expectedSlice && loweredContext.includes(expectedSlice)) {
-          score += 40;
-        }
-      }
-
-      candidates.push({ listEl, dataNtof, firstExternal, score });
-    }
-
-    return candidates.sort((a, b) => b.score - a.score);
-  }
-
-  async function waitForOfferList(timeoutMs, expectedItemName, previousSignature, requireChange) {
+  async function waitForOfferList(timeoutMs) {
     const deadline = Date.now() + timeoutMs;
-    let best = null;
 
     while (Date.now() < deadline) {
-      const candidates = scoreOfferListCandidates(expectedItemName);
-      if (candidates.length > 0) {
-        const filtered =
-          previousSignature && requireChange
-            ? candidates.filter((c) => offerCandidateSignature(c) !== previousSignature)
-            : candidates;
+      const listEl = document.querySelector(OFFER_LIST_SELECTOR);
+      if (listEl) {
+        const offerCtx = {
+          listEl,
+          dataNtof: dataNtofForList(listEl),
+          firstExternal: firstExternalHrefFromList(listEl),
+        };
 
-        best = (filtered.length > 0 ? filtered : candidates)[0];
-
-        const hasSignal = Boolean(best.dataNtof || best.firstExternal);
-        if (hasSignal) {
-          return best;
+        if (offerCtx.dataNtof || offerCtx.firstExternal) {
+          return offerCtx;
         }
       }
 
       await sleep(jitter(170, 300));
     }
 
-    return best;
+    const fallbackList = document.querySelector(OFFER_LIST_SELECTOR);
+    if (!fallbackList) {
+      return null;
+    }
+
+    return {
+      listEl: fallbackList,
+      dataNtof: dataNtofForList(fallbackList),
+      firstExternal: firstExternalHrefFromList(fallbackList),
+    };
   }
 
   async function expandOffersList(listEl) {
@@ -818,12 +456,8 @@
   const parsedMax = Number(MAX_ITEMS);
   const effectiveMax = Number.isFinite(parsedMax) && parsedMax > 0 ? Math.floor(parsedMax) : null;
   const cards = effectiveMax ? allCards.slice(0, effectiveMax) : allCards;
-  const decodedHtml = decodeEmbeddedMarkup(document.documentElement.outerHTML || "");
-  const htmlEntries = buildHtmlProximityImageEntries(decodedHtml);
-  const htmlEntryLookup = buildHtmlEntryLookupByKey(htmlEntries);
 
   console.log("Found", allCards.length, "cards. Processing", cards.length);
-  console.log("HTML proximity image entry count:", htmlEntries.length);
 
   const rows = [];
 
@@ -835,13 +469,10 @@
     const itemName = extractItemName(card);
     const itemPrice = extractPrice(card);
 
-    const beforeCtx = await waitForOfferList(1300, itemName, "", false);
-    const beforeSignature = offerCandidateSignature(beforeCtx);
-
     card.click();
     await sleep(jitter(330, 560));
 
-    let offerCtx = await waitForOfferList(9000, itemName, beforeSignature, true);
+    let offerCtx = await waitForOfferList(9000);
 
     if (offerCtx && offerCtx.listEl) {
       await expandOffersList(offerCtx.listEl);
@@ -852,13 +483,7 @@
       };
     }
 
-    const itemImg = extractImage(
-      card,
-      i,
-      offerCtx && offerCtx.listEl ? offerCtx.listEl : null,
-      htmlEntries,
-      htmlEntryLookup
-    );
+    const itemImg = extractImage(offerCtx && offerCtx.listEl ? offerCtx.listEl : null);
     const itemWebListing =
       (offerCtx && offerCtx.firstExternal) || buildGoogleFallback(itemName);
 
