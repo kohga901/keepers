@@ -22,7 +22,7 @@ log.basicConfig(level=log.DEBUG)
 BATCH_SIZE = 32     # Number of clothings the CLIP model will be processing at a time.
 
 # init, the folder path is the clothing folder
-folder_path = "./scrapedClothing" # this is where we would get the clothes we scraped...IF WE HAD ANY
+folder_path = "./Background_Filtered_Images" # this is where we would get the clothes we scraped...IF WE HAD ANY
 all_files = os.listdir(folder_path)
 
 # turn on metal if u got it
