@@ -140,6 +140,7 @@ for batch_num in range(num_of_batches):
     # Put the embeddings in the vector array.
     embedded_vectors.append(embeddings_numpy)
 
+# Put the extracted features from this batch to the total vectors.
 catalog_embeddings = np.vstack(embedded_vectors)
 
 log.debug(f"FINISHED EMBEDDINGS.\n")
