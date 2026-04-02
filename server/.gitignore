@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.env
+venv/
+.venv/
+
+# FastAPI / Uvicorn
+*.log
+logs/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Alembic migrations (auto-generated versions can be noisy; keep env.py and script.py.mako)
+alembic/versions/
+
+# JWT / secrets
+*.pem
+*.key
+*.crt
+secrets/
+
+# Testing
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDEs
+.idea/
+.vscode/
