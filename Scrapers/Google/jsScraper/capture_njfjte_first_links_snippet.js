@@ -7,6 +7,7 @@
   const ENCRYPTED_IMAGE_RE = /encrypted-tbn\d\.gstatic\.com\/shopping/i;
   const DETAIL_IMG_SELECTOR = "img.KfAt4d, img.kfAt4d";
   const IMAGE_ICON_RE = /(favicon|faviconv2|googlelogo|\/images\/icons\/|\/branding\/)/i;
+  //document.querySelectorAll("div.njFjte")
 
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const clean = (v) => (v || "").replace(/\s+/g, " ").trim();
