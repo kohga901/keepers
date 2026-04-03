@@ -1,0 +1,26 @@
+pants
+shorts
+jeans
+shirts
+hoodies
+jackets
+sweaters
+cardigans
+button ups
+gymwear
+shoes
+skirts
+dresses
+blouse
+turtleneck
+blazers
+polo shirts
+trench coat
+crop top
+quarter zip
+dress shirt
+flannels
+sweats
+leggings
+pajamas
+heels
