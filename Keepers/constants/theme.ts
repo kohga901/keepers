@@ -13,23 +13,23 @@ export type AppTheme = {
 };
 
 export const lightTheme: AppTheme = {
-  background: '#4caf85',
-  surface: '#4caf85',
+  background: '#F7F2EC',
+  surface: '#1a2329',
   text: '#4caf85',
-  mutedText: '#4caf85',
-  border: '#4caf85',
+  mutedText: '#9fb0ba',
+  border: '#2e3a43',
   primary: '#4caf85',
-  tabBg: '#4caf85',
+  tabBg: '#101519',
   tabActive: '#4caf85',
-  tabInactive: '#4caf85',
-  headerBg: '#4caf85',
+  tabInactive: '#7f909a',
+  headerBg: '#f6f8fa',
   headerText: '#4caf85',
 };
 
 export const darkTheme: AppTheme = {
   background: '#F7F2EC',
   surface: '#1a2329',
-  text: '#f6f8fa',
+  text: '#4caf85',
   mutedText: '#9fb0ba',
   border: '#2e3a43',
   primary: '#4caf85',
