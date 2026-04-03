@@ -21,3 +21,6 @@ quarter zip
 dress shirt
 flannels
 sweats
+leggings
+pajamas
+heels
