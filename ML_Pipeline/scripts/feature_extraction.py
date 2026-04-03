@@ -13,7 +13,7 @@ each file in the folder of scraped clothing and saves it to an npy
 
 
 # ---------------------------------------------------------------------------------------
-# GLOBAL VARIABLES
+# Config setup
 # ---------------------------------------------------------------------------------------
 
 
@@ -35,12 +35,7 @@ preprocess = result[1]
 
 
 # ---------------------------------------------------------------------------------------
-# END OF GLOBAL VARIABLES
-# ---------------------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------------------
-# FUNCTIONS
+# Embedding conversion
 # ---------------------------------------------------------------------------------------
 
 
@@ -70,81 +65,86 @@ def to_full_path(filename: str) -> str:
 
 
 # ---------------------------------------------------------------------------------------
-# END OF FUNCTIONS
+# Main logic
 # ---------------------------------------------------------------------------------------
 
-log.debug("Starting script...\n")
-log.debug(f"NUMBER OF ITEMS: {len(all_files)}\n")
+def main():
 
-# filter = trim the non images from all files
-only_images = list(filter(is_image, all_files))
+    log.debug("Starting script...\n")
+    log.debug(f"NUMBER OF ITEMS: {len(all_files)}\n")
 
-log.debug(f"NUMBER OF CLOTHES AFTER FILTER: {len(only_images)}\n")
-log.debug(f"BATCH SIZE: {BATCH_SIZE}\n")
+    # filter = trim the non images from all files
+    only_images = list(filter(is_image, all_files))
 
-# Exit if no images in the folder.
-if (len(only_images) == 0):
-    log.debug(f"NO IMAGES TO EMBED. NUMBER OF IMAGES: {len(only_images)}\n")
-    log.debug(f"EXITING...\n")
-    sys.exit()
+    log.debug(f"NUMBER OF CLOTHES AFTER FILTER: {len(only_images)}\n")
+    log.debug(f"BATCH SIZE: {BATCH_SIZE}\n")
 
-# Path of every image.
-image_paths = list(map(to_full_path, only_images))
+    # Exit if no images in the folder.
+    if (len(only_images) == 0):
+        log.debug(f"NO IMAGES TO EMBED. NUMBER OF IMAGES: {len(only_images)}\n")
+        log.debug(f"EXITING...\n")
+        sys.exit()
 
-# Compute the number of batches required.
-num_of_batches = (len(image_paths) + (BATCH_SIZE - 1)) // BATCH_SIZE
+    # Path of every image.
+    image_paths = list(map(to_full_path, only_images))
 
-# The vectors that the images have been transformed into. 
-# Each vector is 512 dim.
-embedded_vectors = []
+    # Compute the number of batches required.
+    num_of_batches = (len(image_paths) + (BATCH_SIZE - 1)) // BATCH_SIZE
 
-# Get images in batches and convert them to embeddings using the CLIP model.
-for batch_num in range(num_of_batches):
+    # The vectors that the images have been transformed into. 
+    # Each vector is 512 dim.
+    embedded_vectors = []
 
-    log.debug(f"PROCESSING BATCH NUMBER: {batch_num}.\n")
+    # Get images in batches and convert them to embeddings using the CLIP model.
+    for batch_num in range(num_of_batches):
 
-    # A list (batch) of images that have been fed through preprocess().
-    # Batch size is BATCH_SIZE.
-    batch_of_processed_images = []
+        log.debug(f"PROCESSING BATCH NUMBER: {batch_num}.\n")
 
-    # Compute the index for getting an image from image_paths.
-    start = batch_num * BATCH_SIZE
-    end = min(start + BATCH_SIZE, len(image_paths))
+        # A list (batch) of images that have been fed through preprocess().
+        # Batch size is BATCH_SIZE.
+        batch_of_processed_images = []
 
-    # Go though each image in a batch and feed it into preprocess().
-    for i in range(start, end):
+        # Compute the index for getting an image from image_paths.
+        start = batch_num * BATCH_SIZE
+        end = min(start + BATCH_SIZE, len(image_paths))
 
-        # Get image from the image_paths list and convert it to a PIL image object.
-        # Shouldn't keep too many image files open, so the file descriptor is closed after being opened. 
-        # (Honestly we won't be opening too many image files at once but just to be safe.)
-        with Image.open(image_paths[i]) as img:
-            img = img.convert("RGB")
+        # Go though each image in a batch and feed it into preprocess().
+        for i in range(start, end):
 
-        # Put the image through preprocess. 
-        processed_img = preprocess(img).to(device)
+            # Get image from the image_paths list and convert it to a PIL image object.
+            # Shouldn't keep too many image files open, so the file descriptor is closed after being opened. 
+            # (Honestly we won't be opening too many image files at once but just to be safe.)
+            with Image.open(image_paths[i]) as img:
+                img = img.convert("RGB")
 
-        # Put the processed image in the list.
-        batch_of_processed_images.append(processed_img)
-    
-    # Now the list of tensors in "processed_images_batch" must be merged into one big tensor.
-    # Reason for this is because the CLIP model expects one tensor.
-    tensor = torch.stack(batch_of_processed_images)
+            # Put the image through preprocess. 
+            processed_img = preprocess(img).to(device)
 
-    # Put a batch of processed images through the CLIP model.
-    embeddings = get_embeddings(tensor)
+            # Put the processed image in the list.
+            batch_of_processed_images.append(processed_img)
+        
+        # Now the list of tensors in "processed_images_batch" must be merged into one big tensor.
+        # Reason for this is because the CLIP model expects one tensor.
+        tensor = torch.stack(batch_of_processed_images)
 
-    # Put the embeddings on cpu.
-    # Then convert the tensors to numpy.
-    embeddings_numpy = embeddings.cpu().numpy()
-    
-    # Put the embeddings in the vector array.
-    embedded_vectors.append(embeddings_numpy)
+        # Put a batch of processed images through the CLIP model.
+        embeddings = get_embeddings(tensor)
 
-# Put the extracted features from this batch to the total vectors.
-catalog_embeddings = np.vstack(embedded_vectors)
+        # Put the embeddings on cpu.
+        # Then convert the tensors to numpy.
+        embeddings_numpy = embeddings.cpu().numpy()
+        
+        # Put the embeddings in the vector array.
+        embedded_vectors.append(embeddings_numpy)
 
-log.debug(f"FINISHED EMBEDDINGS.\n")
+    # Put the extracted features from this batch to the total vectors.
+    catalog_embeddings = np.vstack(embedded_vectors)
 
-np.save("catalog_embeddings.npy", catalog_embeddings) #.npy is like a bunch of numbers loosely formatted to go to ram, bytes go to memory, faster than csv
+    log.debug(f"FINISHED EMBEDDINGS.\n")
 
-log.debug(f"Script finished...\n")
+    np.save("catalog_embeddings.npy", catalog_embeddings) #.npy is like a bunch of numbers loosely formatted to go to ram, bytes go to memory, faster than csv
+
+    log.debug(f"Script finished...\n")
+
+if __name__ == "__main__":
+    main()
