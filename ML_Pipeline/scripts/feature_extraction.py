@@ -16,14 +16,14 @@ each file in the folder of scraped clothing and saves it to an npy
 # Config setup
 # ---------------------------------------------------------------------------------------
 
+INPUT_DIR = "../data/background_filtered"
+OUTPUT_DIR = "../data/embedded_vectors"
+
+output_path = os.path.join(OUTPUT_DIR, "catalog_embeddings.npy")
 
 log.basicConfig(level=log.DEBUG)
 
 BATCH_SIZE = 32     # Number of clothings the CLIP model will be processing at a time.
-
-# init, the folder path is the clothing folder
-folder_path = "../Background_Filtered_Images" # this is where we would get the clothes we scraped...IF WE HAD ANY
-all_files = os.listdir(folder_path)
 
 # turn on metal if u got it
 device = "mps" if torch.backends.mps.is_available() else "cpu"
@@ -61,7 +61,7 @@ def to_full_path(filename: str) -> str:
     """
     Builds the full path name to a file.
     """
-    return os.path.join(folder_path, filename)
+    return os.path.join(INPUT_DIR, filename)
 
 
 # ---------------------------------------------------------------------------------------
@@ -71,10 +71,10 @@ def to_full_path(filename: str) -> str:
 def main():
 
     log.debug("Starting script...\n")
-    log.debug(f"NUMBER OF ITEMS: {len(all_files)}\n")
+    log.debug(f"NUMBER OF ITEMS: {len(INPUT_DIR)}\n")
 
     # filter = trim the non images from all files
-    only_images = list(filter(is_image, all_files))
+    only_images = list(filter(is_image, INPUT_DIR))
 
     log.debug(f"NUMBER OF CLOTHES AFTER FILTER: {len(only_images)}\n")
     log.debug(f"BATCH SIZE: {BATCH_SIZE}\n")
@@ -142,7 +142,7 @@ def main():
 
     log.debug(f"FINISHED EMBEDDINGS.\n")
 
-    np.save("catalog_embeddings.npy", catalog_embeddings) #.npy is like a bunch of numbers loosely formatted to go to ram, bytes go to memory, faster than csv
+    np.save(output_path, catalog_embeddings) #.npy is like a bunch of numbers loosely formatted to go to ram, bytes go to memory, faster than csv
 
     log.debug(f"Script finished...\n")
 
