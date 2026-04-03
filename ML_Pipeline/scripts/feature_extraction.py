@@ -7,8 +7,12 @@ import logging as log
 import sys
 
 """
-indexingScript.py gets the folder of scraped clothing, loads OpenAi's clip model from github, gets an embedding for 
-each file in the folder of scraped clothing and saves it to an npy
+feature_extraction.py 
+
+Final stage of the pipeline.
+
+Gets the folder of the filtered clothing, loads OpenAi's clip model from github, gets an embedding for 
+each file in the folder of filtered clothing and saves it to an npy.
 """
 
 
