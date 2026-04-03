@@ -20,10 +20,12 @@ INPUT_DIR = "../data/background_filtered"
 OUTPUT_DIR = "../data/embedded_vectors"
 
 output_path = os.path.join(OUTPUT_DIR, "catalog_embeddings.npy")
+files = os.listdir(INPUT_DIR)
+os.makedirs(OUTPUT_DIR, exist_ok=True)      # Making sure the dir exists.
 
 log.basicConfig(level=log.DEBUG)
 
-BATCH_SIZE = 32     # Number of clothings the CLIP model will be processing at a time.
+BATCH_SIZE = 32         # Number of clothings the CLIP model will be processing at a time.
 
 # turn on metal if u got it
 device = "mps" if torch.backends.mps.is_available() else "cpu"
@@ -35,7 +37,7 @@ preprocess = result[1]
 
 
 # ---------------------------------------------------------------------------------------
-# Embedding conversion
+# Embedding conversion and file config
 # ---------------------------------------------------------------------------------------
 
 
@@ -71,10 +73,10 @@ def to_full_path(filename: str) -> str:
 def main():
 
     log.debug("Starting script...\n")
-    log.debug(f"NUMBER OF ITEMS: {len(INPUT_DIR)}\n")
+    log.debug(f"NUMBER OF ITEMS: {len(files)}\n")
 
     # filter = trim the non images from all files
-    only_images = list(filter(is_image, INPUT_DIR))
+    only_images = list(filter(is_image, files))
 
     log.debug(f"NUMBER OF CLOTHES AFTER FILTER: {len(only_images)}\n")
     log.debug(f"BATCH SIZE: {BATCH_SIZE}\n")
