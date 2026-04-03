@@ -8,7 +8,10 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { lightTheme } from '../constants/theme';
-import { View } from 'react-native';
+import { View, ActivityIndicator } from 'react-native';
+
+import { useFonts } from 'expo-font';
+
 
 export function useAppTheme() {
   return {
@@ -17,19 +20,32 @@ export function useAppTheme() {
   };
 }
 
+
 export default function RootLayout() {
+  const [loaded] = useFonts({
+    GeorgiaProBlack: require('../assets/fonts/GeorgiaPro-Black.ttf'),
+  });
   const { theme } = useAppTheme();
 
+  if (!loaded) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        
+      </View>
+    );
+  }
   return (
-    <View style={{ flex: 1, backgroundColor: theme.background }}>
+    <View style={{ flex: 1, backgroundColor: lightTheme.background }}>
       <Stack>
         <Stack.Screen
           name="(tabs)"
           options={{
             headerShown: true,
             title: 'K E E P E R S',
-            headerTintColor: theme.headerText,
-            
+            headerTintColor: lightTheme.headerText,
+            headerTitleStyle: {
+              fontFamily: 'GeorgiaProBlack', // Font is now global
+              fontSize: 24,            },
           }}
         />
       </Stack>

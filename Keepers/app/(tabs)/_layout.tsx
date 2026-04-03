@@ -16,23 +16,25 @@ export default function TabLayout() {
 
   return (
     <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: theme.tabActive,
-        tabBarInactiveTintColor: theme.tabInactive,
-        headerStyle: {
-          backgroundColor: theme.headerBg,
-        },
-        headerShadowVisible: false,
-        headerTintColor: theme.headerText,
-        sceneStyle: {
-          backgroundColor: theme.background,
-        },
-        tabBarStyle: {
-          backgroundColor: theme.tabBg,
-          borderTopColor: theme.border,
-        },
-      }}
-    >
+        screenOptions={{
+          headerShown: false,   // 👈 ADD THIS
+          tabBarActiveTintColor: theme.tabActive,
+          tabBarInactiveTintColor: theme.tabInactive,
+          headerStyle: {
+            backgroundColor: theme.headerBg,
+          },
+          headerShadowVisible: false,
+          headerTintColor: theme.headerText,
+          sceneStyle: {
+            backgroundColor: theme.background,
+          },
+          tabBarStyle: {
+            backgroundColor: theme.tabBg,
+            borderTopColor: theme.border,
+          },
+        }}
+      >
+    
       <Tabs.Screen
         name="index"
         options={{

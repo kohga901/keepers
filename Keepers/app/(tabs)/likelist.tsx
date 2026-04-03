@@ -14,13 +14,13 @@ export default function LikeList() {
   const { theme } = useAppTheme();
   const [activeTab, setActiveTab] = React.useState('liked');
   return (
-    <View style={[styles.container, { backgroundColor: '#4caf85'    }]}>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>   
       <View style={styles.topTabs}>
         
         <Text
           style={[
             styles.tabText,
-            activeTab === 'liked' && {     color: '#F7F2EC',
+            activeTab === 'liked' && {     color: theme.text,
  },
           ]}
           onPress={() => setActiveTab('liked')}
@@ -30,7 +30,7 @@ export default function LikeList() {
         <Text
           style={[
             styles.tabText,
-            activeTab === 'disliked' && {     color: '#F7F2EC',
+            activeTab === 'disliked' && {     color: theme.text,
  },
           ]}
           onPress={() => setActiveTab('disliked')}
