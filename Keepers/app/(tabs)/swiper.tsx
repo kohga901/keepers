@@ -9,15 +9,22 @@ import React from "react";
 import { View, Text, StyleSheet, Dimensions } from "react-native";
 import Swiper from "react-native-deck-swiper";
 import { Image } from 'expo-image';
-import { useAppTheme } from '../../hooks/useAppTheme';
-import { Item } from '../../models/Items';
 import * as WebBrowser from 'expo-web-browser';
 
-
+type Card = {
+  id: string;
+  name: string;
+  price: string;
+  imageUrl: string;
+  liked: boolean;
+  itemUrl: string;
+};
 
 const { height } = Dimensions.get("window");
+const CARD_HEIGHT_RATIO = 0.7;
+const CARD_VERTICAL_MARGIN = (height * (1 - CARD_HEIGHT_RATIO)) / 2;
 
-const cards: Item[] = [
+const cards: Card[] =[
   { 
     id: '1',
     name: "Floral Summer Dress",
@@ -67,52 +74,52 @@ const cards: Item[] = [
    },
   ];
 
-export default function App() {
-    const { theme } = useAppTheme();
-
+const App: React.FC = () => {
   return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <Swiper
+    <View style={styles.container}>
+      <Swiper<Card>
         cards={cards}
-        renderCard={(card) => {
+        renderCard={(card: Card) => {
           if (!card) return null;
           return (
-            <View style={styles.card}>
-              <View style={styles.imagePlaceholder}>
-                <Image
-                  style={styles.image}
-                  source={{ uri: card.imageUrl }}
-                  placeholder={{ blurhash }}
-                  contentFit="cover"
-                  transition={1000}
-                />
-              </View>
-              <View style={styles.cardInfo}>
-                <Text style={styles.cardName}>{card.name}</Text>
-                <Text style={styles.cardPrice}>{card.price}</Text>
-              </View>
+           <View style={styles.card}>
+            <View style={styles.imagePlaceholder}>
+              <Image
+                style={styles.image}
+                source={{ uri: card.imageUrl }}
+                placeholder={{ blurhash }}
+                contentFit="cover"
+                transition={1000}
+              />
             </View>
+            <View style={styles.cardInfo}>
+              <Text style={styles.cardName}>{card.name}</Text>
+              <Text style={styles.cardPrice}>{card.price}</Text>
+            </View>
+          </View>
           );
         }}
-        stackSize={3}
-        stackSeparation={15}
-        stackScale={5}
-        overlayLabels={overlayLabels}
+        onSwiped={(index: number) => console.log('Swiped index:', index)}
         onSwipedTop={(cardIndex) => {
           const item = cards[cardIndex];
           if (item.itemUrl) {
             WebBrowser.openBrowserAsync(item.itemUrl);
           }
         }}
-        backgroundColor={theme.background}
-        
-        animateCardOpacity={false}
-        cardVerticalMargin={20}
-        cardHorizontalMargin={25}
+        overlayLabels={overlayLabels}
+        stackSize={3}
+        stackSeparation={15}
+        cardVerticalMargin={CARD_VERTICAL_MARGIN}
+        backgroundColor="transparent"
       />
     </View>
   );
-}
+};
+
+export default App;
+
+const blurhash =
+  '|rF?hV%2WCj[ayj[a|j[az_NaeWBj@ayfRayfQfQM{M|azj[azf6fQfQfQIpWXofj[ayj[j[fQayWCoeoeaya}j[ayfQa{oLj?j[WVj[ayayj[fQoff7azayj[ayj[j[ayofayayayj[fQj[ayayj[ayfjj[j[ayjuayj[';
 
 const overlayLabels = {
   left: {
@@ -133,26 +140,17 @@ const overlayLabels = {
     title: "GO TO ITEM",
     style: {
       label: { color: "#007AFF", fontSize: 28, fontWeight: "bold", borderColor: "#007AFF", borderWidth: 2, padding: 8 },
-      wrapper: { flexDirection: "column", alignItems: "center", justifyContent: "flex-end", marginBottom: 20 },
+      wrapper: { flexDirection: "column", alignItems: "center", justifyContent: "flex-center", marginTop: 570},
     },
   },
 };
-const blurhash =
-  '|rF?hV%2WCj[ayj[a|j[az_NaeWBj@ayfRayfQfQM{M|azj[azf6fQfQfQIpWXofj[ayj[j[fQayWCoeoeaya}j[ayfQa{oLj?j[WVj[ayayj[fQoff7azayj[ayj[j[ayofayayayj[fQj[ayayj[ayfjj[j[ayjuayj[';
-
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  image: {
-    flex: 1,
-    width: '100%',
-    backgroundColor: '#0553',
   },
   card: {
+    flex: 1,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: "#E8E8E8",
@@ -162,8 +160,17 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 6,
   },
+  text: {
+    fontSize: 24,
+  },
+   image: {
+    flex: 1,
+    width: '100%',
+    backgroundColor: '#0553',
+  },
   imagePlaceholder: {
-    height: 400,
+    flex: 1,
+    width: "100%",
     backgroundColor: "#F0F0F0",
     alignItems: "center",
     justifyContent: "center",
@@ -176,6 +183,7 @@ const styles = StyleSheet.create({
   },
   cardInfo: {
     padding: 16,
+    marginBottom: 20,
     gap: 6,
   },
   cardName: {
