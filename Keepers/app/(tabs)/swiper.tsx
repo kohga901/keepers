@@ -58,7 +58,7 @@ const cards: Item[] = [
     itemUrl: "https://www.pacsun.com/riot-society/snoopy-samurai-t-shirt-9059015.html?store=&country=US&currency=USD&OriginId=GOG&XCIDP=P:&gclsrc=aw.ds&gad_source=1&gad_campaignid=17621737601&gbraid=0AAAAAD8PNsdgHgc6NF-ch0bpDBl-Eoix_&gclid=Cj0KCQjw7cLOBhDmARIsAGsuA0lQcY_hF56khZQL1dzxLrIrnlBO-llKd3gutsjnc_wlWfowTzgUpRkaAirgEALw_wcB",
    },
    { 
-    id: '9',
+    id: '10',
     name: "Snoopy Oversized Tee",
     price: "$21.99",
     imageUrl: "data:image/webp;base64,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",
@@ -74,20 +74,22 @@ export default function App() {
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <Swiper
         cards={cards}
-        
-
+        showSecondCard={true}
+        stackSize={3}
+        stackSeparation={15}
+        stackScale={5}
         renderCard={(card) => {
           if (!card) return null;
           return (
             <View style={styles.card}>
               <View style={styles.imagePlaceholder}>
-                 <Image
-                    style={styles.image}
-                    source={{ uri: card.imageUrl }}
-                    placeholder={{ blurhash }}
-                    contentFit="cover"
-                    transition={1000}
-                  />
+                <Image
+                  style={styles.image}
+                  source={{ uri: card.imageUrl }}
+                  placeholder={{ blurhash }}
+                  contentFit="cover"
+                  transition={1000}
+                />
               </View>
               <View style={styles.cardInfo}>
                 <Text style={styles.cardName}>{card.name}</Text>
@@ -96,26 +98,18 @@ export default function App() {
             </View>
           );
         }}
+        overlayLabels={overlayLabels}
         onSwipedTop={(cardIndex) => {
           const item = cards[cardIndex];
-
           if (item.itemUrl) {
             WebBrowser.openBrowserAsync(item.itemUrl);
           }
-        }
-      }
-        overlayLabels={overlayLabels}
-        onSwiped={(cardIndex) => { console.log(cardIndex); }}
-        onSwipedAll={() => { console.log("onSwipedAll"); }}
-        cardIndex={0}
+        }}
         backgroundColor={theme.background}
-        showSecondCard={true}
-        stackSize={2}
-        stackSeparation={15}
-        stackScale={3}
-        cardVerticalMargin={height * 0.04}
-        cardHorizontalMargin={20}
-        animateCardOpacity
+        
+        animateCardOpacity={false}
+        cardVerticalMargin={20}
+        cardHorizontalMargin={25}
       />
     </View>
   );
@@ -169,13 +163,16 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 6,
     elevation: 4,
-    overflow: "hidden",
   },
   imagePlaceholder: {
-    height: 460,
+    height: 400,
     backgroundColor: "#F0F0F0",
     alignItems: "center",
     justifyContent: "center",
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+    overflow: "hidden",
+
   },
   imagePlaceholderText: {
     fontSize: 80,
