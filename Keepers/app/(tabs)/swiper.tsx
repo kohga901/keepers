@@ -74,10 +74,6 @@ export default function App() {
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <Swiper
         cards={cards}
-        showSecondCard={true}
-        stackSize={3}
-        stackSeparation={15}
-        stackScale={5}
         renderCard={(card) => {
           if (!card) return null;
           return (
@@ -98,6 +94,9 @@ export default function App() {
             </View>
           );
         }}
+        stackSize={3}
+        stackSeparation={15}
+        stackScale={5}
         overlayLabels={overlayLabels}
         onSwipedTop={(cardIndex) => {
           const item = cards[cardIndex];
@@ -162,7 +161,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.12,
     shadowRadius: 6,
-    elevation: 4,
   },
   imagePlaceholder: {
     height: 400,
@@ -172,7 +170,6 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 12,
     borderTopRightRadius: 12,
     overflow: "hidden",
-
   },
   imagePlaceholderText: {
     fontSize: 80,
