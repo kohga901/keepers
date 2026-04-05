@@ -41,11 +41,17 @@ export default function RootLayout() {
           name="(tabs)"
           options={{
             headerShown: true,
+            headerTransparent: true,
             title: 'K E E P E R S',
             headerTintColor: lightTheme.headerText,
+            headerShadowVisible: true,
+            headerStyle: {
+              backgroundColor: lightTheme.headerBg,
+            },
             headerTitleStyle: {
               fontFamily: 'GeorgiaProBlack', // Font is now global
-              fontSize: 24,            },
+              fontSize: 24,            
+            },
           }}
         />
       </Stack>
