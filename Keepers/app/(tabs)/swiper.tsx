@@ -5,7 +5,7 @@
  * Date: 2026-04-01
  */
 
-import React from "react";
+import React, { useRef } from "react";
 import { View, Text, StyleSheet, Dimensions } from "react-native";
 import Swiper from "react-native-deck-swiper";
 import { Image } from 'expo-image';
@@ -32,7 +32,7 @@ const cards: Card[] =[
     imageUrl: "https://encrypted-tbn3.gstatic.com/shopping?q=tbn:ANd9GcTYc1bSnxvvXQRFp_QzSHXai1CfuYWe6Qw_nk-Jsju0roFCzN2NiFGS5_wTVMLSAqkMjlZkF1mufpbcjpxAOB-EV6t_mOsh",
     liked: false,
     itemUrl: "https://us.shein.com/goods-p-29599163.html?goods_id=29599163&test=5051&url_from=adhub2005792199220215811&scene=1&pf=google&ad_type=DPA&language=en&siteuid=us&version_bid=101986081,102001861&version_eid=100769286&landing_page_id=1510&ad_test_id=48210&requestId=olw-5lhzumdeajlb&cid=22661271560&popup_login=false&gad_source=1&skucode=I81ym9n1aizy&onelink=0/googlefeed_us&network=g&gad_campaignid=22661271560&gclid=Cj0KCQjw7cLOBhDmARIsAGsuA0n1PacsAo9OxaHknWVreKu8BILLX7rPzc_n5wRJB4VrDBbRCksaSJwaAtsDEALw_wcB&adid=790303891323&tv_b=2&ismg=c13426a2f0351d3e709b561fea476729a75f172be654a2d829206b6dae0d6909_01_1775298643&geoid=9029754&gbraid=0AAAAADm0yO4lftdfWmjPfOB6BEvK702_Y&setid=190363627866&kwd=pla-2449989885260&currency=USD&lang=us"
-   },
+  },
   { 
     id: '2',
     name: "Mini Tie-Strap Dress",
@@ -72,12 +72,15 @@ const cards: Card[] =[
     liked: false,
     itemUrl: "https://www.pacsun.com/riot-society/snoopy-samurai-t-shirt-9059015.html?store=&country=US&currency=USD&OriginId=GOG&XCIDP=P:&gclsrc=aw.ds&gad_source=1&gad_campaignid=17621737601&gbraid=0AAAAAD8PNsdgHgc6NF-ch0bpDBl-Eoix_&gclid=Cj0KCQjw7cLOBhDmARIsAGsuA0lQcY_hF56khZQL1dzxLrIrnlBO-llKd3gutsjnc_wlWfowTzgUpRkaAirgEALw_wcB",
    },
-  ];
+];
 
 const App: React.FC = () => {
+  const swiper = useRef<any>(null);
+
   return (
     <View style={styles.container}>
       <Swiper<Card>
+        ref={swiper}
         cards={cards}
         renderCard={(card: Card) => {
           if (!card) return null;
@@ -101,11 +104,16 @@ const App: React.FC = () => {
         }}
         onSwiped={(index: number) => console.log('Swiped index:', index)}
         onSwipedTop={(cardIndex) => {
+          // Swiper updates to next card after this callback, so defer jump back.
+          setTimeout(() => {
+            swiper.current?.jumpToCardIndex(cardIndex);
+          }, 0);
           const item = cards[cardIndex];
           if (item.itemUrl) {
             WebBrowser.openBrowserAsync(item.itemUrl);
           }
         }}
+        disableBottomSwipe={true}
         overlayLabels={overlayLabels}
         stackSize={3}
         stackSeparation={15}
