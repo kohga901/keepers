@@ -19,7 +19,7 @@ colors = [unique.index(g) for g in genders]
 
 
 # Reducing to 2D so vectors no longer has 512 dimensions -> Becoems a map
-reduced = TSNE(n_components=2, random_state=42).fit_transform(data)
+reduced = TSNE(n_components=2, random_state=70).fit_transform(data)
 my_colors = ["deepskyblue", "gray" , "hotpink", "gold", "plum", "cyan", "green", "black"]
 my_cmap = ListedColormap(my_colors[:len(unique)])
 # Create the visualization
