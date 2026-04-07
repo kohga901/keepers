@@ -7,7 +7,7 @@ import logging as log
 import sys
 
 """
-indexingScript.py gets the folder of scraped clothing, loads OpenAi's clip model from github, gets an embedding for 
+Clip is OpenAi's clip model from github, gets an embedding for 
 each file in the folder of scraped clothing and saves it to an npy
 """
 
