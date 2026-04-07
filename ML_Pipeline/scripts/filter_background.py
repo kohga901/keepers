@@ -12,7 +12,9 @@ Dependencies:
     pip install rembg pillow
 """
 
+import argparse
 import os
+import sys
 import logging
 from pathlib import Path
 from PIL import Image
@@ -23,9 +25,10 @@ from rembg import remove, new_session
 # Config setup
 # ---------------------------------------------------------------------------
 
-INPUT_DIR = "data/stage1"        # output folder from filter_people.py
-OUTPUT_DIR = "data/stage2"       # cleaned images passed to clip_extraction.py
-LOG_FILE = "logs/filter_background.log"
+INPUT_DIR = "../data/people_filtered"   # output folder from filter_people.py 
+OUTPUT_DIR = "../data/background_filtered" # cleaned images passed to clip_extraction.py
+
+LOG_FILE = "../logs/filter_background.log"
 
 BACKGROUND_COLOR = (255, 255, 255)  # white
 OUTPUT_FORMAT = "PNG"               # PNG preserves quality, no compression artifacts
@@ -45,7 +48,22 @@ def setup_logging(log_file: str) -> logging.Logger:
     Returns:
         Configured logger instance.
     """
-    pass
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.DEBUG)
+
+    console_handler = logging.StreamHandler(sys.stdout)
+
+    os.makedirs(os.path.dirname(log_file), exist_ok=True)
+    file_handler = logging.FileHandler(log_file)
+
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    console_handler.setFormatter(formatter)
+    file_handler.setFormatter(formatter)
+
+    logger.addHandler(console_handler)
+    logger.addHandler(file_handler)
+
+    return logger
 
 
 # ---------------------------------------------------------------------------
@@ -61,7 +79,7 @@ def load_rembg_session():
     Returns:
         A rembg session object to be passed into remove_background().
     """
-    pass
+    return new_session("u2net")
 
 
 # ---------------------------------------------------------------------------
@@ -79,7 +97,7 @@ def remove_background(image: Image.Image, session) -> Image.Image:
     Returns:
         PIL Image in RGBA mode with background removed (transparent).
     """
-    pass
+    return remove(image, session=session)
 
 
 def apply_white_background(image_rgba: Image.Image) -> Image.Image:
@@ -95,7 +113,9 @@ def apply_white_background(image_rgba: Image.Image) -> Image.Image:
     Returns:
         PIL Image in RGB mode with a solid white background.
     """
-    pass
+    white_bg = Image.new("RGB", image_rgba.size, BACKGROUND_COLOR)
+    white_bg.paste(image_rgba, mask=image_rgba.split()[3])
+    return white_bg
 
 
 # ---------------------------------------------------------------------------
@@ -107,7 +127,7 @@ def process_image(
     session,
     output_dir: Path,
     logger: logging.Logger,
-) -> None:
+) -> str:
     """
     Processes a single image through the full background-filter logic:
       1. Load image from disk.
@@ -123,7 +143,25 @@ def process_image(
         output_dir: Directory to write the processed image to.
         logger: Logger instance for status and error messages.
     """
-    pass
+    out_path = output_dir / (image_path.stem + ".png")
+    try:
+        image = Image.open(image_path).convert("RGB")
+
+        image_rgba = remove_background(image, session)
+        result = apply_white_background(image_rgba)
+        result.save(out_path, format=OUTPUT_FORMAT)
+        logger.info(f"[background_removed]    {image_path.name}")
+        return "background_removed"
+
+    except Exception as e:
+        logger.error(f"[failed_passed_through] {image_path.name} — {e}")
+        try:
+            image = Image.open(image_path).convert("RGB")
+            image.save(out_path, format=OUTPUT_FORMAT)
+        except Exception as save_err:
+            logger.error(f"[error]                 {image_path.name} — could not save original: {save_err}")
+            return "error"
+        return "failed_passed_through"
 
 
 # ---------------------------------------------------------------------------
@@ -134,6 +172,8 @@ def process_folder(
     input_dir: str,
     output_dir: str,
     logger: logging.Logger,
+    session,
+    limit: int = None,
 ) -> dict:
     """
     Iterates over all images in input_dir, runs process_image() on each,
@@ -154,7 +194,29 @@ def process_folder(
     Returns:
         Summary dictionary of processing results.
     """
-    pass
+    input_path = Path(input_dir)
+    output_path = Path(output_dir)
+    os.makedirs(output_path, exist_ok=True)
+
+    image_files = [
+        f for f in input_path.iterdir()
+        if f.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
+    ]
+
+    if limit is not None:
+        image_files = image_files[:limit]
+
+    logger.info(f"Found {len(image_files)} image(s) to process.")
+
+    summary = {"total": 0, "background_removed": 0, "failed_passed_through": 0, "errors": 0}
+
+    for image_path in image_files:
+        summary["total"] += 1
+        status = process_image(image_path, session, output_path, logger)
+        if status in summary:
+            summary[status] += 1
+
+    return summary
 
 
 # ---------------------------------------------------------------------------
@@ -167,7 +229,22 @@ def main():
     Sets up logging, loads the rembg session, runs batch processing,
     and prints a final summary report to the console.
     """
-    pass
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--limit", type=int, default=None, help="Max number of images to process. Defaults to all.")
+    args = parser.parse_args()
+
+    logger = setup_logging("../logs/filter_background.log")
+    logger.info("Starting background removal process.")
+
+    session = load_rembg_session()
+    summary = process_folder(INPUT_DIR, OUTPUT_DIR, logger, session, args.limit)
+
+    logger.info("Done.")
+    print("\n--- Summary ---")
+    print(f"  Total processed:        {summary['total']}")
+    print(f"  Background removed:     {summary['background_removed']}")
+    print(f"  Failed (passed through): {summary['failed_passed_through']}")
+    print(f"  Errors:                 {summary['errors']}")
 
 
 if __name__ == "__main__":
