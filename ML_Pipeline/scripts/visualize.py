@@ -2,6 +2,7 @@ import numpy as np
 import json
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
+from matplotlib.colors import ListedColormap
 # We have to run the feature_exctraction.py first
 data = np.load("catalog_embeddings.npy")
 
@@ -19,7 +20,8 @@ colors = [unique.index(g) for g in genders]
 
 # Reducing to 2D so vectors no longer has 512 dimensions -> Becoems a map
 reduced = TSNE(n_components=2, random_state=42).fit_transform(data)
-
+my_colors = ["deepskyblue", "gray" , "hotpink", "gold", "plum", "cyan", "green", "black"]
+my_cmap = ListedColormap(my_colors[:len(unique)])
 # Create the visualization
 plt.figure(figsize=(10, 7))
 scatter = plt.scatter(
@@ -27,7 +29,7 @@ scatter = plt.scatter(
     reduced[:, 1], 
     c=colors, 
     alpha=0.5, 
-    cmap="tab10"
+    cmap=my_cmap
 )
 
 # This creates a colorbar and labels it with your unique genders
