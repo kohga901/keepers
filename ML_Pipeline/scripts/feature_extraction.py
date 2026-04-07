@@ -121,7 +121,7 @@ for batch_num in range(num_of_batches):
             img = img.convert("RGB")
 
         # Put the image through preprocess. 
-        processed_img = preprocess(img).to(device)
+        processed_img = preprocess(img).to(device) # type: ignore
 
         # Put the processed image in the list.
         batch_of_processed_images.append(processed_img)
