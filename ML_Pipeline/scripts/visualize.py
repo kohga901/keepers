@@ -2,7 +2,7 @@ import numpy as np
 import json
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
-
+# We have to run the feature_exctraction.py first
 data = np.load("catalog_embeddings.npy")
 
 
@@ -11,12 +11,13 @@ with open("metadata.json") as f:
     meta = json.load(f)
 
 genders = [item["item_gender"] for item in meta]
+# This unique sort here makes it so the colors stay static
 unique = sorted(list(set(genders)))
 colors = [unique.index(g) for g in genders]
 
 
 
-# Reduce to 2D
+# Reducing to 2D so vectors no longer has 512 dimensions -> Becoems a map
 reduced = TSNE(n_components=2, random_state=42).fit_transform(data)
 
 # Create the visualization
