@@ -237,7 +237,7 @@ def process_urls(
     csv_path: str,
     output_dir: str,
     logger: logging.Logger,
-    limit: int = None,
+    limit: int | None = None,
 ) -> dict:
     """
     Reads image URLs from a CSV file, runs process_url() on each,
