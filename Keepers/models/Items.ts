@@ -1,8 +1,11 @@
 export interface Item {
+  gender?: string;
   id: string;
+  imageUrl: string;
   name: string;
   price: string;
-  imageUrl?: string;
+  itemUrl: string;
   liked: boolean;
-  itemUrl?: string;
+  
+  
 }
