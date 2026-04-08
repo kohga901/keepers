@@ -24,7 +24,7 @@ def get_multi_recommendations(swiped_right_embeddings,swiped_right_indices,k=10)
         # get 20 or so neighbors for everything liked
         # 1 row with 512 columns (gotta be 2d matrix)
         # the index.search is the part where we actually feed the model and ask for neighbors
-        _, indices = index.search(emb.reshape(1,-1), 20)  # type: ignore
+        _, indices = index.search(emb.reshape(1,-1), 10)  # type: ignore
         all_indices.extend(indices[0])
 
     seen = set(swiped_right_indices)
