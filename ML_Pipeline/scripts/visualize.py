@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
 from matplotlib.colors import ListedColormap
 # We have to run the feature_exctraction.py first
-data = np.load("catalog_embeddings.npy")
+data = np.load("catalog_embeddings1.npy")
 
 
 # we wnat to Load and process our metadata for coloring
