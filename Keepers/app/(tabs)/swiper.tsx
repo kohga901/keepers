@@ -175,7 +175,26 @@ const App: React.FC = () => {
           </View>
           );
         }}
-        onSwiped={(index: number) => console.log('Swiped index:', index)}
+        onSwiped={async (index: number) => {
+          //console.log('Swiped index:', index);
+          if (index % 10 === 0) {
+            const data = await getClothing();
+            if (!data) return;
+
+            const parsedCards = data.map((row) => {
+              return {
+                id: String(row.item_id),
+                name: row.item_name,
+                price: row.item_price,
+                imageUrl: row.item_img,
+                liked: false,
+                itemUrl: row.item_web_listing,
+              };
+            });
+
+            setCards((prev) => [...prev, ...parsedCards]);
+          }
+        }}
         onSwipedTop={(cardIndex) => {
           // Swiper updates to next card after this callback, so defer jump back.
           setTimeout(() => {
@@ -193,28 +212,7 @@ const App: React.FC = () => {
         cardVerticalMargin={CARD_VERTICAL_MARGIN}
         backgroundColor="transparent"
       />
-      <View style={styles.buttonContainer}>
-        <Button
-          title="Load Clothing"
-          onPress={async () => {
-            const data = await getClothing()
-            if (!data) return;
-
-            const parsedCards = data.map((row) => {
-              return {
-                id: String(row.item_id),
-                name: row.item_name,
-                price: row.item_price,
-                imageUrl: row.item_img,
-                liked: false,
-                itemUrl: row.item_web_listing,
-              };
-            });
-            //setCards(parsedCards || []);
-            setCards((prev) => [...prev, ...parsedCards]);
-          }}
-        />
-      </View>
+      
     </View>
   );
 };
