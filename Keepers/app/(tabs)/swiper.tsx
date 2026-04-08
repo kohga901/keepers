@@ -5,11 +5,12 @@
  * Date: 2026-04-01
  */
 
-import React, { useRef } from "react";
-import { View, Text, StyleSheet, Dimensions } from "react-native";
+import React, { useRef, useState, useEffect } from "react";
+import { View, Text, StyleSheet, Dimensions, FlatList } from "react-native";
 import Swiper from "react-native-deck-swiper";
 import { Image } from 'expo-image';
 import * as WebBrowser from 'expo-web-browser';
+import { supabase } from '../../utils/supabase';
 
 type Card = {
   id: string;
