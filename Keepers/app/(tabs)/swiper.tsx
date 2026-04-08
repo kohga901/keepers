@@ -6,7 +6,7 @@
  */
 
 import React, { useRef, useState, useEffect } from "react";
-import { View, Text, StyleSheet, Dimensions, FlatList } from "react-native";
+import { View, Text, StyleSheet, Dimensions, FlatList, Button } from "react-native";
 import Swiper from "react-native-deck-swiper";
 import { Image } from 'expo-image';
 import * as WebBrowser from 'expo-web-browser';
@@ -121,11 +121,34 @@ const App: React.FC = () => {
         cardVerticalMargin={CARD_VERTICAL_MARGIN}
         backgroundColor="transparent"
       />
+      <View style={styles.buttonContainer}>
+        <Button
+          title="Load Clothing"
+          onPress={async () => {
+            const data = await getClothing()
+            console.log(data)
+          }}
+        />
+      </View>
     </View>
   );
 };
 
 export default App;
+
+const getClothing = async () => {
+  const { data, error } = await supabase
+    .from('Clothing')
+    .select('*')
+    .limit(10)
+
+  if (error) {
+    console.error(error)
+    return
+  }
+
+  return data
+}
 
 const blurhash =
   '|rF?hV%2WCj[ayj[a|j[az_NaeWBj@ayfRayfQfQM{M|azj[azf6fQfQfQIpWXofj[ayj[j[fQayWCoeoeaya}j[ayfQa{oLj?j[WVj[ayayj[fQoff7azayj[ayj[j[ayofayayayj[fQj[ayayj[ayfjj[j[ayjuayj[';
@@ -157,6 +180,17 @@ const overlayLabels = {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  buttonContainer: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    bottom: 28,
+    zIndex: 20,
+    backgroundColor: "rgba(255,255,255,0.95)",
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
   },
   card: {
     flex: 1,
