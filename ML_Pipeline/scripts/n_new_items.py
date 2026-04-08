@@ -15,6 +15,12 @@ index.add(data_to_add)  # type: ignore
 #     # Currently, this method is primitive. It assumes that the user likes ALL of the same things.
 #     # I'm going to comment it out in favor of one that doesn't have the same issues
 #     # The mean between red socks and blue socks might be purple socks, but that doesn't mean the user likes purple socks
+
+# We will have to include this to talk between two different systems
+# @app.route("/recommend", methods=["POST"])
+# def recommend():
+#     liked_items = request.json.get("liked_items", [])  # list of {item_img, ...}
+
 def get_multi_recommendations(swiped_right_embeddings,swiped_right_indices,k=10):
     """
     We get 5 recommendation for each swiped_right item in swiped_right_embeddings
