@@ -3,16 +3,18 @@ filter_people.py
 
 Pipeline Stage 1: Person Detection & Clothing Segmentation
 
-Processes a folder of raw clothing images. For each image:
+Processes a CSV of image URLs. For each URL:
+  - Downloads the image into memory
   - Detects whether a person is present using YOLOv8
   - If a person is found, segments and isolates the clothing using YOLOv8-seg
   - If segmentation fails, passes the original image through (no products dropped)
   - Outputs cleaned images to a staging folder for filter_background.py
 
 Dependencies:
-    pip install ultralytics pillow
+    pip install ultralytics pillow requests
 """
 import argparse
+import csv
 import os
 import sys
 import logging
@@ -20,37 +22,39 @@ import numpy as np
 from pathlib import Path
 from PIL import Image
 from ultralytics import YOLO
+import requests
+from io import BytesIO
 
 
 # ---------------------------------------------------------------------------
-# Config setup
+# CONFIG SETUP
 # ---------------------------------------------------------------------------
 
-INPUT_DIR = "../data/raw_images"           # folder of scraped raw images
-OUTPUT_DIR = "../data/people_filtered"       # cleaned images passed to filter_background.py
-LOG_FILE = "../logs/filter_people.log"
+CSV_PATH   = "../data/csv/image_urls.csv"   # CSV file containing image URLs
+OUTPUT_DIR = "../data/people_filtered"       # output folder passed to filter_background.py
+LOG_FILE   = "../logs/filter_people.log"
 
-PERSON_CONFIDENCE_THRESHOLD = 0.5   # min confidence to consider a person detected
-SEG_CONFIDENCE_THRESHOLD = 0.4      # min confidence for clothing segmentation mask
+CSV_URL_COLUMN = "item_img"            # column name in CSV that contains the image URL
+
+PERSON_CONFIDENCE_THRESHOLD = 0.5           # min confidence to consider a person detected
+SEG_CONFIDENCE_THRESHOLD    = 0.4           # min confidence for clothing segmentation mask
+
 
 # ---------------------------------------------------------------------------
-# Arg parser
+# ARG PARSER
 # ---------------------------------------------------------------------------
 
 def parse_args():
     """
-    Parses the cmdline input and checks how many images 
-    to process.
+    Parses the cmdline input and checks how many images to process.
     """
-
-
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=None, help="Max number of images to process. Defaults to all.")
     return parser.parse_args()
 
 
 # ---------------------------------------------------------------------------
-# Setup models and logging
+# LOGGING SETUP
 # ---------------------------------------------------------------------------
 
 def setup_logging(log_file: str) -> logging.Logger:
@@ -58,33 +62,30 @@ def setup_logging(log_file: str) -> logging.Logger:
     Configures and returns a logger that writes to both
     the console and a log file.
     """
-
-
-    # Setup logger and set its level
-    logger = logging.getLogger(__name__)    # Getting logger.
-    logger.setLevel(logging.DEBUG)          # Setting log level.
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.DEBUG)
 
     # Log onto console
-    console_handler = logging.StreamHandler(sys.stdout)         # Making the handler for logging to the cmdline.
+    console_handler = logging.StreamHandler(sys.stdout)
 
-    # Log into the log file.
-    os.makedirs(os.path.dirname(log_file), exist_ok=True)       # Checking if the log file directory exists.
-    file_handler = logging.FileHandler(log_file)                # Making the file handler for logging into a file.
+    # Log into the log file
+    os.makedirs(os.path.dirname(log_file), exist_ok=True)
+    file_handler = logging.FileHandler(log_file)
 
     # Setting the format to time - log level - message
-    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")      
-
-    # Adding the format to the handlers.
-    console_handler.setFormatter(formatter) 
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    console_handler.setFormatter(formatter)
     file_handler.setFormatter(formatter)
 
-    # Adding the handlers to the logger.
-    logger.addHandler(console_handler)     
-    logger.addHandler(file_handler)         
-
+    logger.addHandler(console_handler)
+    logger.addHandler(file_handler)
 
     return logger
-    
+
+
+# ---------------------------------------------------------------------------
+# MODEL LOADING
+# ---------------------------------------------------------------------------
 
 def load_detection_model(model_path: str = "yolov8n.pt") -> YOLO:
     """
@@ -97,8 +98,6 @@ def load_detection_model(model_path: str = "yolov8n.pt") -> YOLO:
     Returns:
         Loaded YOLO detection model.
     """
-    
-
     model = YOLO(model_path)
     return model
 
@@ -114,15 +113,50 @@ def load_segmentation_model(model_path: str = "yolov8n-seg.pt") -> YOLO:
     Returns:
         Loaded YOLO segmentation model.
     """
-
-
     model = YOLO(model_path)
-    return model    
+    return model
 
 
 # ---------------------------------------------------------------------------
-# Core detection & segmentation logic
+# CORE LOGIC
 # ---------------------------------------------------------------------------
+
+def load_urls_from_csv(csv_path: str) -> list[str]:
+    """
+    Reads image URLs from a CSV file and returns them as a list of strings.
+
+    Args:
+        csv_path: Path to the CSV file containing image URLs.
+    Returns:
+        List of image URL strings.
+    """
+    urls = []
+    with open(csv_path, newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            url = row.get(CSV_URL_COLUMN, "").strip()
+            if url:
+                urls.append(url)
+    return urls
+
+
+def download_image(url: str) -> Image.Image | None:
+    """
+    Downloads an image from a URL and returns it as a PIL Image.
+    Returns None if the download fails for any reason.
+
+    Args:
+        url: URL string pointing to an image.
+    Returns:
+        PIL Image in RGB mode, or None if download failed.
+    """
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        return Image.open(BytesIO(response.content)).convert("RGB")
+    except Exception:
+        return None
+
 
 def person_detected(image: Image.Image, model: YOLO) -> bool:
     """
@@ -135,47 +169,38 @@ def person_detected(image: Image.Image, model: YOLO) -> bool:
     Returns:
         True if a person is detected, False otherwise.
     """
-    
-    # Running the image through the model.
     results = model(image)
 
-    # Now check if there is a person in the results.
-    classes = results[0].boxes.cls
+    classes           = results[0].boxes.cls
     confidence_values = results[0].boxes.conf
 
-    # Go through the results and check for person class and its conf value.
     for i in range(len(classes)):
-
-        # If there is a person class
-        if (classes[i] == 0.0):
+        if classes[i] == 0.0:
             if confidence_values[i] > PERSON_CONFIDENCE_THRESHOLD:
                 return True
-    
-    # If reached here, no person was detected in the image.
+
     return False
-            
 
 
 def segment_clothing(image: Image.Image, model: YOLO) -> Image.Image | None:
     """
     Attempts to isolate the clothing from an image that contains a person.
-    Uses YOLOv8-seg to generate a segmentation mask over the clothing region,
-    then crops and returns only the clothing portion of the image.
+    Uses YOLOv8-seg to generate a segmentation mask over the person,
+    inverts it, and returns the image with the person region made transparent.
 
     Args:
         image: PIL Image containing a person wearing clothing.
         model: Loaded YOLOv8 segmentation model.
     Returns:
-        PIL Image of the isolated clothing, or None if segmentation fails
-        (e.g. no clothing class detected above confidence threshold).
+        PIL Image with person removed (RGBA), or None if segmentation fails.
     """
     results = model(image)
 
     if results[0].masks is None:
         return None
 
-    masks = results[0].masks.data
-    classes = results[0].boxes.cls
+    masks       = results[0].masks.data
+    classes     = results[0].boxes.cls
     confidences = results[0].boxes.conf
 
     # Find the first person mask above the confidence threshold
@@ -189,39 +214,42 @@ def segment_clothing(image: Image.Image, model: YOLO) -> Image.Image | None:
         return None
 
     # Resize mask to match image dimensions
-    w, h = image.size
+    w, h     = image.size
     mask_img = Image.fromarray((person_mask * 255).astype(np.uint8)).resize((w, h), Image.NEAREST)
+
+    # Invert mask: person pixels become transparent, clothing stays visible
     inverted_mask = 255 - np.array(mask_img)
 
-    # Apply inverted mask as alpha: person region becomes transparent
+    # Apply inverted mask as alpha channel
     image_rgba = image.convert("RGBA")
-    img_array = np.array(image_rgba)
+    img_array  = np.array(image_rgba)
     img_array[:, :, 3] = inverted_mask
 
     return Image.fromarray(img_array)
 
 
 # ---------------------------------------------------------------------------
-# Per-image processing
+# PER-URL PROCESSING
 # ---------------------------------------------------------------------------
 
-def process_image(
-    image_path: Path,
+def process_url(
+    url: str,
     detection_model: YOLO,
     segmentation_model: YOLO,
     output_dir: Path,
     logger: logging.Logger,
-) -> None:
+) -> str:
     """
-    Processes a single image through the full person-filter logic:
-      1. Check if a person is present.
-      2. If no person → copy image as-is to output_dir.
-      3. If person found → attempt clothing segmentation.
+    Processes a single image URL through the full person-filter logic:
+      1. Download image from URL into memory.
+      2. If download fails → log error, return "error".
+      3. If no person detected → save image as-is to output_dir.
+      4. If person found → attempt clothing segmentation.
          - Segmentation success → save segmented image to output_dir.
          - Segmentation failure → log warning, save original to output_dir.
 
     Args:
-        image_path: Path to the raw input image.
+        url: Image URL to download and process.
         detection_model: Loaded YOLOv8 detection model.
         segmentation_model: Loaded YOLOv8 segmentation model.
         output_dir: Directory to write the processed image to.
@@ -230,36 +258,47 @@ def process_image(
         Status string: "no_person", "segmented", "segmentation_failed", or "error".
     """
     try:
-        image = Image.open(image_path).convert("RGB")
-        out_path = output_dir / image_path.name
+        # Derive a filename from the URL
+        filename = url.split("/")[-1].split("?")[0]  # strip query params if any
+        if not filename.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".bmp")):
+            filename += ".jpg"
+        out_path = output_dir / filename
 
+        # Download image
+        image = download_image(url)
+        if image is None:
+            logger.error(f"[error]               Failed to download: {url}")
+            return "error"
+
+        # No person — pass through as-is
         if not person_detected(image, detection_model):
             image.save(out_path)
-            logger.info(f"[no_person]          {image_path.name}")
+            logger.info(f"[no_person]           {filename}")
             return "no_person"
 
+        # Person found — attempt segmentation
         segmented = segment_clothing(image, segmentation_model)
         if segmented is not None:
             segmented.save(out_path)
-            logger.info(f"[segmented]          {image_path.name}")
+            logger.info(f"[segmented]           {filename}")
             return "segmented"
 
         # Segmentation failed — pass original through so nothing is dropped
         image.save(out_path)
-        logger.warning(f"[segmentation_failed] {image_path.name} — saved original")
+        logger.warning(f"[segmentation_failed] {filename} — saved original")
         return "segmentation_failed"
 
     except Exception as e:
-        logger.error(f"[error]              {image_path.name} — {e}")
+        logger.error(f"[error]               {url} — {e}")
         return "error"
 
 
 # ---------------------------------------------------------------------------
-# Batch processing
+# BATCH PROCESSING
 # ---------------------------------------------------------------------------
 
-def process_folder(
-    input_dir: str,
+def process_urls(
+    csv_path: str,
     output_dir: str,
     logger: logging.Logger,
     detection_model: YOLO,
@@ -267,7 +306,7 @@ def process_folder(
     limit: int = None,
 ) -> dict:
     """
-    Iterates over all images in input_dir, runs process_image() on each,
+    Reads image URLs from a CSV file, runs process_url() on each,
     and writes results to output_dir.
 
     Returns a summary dict with counts:
@@ -280,31 +319,30 @@ def process_folder(
         }
 
     Args:
-        input_dir: Path to the folder of raw input images.
+        csv_path: Path to the CSV file containing image URLs.
         output_dir: Path to the folder where processed images are saved.
         logger: Logger instance.
+        detection_model: Loaded YOLOv8 detection model.
+        segmentation_model: Loaded YOLOv8 segmentation model.
+        limit: Max number of URLs to process. Defaults to all.
     Returns:
         Summary dictionary of processing results.
     """
-    input_path = Path(input_dir)
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    image_files = [
-        f for f in input_path.iterdir()
-        if f.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
-    ]
+    urls = load_urls_from_csv(csv_path)
 
     if limit is not None:
-        image_files = image_files[:limit]
+        urls = urls[:limit]
 
-    logger.info(f"Found {len(image_files)} image(s) to process.")
+    logger.info(f"Found {len(urls)} URL(s) to process.")
 
     summary = {"total": 0, "no_person": 0, "segmented": 0, "segmentation_failed": 0, "errors": 0}
 
-    for image_path in image_files:
+    for url in urls:
         summary["total"] += 1
-        status = process_image(image_path, detection_model, segmentation_model, output_path, logger)
+        status = process_url(url, detection_model, segmentation_model, output_path, logger)
         if status == "no_person":
             summary["no_person"] += 1
         elif status == "segmented":
@@ -318,7 +356,7 @@ def process_folder(
 
 
 # ---------------------------------------------------------------------------
-# Entry point
+# ENTRY POINT
 # ---------------------------------------------------------------------------
 
 def main():
@@ -327,23 +365,29 @@ def main():
     Sets up logging, loads models, runs batch processing,
     and prints a final summary report to the console.
     """
-
-
-    args = parse_args()
-    logger = setup_logging("../logs/filter_people.log")
+    args   = parse_args()
+    logger = setup_logging(LOG_FILE)
     logger.info("Starting person filtering process.")
 
-    detection_model = load_detection_model()
+    detection_model    = load_detection_model()
     segmentation_model = load_segmentation_model()
-    summary = process_folder(INPUT_DIR, OUTPUT_DIR, logger, detection_model, segmentation_model, args.limit)
+
+    summary = process_urls(
+        csv_path           = CSV_PATH,
+        output_dir         = OUTPUT_DIR,
+        logger             = logger,
+        detection_model    = detection_model,
+        segmentation_model = segmentation_model,
+        limit              = args.limit,
+    )
 
     logger.info("Done.")
     print("\n--- Summary ---")
-    print(f"  Total processed:      {summary['total']}")
+    print(f"  Total processed:        {summary['total']}")
     print(f"  No person (kept as-is): {summary['no_person']}")
-    print(f"  Segmented:            {summary['segmented']}")
-    print(f"  Segmentation failed:  {summary['segmentation_failed']}")
-    print(f"  Errors:               {summary['errors']}")
+    print(f"  Segmented:              {summary['segmented']}")
+    print(f"  Segmentation failed:    {summary['segmentation_failed']}")
+    print(f"  Errors:                 {summary['errors']}")
 
 
 if __name__ == "__main__":
