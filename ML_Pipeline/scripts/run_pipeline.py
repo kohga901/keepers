@@ -39,7 +39,9 @@ def parse_args():
     Parses cmdline args and returns them.
     Passes --limit through to each pipeline script.
     """
-    pass
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--limit", type=int, default=None, help="Max number of images to process. Defaults to all.")
+    return parser.parse_args()
 
 
 # ---------------------------------------------------------------------------
@@ -51,7 +53,25 @@ def setup_logging(log_file: str) -> logging.Logger:
     Configures and returns a logger that writes to both
     the console and a log file.
     """
-    pass
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.DEBUG)
+
+    # Log onto console
+    console_handler = logging.StreamHandler(sys.stdout)
+
+    # Log into the log file
+    os.makedirs(os.path.dirname(log_file), exist_ok=True)
+    file_handler = logging.FileHandler(log_file)
+
+    # Setting the format to time - log level - message
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    console_handler.setFormatter(formatter)
+    file_handler.setFormatter(formatter)
+
+    logger.addHandler(console_handler)
+    logger.addHandler(file_handler)
+
+    return logger
 
 
 # ---------------------------------------------------------------------------
@@ -69,8 +89,17 @@ def run_filter_people(limit: int, logger: logging.Logger) -> bool:
     Returns:
         True if script exited successfully, False otherwise.
     """
-    pass
 
+
+    # If the there is a limit specified
+    if limit is not None:
+        logger.info(f"Running filter_people.py. Argument: {limit}.\n")
+        result = subprocess.run(["python", "filter_people.py", "--limit", str(limit)])
+    else:
+        logger.info(f"Running filter_people.py. Argument: None.\n")
+        result = subprocess.run(["python", "filter_people.py"])
+
+    return result.returncode == 0
 
 def run_filter_background(limit: int, logger: logging.Logger) -> bool:
     """
@@ -83,7 +112,16 @@ def run_filter_background(limit: int, logger: logging.Logger) -> bool:
     Returns:
         True if script exited successfully, False otherwise.
     """
-    pass
+    
+    # If the there is a limit specified
+    if limit is not None:
+        logger.info(f"Running filter_background.py. Argument: {limit}.\n")
+        result = subprocess.run(["python", "filter_background.py", "--limit", str(limit)])
+    else:
+        logger.info(f"Running filter_background.py. Argument: None.\n")
+        result = subprocess.run(["python", "filter_background.py"])
+
+    return result.returncode == 0
 
 
 def run_feature_extraction(limit: int, logger: logging.Logger) -> bool:
@@ -97,7 +135,17 @@ def run_feature_extraction(limit: int, logger: logging.Logger) -> bool:
     Returns:
         True if script exited successfully, False otherwise.
     """
-    pass
+        
+    # If the there is a limit specified
+    if limit is not None:
+        logger.info(f"Running feature_extraction.py. Argument: {limit}.\n")
+        result = subprocess.run(["python", "feature_extraction.py", "--limit", str(limit)])
+    else:
+        logger.info(f"Running feature_extraction.py. Argument: None.\n")
+        result = subprocess.run(["python", "feature_extraction.py"])
+
+
+    return result.returncode == 0
 
 
 # ---------------------------------------------------------------------------
@@ -110,7 +158,22 @@ def main():
     Runs all three pipeline stages in sequence.
     If any stage fails, logs the error and stops the pipeline.
     """
-    pass
+    args   = parse_args()
+    logger = setup_logging(LOG_FILE)
+    logger.info("Starting run_pipeline orchestrator.")
+
+    if not run_filter_people(args.limit, logger):
+        logger.error(f"Error at run_filter_people.")
+        return
+    
+    if not run_filter_background(args.limit, logger):
+        logger.error(f"Error at run_filter_background.")
+        return
+    
+    if not run_feature_extraction(args.limit, logger):
+        logger.error(f"Error at run_feature_extraction.")
+        return
+    logger.info("Pipeline completed successfully.")
 
 
 if __name__ == "__main__":

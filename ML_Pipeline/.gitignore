@@ -49,3 +49,6 @@ Thumbs.db
 # IDEs
 .idea/
 .vscode/
+
+# Logs
+logs/
