@@ -1,3 +1,11 @@
+/**
+ * File: _layout.tsx
+ * Description: Defines the layout for the tab navigator in the app,
+ *  including the header and theme. Also creates the tab naviagator with icons and styling.  
+ * Author: Kai Markley & Gabriel Min
+ * Date: 2026-04-01
+ */
+
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router';
 
@@ -8,27 +16,35 @@ export default function TabLayout() {
 
   return (
     <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: theme.tabActive,
-        tabBarInactiveTintColor: theme.tabInactive,
-        headerStyle: {
-          backgroundColor: theme.headerBg,
-        },
-        headerShadowVisible: false,
-        headerTintColor: theme.headerText,
-        sceneStyle: {
-          backgroundColor: theme.background,
-        },
-        tabBarStyle: {
-          backgroundColor: theme.tabBg,
-          borderTopColor: theme.border,
-        },
-      }}
-    >
+        screenOptions={{
+          headerShown: false,   // 👈 ADD THIS
+          tabBarActiveTintColor: theme.tabActive,
+          tabBarInactiveTintColor: theme.tabInactive,
+          headerStyle: {
+            backgroundColor: theme.headerBg,
+          },
+          headerShadowVisible: false,
+          headerTintColor: theme.headerText,
+          sceneStyle: {
+            backgroundColor: theme.background,
+          },
+          tabBarStyle: {
+            backgroundColor: theme.tabBg,
+            borderTopColor: theme.border,
+          },
+        }}
+      >
+    
+      <Tabs.Screen
+        name="index"
+        options={{
+          href: null,
+        }}
+      />
       <Tabs.Screen
         name="likelist"
         options={{
-          title: 'Like List',
+          title: 'Liked History',
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
               name={focused ? 'heart' : 'heart-outline'}
@@ -39,7 +55,7 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="about"
+        name="swiper"
         options={{
           title: 'Swiper',
           tabBarIcon: ({ color, focused }) => (
@@ -54,7 +70,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="stylewraps"
         options={{
-          title: 'Wrapped',
+          title: 'Style Wraps',
           tabBarIcon: ({ color, focused }) => (
             <Ionicons
               name={focused ? 'receipt' : 'receipt-outline'}
@@ -66,7 +82,7 @@ export default function TabLayout() {
       />
 
       <Tabs.Screen
-        name="index"
+        name="settings"
         options={{
           title: 'Settings',
           tabBarIcon: ({ color, focused }) => (
