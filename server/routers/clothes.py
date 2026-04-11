@@ -1,6 +1,6 @@
 """
 routers/clothes.py
-
+Likes and dislikes here
 Defines the API routes for clothing-related operations in the Keepers app.
 
 Handles fetching clothing items for the swipe feed, recording swipe actions
