@@ -119,7 +119,7 @@ def process_urls(
 
     # Summary format.
     summary = {"total": 0, "downloaded": 0, "image_download_failed": 0}
-
+    
     # Try downloading the image to the downloaded_images folder.
     for url in urls[:limit]:
 
@@ -171,13 +171,11 @@ def main():
     output_path.mkdir(parents=True, exist_ok=True)
 
     summary = process_urls(urls, output_path, logger, limit)
-
-    logger.info("download_images.py done.")
-
+    
     print("\n--- Summary ---")
-    print(f"  Total processed:                  {summary['total']}")
-    print(f"  Downloaded:                       {summary['downloaded']}")
-    print(f"  Failed to download removed:       {summary['image_download_failed']}")
+    print(f"  Total processed:        {summary['total']}")
+    print(f"  Downloaded:             {summary['downloaded']}")
+    print(f"  Failed to download:     {summary['image_download_failed']}")
 
 if __name__ == "__main__":
     main()
