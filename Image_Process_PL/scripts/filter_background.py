@@ -127,7 +127,7 @@ def apply_white_background(image_rgba: Image.Image) -> Image.Image:
     # Get a white image with the given image's size.
     white_bg = Image.new("RGB", image_rgba.size, BACKGROUND_COLOR)
 
-    # paste
+    # Put the input image over a white background
     white_bg.paste(image_rgba, mask=image_rgba.split()[3])
     return white_bg
 
@@ -159,19 +159,33 @@ def process_image(
     """
     out_path = output_dir / (image_path.stem + ".png")
     try:
+        # Get the image
         image = Image.open(image_path).convert("RGB")
 
+        # Remove the bacgkround of the image.
         image_rgba = remove_background(image, session)
+
+        # Apply the white background to the image.
         result = apply_white_background(image_rgba)
+
+        # Save the image to the output path.
         result.save(out_path, format=OUTPUT_FORMAT)
+
+        # Log success.
         logger.info(f"[background_removed]    {image_path.name}")
+
         return "background_removed"
 
     except Exception as e:
+        # Log error.
         logger.error(f"[failed_passed_through] {image_path.name} — {e}")
+        
+        # Try outputting the failed image anyway. We cannot lose a single image at all.
         try:
             image = Image.open(image_path).convert("RGB")
             image.save(out_path, format=OUTPUT_FORMAT)
+
+        # If even the original cannot be saved.
         except Exception as save_err:
             logger.error(f"[error]                 {image_path.name} — could not save original: {save_err}")
             return "error"
@@ -212,23 +226,27 @@ def process_folder(
     output_path = Path(output_dir)
     os.makedirs(output_path, exist_ok=True)
 
+    # Getting files that only end with these extensions.
     image_files = [
         f for f in input_path.iterdir()
         if f.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
     ]
 
+    # Reduce list size to limit.
     if limit is not None:
         image_files = image_files[:limit]
 
     logger.info(f"Found {len(image_files)} image(s) to process.")
 
+    # Summary format.
     summary = {"total": 0, "background_removed": 0, "failed_passed_through": 0, "errors": 0}
 
+    # Go through each file and apply filter.
     for image_path in image_files:
         summary["total"] += 1
-        status = process_image(image_path, session, output_path, logger)
+        status = process_image(image_path, session, output_path, logger)    # Get result after processing.
         if status in summary:
-            summary[status] += 1
+            summary[status] += 1    # Put result in summary.
 
     return summary
 
@@ -243,14 +261,25 @@ def main():
     Sets up logging, loads the rembg session, runs batch processing,
     and prints a final summary report to the console.
     """
+    # Make the parser for cli.
     parser = argparse.ArgumentParser()
+
+    # Add argument options.
     parser.add_argument("--limit", type=int, default=None, help="Max number of images to process. Defaults to all.")
+
+    # Get the arguments.
     args = parser.parse_args()
 
+    # Instantiate logger.
     logger = setup_logging("../logs/filter_background.log")
+
+    # Log start.
     logger.info("Starting background removal process.")
 
+    # Get a u2net model.
     session = load_rembg_session()
+    
+    # Get the summary after processing everything.
     summary = process_folder(INPUT_DIR, OUTPUT_DIR, logger, session, args.limit)
 
     logger.info("Done.")
