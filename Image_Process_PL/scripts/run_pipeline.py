@@ -131,7 +131,7 @@ def main():
     logger.info("Starting run_pipeline orchestrator.")
 
     if not run_download_images(args.limit, logger):
-        logger.error(f"Error at run_filter_background.")
+        logger.error(f"Error at run_download_images.")
         return
 
     if not run_filter_background(args.limit, logger):

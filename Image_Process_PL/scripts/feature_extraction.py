@@ -187,7 +187,12 @@ def main():
     # The vectors that the images have been transformed into.
     # Each vector is 512 dim.
     embeddings, summary["total"], summary["processed"], summary["errors"] = get_embeddings(batch_size=batch, file_paths=image_paths, device=device, logger=logger,model=model, preprocess=preprocess)
-    
+
+    # If zero images were embedded, raise error and exit.
+    if summary["processed"] == 0:
+        logger.error("No images were successfully processed. Exiting.")
+        sys.exit()
+        
     # Put the embeddings on CPU then convert to numpy.
     embeddings_numpy = embeddings.cpu().numpy()
 
