@@ -12,10 +12,10 @@ feature_extraction.py
 
 Final stage of the pipeline.
 
-- Gets the folder of the filtered clothing
-- Loads OpenAi's clip model from github
-- Gets an embedding for each file in the folder of filtered clothing
-- Saves it to an npy.
+    - Gets the folder of the filtered clothing
+    - Loads OpenAi's clip model from github
+    - Gets an embedding for each file in the folder of filtered clothing
+    - Saves it to an npy.
 """
 
 
