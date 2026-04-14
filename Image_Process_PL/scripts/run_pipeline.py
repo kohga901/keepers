@@ -19,7 +19,7 @@ import argparse
 import logging
 import os
 import subprocess
-import sys
+from logger import setup_logging
 
 
 # ---------------------------------------------------------------------------
@@ -43,44 +43,13 @@ def parse_args():
     parser.add_argument("--limit", type=int, default=None, help="Max number of images to process. Defaults to all.")
     return parser.parse_args()
 
-
-# ---------------------------------------------------------------------------
-# LOGGING SETUP
-# ---------------------------------------------------------------------------
-
-def setup_logging(log_file: str) -> logging.Logger:
-    """
-    Configures and returns a logger that writes to both
-    the console and a log file.
-    """
-    logger = logging.getLogger(__name__)
-    logger.setLevel(logging.DEBUG)
-
-    # Log onto console
-    console_handler = logging.StreamHandler(sys.stdout)
-
-    # Log into the log file
-    os.makedirs(os.path.dirname(log_file), exist_ok=True)
-    file_handler = logging.FileHandler(log_file)
-
-    # Setting the format to time - log level - message
-    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-    console_handler.setFormatter(formatter)
-    file_handler.setFormatter(formatter)
-
-    logger.addHandler(console_handler)
-    logger.addHandler(file_handler)
-
-    return logger
-
-
 # ---------------------------------------------------------------------------
 # PIPELINE STAGES
 # ---------------------------------------------------------------------------
 
-def run_filter_people(limit: int, logger: logging.Logger) -> bool:
+def run_download_images(limit: int, logger: logging.Logger) -> bool:
     """
-    Runs filter_people.py as a subprocess.
+    Runs download_images.py as a subprocess.
     Returns True if successful, False if it failed.
 
     Args:
@@ -90,14 +59,13 @@ def run_filter_people(limit: int, logger: logging.Logger) -> bool:
         True if script exited successfully, False otherwise.
     """
 
-
     # If the there is a limit specified
     if limit is not None:
-        logger.info(f"Running filter_people.py. Argument: {limit}.\n")
-        result = subprocess.run(["python", "filter_people.py", "--limit", str(limit)])
+        logger.info(f"Running download_images.py. Argument: {limit}.\n")
+        result = subprocess.run(["python", "download_images.py", "--limit", str(limit)])
     else:
-        logger.info(f"Running filter_people.py. Argument: None.\n")
-        result = subprocess.run(["python", "filter_people.py"])
+        logger.info(f"Running download_images.py. Argument: None.\n")
+        result = subprocess.run(["python", "download_images.py"])
 
     return result.returncode == 0
 
@@ -162,10 +130,10 @@ def main():
     logger = setup_logging(LOG_FILE)
     logger.info("Starting run_pipeline orchestrator.")
 
-    if not run_filter_people(args.limit, logger):
-        logger.error(f"Error at run_filter_people.")
+    if not run_download_images(args.limit, logger):
+        logger.error(f"Error at run_download_images.")
         return
-    
+
     if not run_filter_background(args.limit, logger):
         logger.error(f"Error at run_filter_background.")
         return
