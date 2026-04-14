@@ -26,7 +26,7 @@ import logging
 
 
 INPUT_DIR = "../data/downloaded_images"     # images downloaded from the url.
-OUTPUT_DIR = "../data/background_filtered" # cleaned images passed to clip_extraction.py
+OUTPUT_DIR = "../data/background_filtered"  # cleaned images passed to feature_extraction.py
 
 LOG_FILE = "../logs/filter_background.log"
 
@@ -240,7 +240,7 @@ def main():
     # Get the summary after processing everything.
     summary = process_folder(INPUT_DIR, OUTPUT_DIR, logger, session, args.limit)
 
-    logger.info("Done.")
+    logger.info("Script done.")
     print("\n--- Summary ---")
     print(f"  Total processed:        {summary['total']}")
     print(f"  Background removed:     {summary['background_removed']}")
