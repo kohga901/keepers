@@ -16,16 +16,30 @@ models/
 checkpoints/
 
 # Raw image data and datasets
-data/
 images/
 datasets/
 
+# Keep folder structure but ignore contents
+data/*
+!data/.gitkeep
+!data/csv/
+data/csv/*
+!data/csv/.gitkeep
+!data/people_filtered/
+data/people_filtered/*
+!data/people_filtered/.gitkeep
+!data/background_filtered/
+data/background_filtered/*
+!data/background_filtered/.gitkeep
+!data/embedded_vectors/
+data/embedded_vectors/*
+!data/embedded_vectors/.gitkeep
+
+logs/*
+!logs/.gitkeep
+
 # Torch / HuggingFace model cache
 .cache/
-
-# Logs
-*.log
-logs/
 
 # Jupyter
 .ipynb_checkpoints/
@@ -49,6 +63,3 @@ Thumbs.db
 # IDEs
 .idea/
 .vscode/
-
-# Logs
-logs/
