@@ -14,68 +14,24 @@ Dependencies:
 
 import argparse
 import os
-import sys
-import logging
 from pathlib import Path
 from PIL import Image
 from rembg import remove, new_session
-
+from logger import setup_logging
+import logging
 
 # ---------------------------------------------------------------------------
 # Config setup
 # ---------------------------------------------------------------------------
 
-INPUT_DIR = "../data/people_filtered"   # output folder from filter_people.py 
+
+INPUT_DIR = "../data/downloaded_images"     # images downloaded from the url.
 OUTPUT_DIR = "../data/background_filtered" # cleaned images passed to clip_extraction.py
 
 LOG_FILE = "../logs/filter_background.log"
 
 BACKGROUND_COLOR = (255, 255, 255)  # white
 OUTPUT_FORMAT = "PNG"               # PNG preserves quality, no compression artifacts
-
-
-# ---------------------------------------------------------------------------
-# Logging setup
-# ---------------------------------------------------------------------------
-
-def setup_logging(log_file: str) -> logging.Logger:
-    """
-    Configures and returns a logger that writes to both
-    the console and a log file.
-
-    Args:
-        log_file: Path to the log file to write to.
-    Returns:
-        Configured logger instance.
-    """
-    # Getting the logger from logging.
-    logger = logging.getLogger(__name__)
-
-    # Setting the log level.
-    logger.setLevel(logging.DEBUG)
-
-    # Getting a handler that handles printing to the console.
-    console_handler = logging.StreamHandler(sys.stdout)
-
-    # Checking if the log_file exists.
-    os.makedirs(os.path.dirname(log_file), exist_ok=True)
-
-    # Getting a handler that handles printing to a file.
-    file_handler = logging.FileHandler(log_file)
-
-    # Making and getting a format.
-    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-
-    # Adding the formats to the handlers.
-    console_handler.setFormatter(formatter)
-    file_handler.setFormatter(formatter)
-
-    # Adding the handlers to the logger.
-    logger.addHandler(console_handler)
-    logger.addHandler(file_handler)
-
-    return logger
-
 
 # ---------------------------------------------------------------------------
 # Load model
@@ -93,8 +49,10 @@ def load_rembg_session():
     return new_session("u2net")
 
 
+
+
 # ---------------------------------------------------------------------------
-# Core background removal logic
+# Core logic background removal logic
 # ---------------------------------------------------------------------------
 
 def remove_background(image: Image.Image, session) -> Image.Image:

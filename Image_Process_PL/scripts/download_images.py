@@ -15,8 +15,6 @@ from io import BytesIO
 import csv
 import requests
 import argparse
-import os
-import sys
 import hashlib
 from pathlib import Path
 from PIL import Image
