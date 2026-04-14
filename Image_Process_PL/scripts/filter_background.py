@@ -240,12 +240,12 @@ def main():
     # Get the summary after processing everything.
     summary = process_folder(INPUT_DIR, OUTPUT_DIR, logger, session, args.limit)
 
-    logger.info("Script done.")
+    logger.info("Script finished.")
     print("\n--- Summary ---")
-    print(f"  Total processed:        {summary['total']}")
-    print(f"  Background removed:     {summary['background_removed']}")
-    print(f"  Failed (passed through): {summary['failed_passed_through']}")
-    print(f"  Errors:                 {summary['errors']}")
+    print(f"  Total processed:          {summary['total']}")
+    print(f"  Background removed:       {summary['background_removed']}")
+    print(f"  Failed (passed through):  {summary['failed_passed_through']}")
+    print(f"  Errors:                   {summary['errors']}")
 
 
 if __name__ == "__main__":
