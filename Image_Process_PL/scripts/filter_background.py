@@ -127,7 +127,7 @@ def apply_white_background(image_rgba: Image.Image) -> Image.Image:
     # Get a white image with the given image's size.
     white_bg = Image.new("RGB", image_rgba.size, BACKGROUND_COLOR)
 
-    # 
+    # paste
     white_bg.paste(image_rgba, mask=image_rgba.split()[3])
     return white_bg
 
