@@ -1,40 +1,89 @@
+"""
+fetch_catalog.py 
+
+First stage of the pipeline.
+
+    - Fetches all items in two columns: "item_id, item_img" from the database.
+    - Writes the two columns to a csv file.
+
+"""
+
+
+
 import csv
 import os
 import logging
-import psycopg2
+from supabase import create_client
 from pathlib import Path
 from dotenv import load_dotenv
 from logger import setup_logging
-
+import argparse
 
 if (load_dotenv()):
-    DATABASE_URL = os.getenv("DATABASE_URL")
+    SUPABASE_URL = os.getenv("SUPABASE_URL")
+    SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 else:
     exit(1)
 
-OUTPUT_CSV = "../data/image_urls.csv"
+OUTPUT_CSV = "../data/csv/image_urls.csv"
 LOG_PATH = "../logs/fetch_catalog.log"
 
-def fetch(logger: logging.Logger):
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--limit", type=int, default=10, help="Max number of items to fetch. Defaults to 10.")
+    return parser.parse_args()
+
+def fetch(logger: logging.Logger, limit: int | None = None) -> list[dict] | None:
+    """
+    Connects to a supabase table and getches the item_id and item_img columns.
+    """
     try:
-        # Connect to the DB
-        conn = psycopg2.connect(DATABASE_URL)
+        # Create the Supabase client.
+        client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-        # Create a cursor to run queries
-        cursor = conn.cursor()
+        # Query item_id and item_img from the Clothing table.
+        query = client.table("Clothing").select("item_id, item_img")
 
-        # Run a query
-        cursor.execute("SELECT item_id, item_img FROM \"Clothing\";")
+        if limit is not None:
+            query = query.limit(limit)
+        response = query.execute()
 
-        # Fetch all results as a list of tuples
-        rows = cursor.fetchall()
+        return response.data
 
-        # Close the connection
-        cursor.close()
-        conn.close()
-        
-        return rows
+    except Exception as e:
+        logger.error(f"Error fetching from db: {e}")
+        return None
 
-    except Exception:
-        logger.error(f"Error fetching from db.")
+def write_to_csv(logger: logging.Logger, csv_path: str, rows: list[dict]) -> None:
+    """
+    Takes a list of dicts and writes them into a csv file with two columns: "item_id, item_img".
+    """
+    # Opening a csv file.
+    with open(csv_path, "w", newline="") as f:
+
+        # Writing to csv file.
+        writer = csv.DictWriter(f, fieldnames=["item_id", "item_img"])
+        writer.writeheader()
+        writer.writerows(rows)
+
+def main():
+    args   = parse_args()
+    logger = setup_logging(LOG_PATH) 
+    
+    fetched_items = fetch(logger, args.limit)
+
+    if (fetched_items is None):
+        return
+    
+    logger.info(f"Fetched {len(fetched_items)} items from database.")
+
+
+    Path(OUTPUT_CSV).parent.mkdir(parents=True, exist_ok=True)
+
+    write_to_csv(logger, OUTPUT_CSV, fetched_items)
+
+    logger.info("Script finished.")
+
+if __name__ == "__main__": 
+    main()
     
