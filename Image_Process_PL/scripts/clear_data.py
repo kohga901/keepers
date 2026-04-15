@@ -63,7 +63,7 @@ def main():
     print("Clearing data folders...")
     for dir_path in DATA_DIRS:
         clear_dir(dir_path)
-    print("\nDone.")
+    print("\n Clear_data.py finished.\n")
 
 
 if __name__ == "__main__":
