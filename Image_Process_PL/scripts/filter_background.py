@@ -27,7 +27,6 @@ import logging
 
 INPUT_DIR = "../data/downloaded_images"     # images downloaded from the url.
 OUTPUT_DIR = "../data/background_filtered"  # cleaned images passed to feature_extraction.py
-
 LOG_FILE = "../logs/filter_background.log"
 
 BACKGROUND_COLOR = (255, 255, 255)  # white
@@ -46,7 +45,7 @@ def load_rembg_session():
     Returns:
         A rembg session object to be passed into remove_background().
     """
-    return new_session("u2net")
+    return new_session("u2netp")
 
 
 
@@ -193,6 +192,8 @@ def process_folder(
     # Reduce list size to limit.
     if limit is not None:
         image_files = image_files[:limit]
+    
+    image_files.sort(key=lambda f: int(f.stem))
 
     logger.info(f"Found {len(image_files)} image(s) to process.")
 
@@ -240,12 +241,13 @@ def main():
     # Get the summary after processing everything.
     summary = process_folder(INPUT_DIR, OUTPUT_DIR, logger, session, args.limit)
 
-    logger.info("Script finished.")
     print("\n--- Summary ---")
     print(f"  Total processed:          {summary['total']}")
     print(f"  Background removed:       {summary['background_removed']}")
     print(f"  Failed (passed through):  {summary['failed_passed_through']}")
-    print(f"  Errors:                   {summary['errors']}")
+    print(f"  Errors:                   {summary['errors']}\n")
+
+    logger.info("filter_background.py finished.\n")
 
 
 if __name__ == "__main__":

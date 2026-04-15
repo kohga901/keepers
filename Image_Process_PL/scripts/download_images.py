@@ -15,7 +15,6 @@ from io import BytesIO
 import csv
 import requests
 import argparse
-import hashlib
 from pathlib import Path
 from PIL import Image
 from logger import setup_logging
@@ -25,10 +24,11 @@ import logging
 # Config setup
 # ---------------------------------------------------------------------------
 
-CSV_PATH   = "../data/csv/image_urls.csv"   # CSV file containing image URLs
-CSV_URL_COLUMN = "item_img"                 # column name in CSV that contains the image URL
-OUTPUT_DIR = "../data/downloaded_images"    # output file 
-LOG_PATH = "../logs/download_images.log"    # log file
+CSV_PATH       = "../data/csv/image_urls.csv"   # CSV file containing image URLs
+CSV_URL_COLUMN = "item_img"                     # column name in CSV that contains the image URL
+CSV_ID_COLUMN  = "item_id"                      # column name in CSV that contains the item ID
+OUTPUT_DIR     = "../data/downloaded_images"    # output file 
+LOG_PATH       = "../logs/download_images.log"  # log file
 
 # ---------------------------------------------------------------------------
 # ARG PARSER
@@ -41,8 +41,6 @@ def parse_args():
     """
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=100, help="Max number of rows to process. Defaults to 100.")
-    # parser.add_argument("--batch", type=int, default=10, help="Max number of rows to process at a time. Defaults to 10.")
-
     return parser.parse_args()
 
 
@@ -50,31 +48,34 @@ def parse_args():
 # Core logic for image download 
 # ---------------------------------------------------------------------------
 
-def load_urls_from_csv(csv_path: str) -> list[str]:
+def load_urls_from_csv(csv_path: str) -> list[tuple[str, str]]:
     """
-    Reads image URLs from a CSV file and returns them as a list of strings.
+    Reads image URLs and item IDs from a CSV file and returns them as a list of (item_id, url) tuples.
 
     Args:
-        csv_path: Path to the CSV file containing image URLs.
+        csv_path: Path to the CSV file containing image URLs and item IDs.
     Returns:
-        List of image URL strings.
+        List of (item_id, url) tuples.
     """
-    urls = []
+    items = []
 
     # Open the csv file.
     with open(csv_path, newline="") as f:
 
-        # Make a csv reader
+        # Make a csv reader.
         reader = csv.DictReader(f)
 
-        # Go through each row and get the cell from the item_img column.
+        # Go through each row and get the item_id and item_img columns.
         for row in reader:
-            url = row.get(CSV_URL_COLUMN, "").strip()
+            url     = row.get(CSV_URL_COLUMN, "").strip()
+            item_id = row.get(CSV_ID_COLUMN, "").strip()
 
-            # If its not None, put it in the url list.
-            if url:
-                urls.append(url)
-    return urls
+            # Only append if both fields are present.
+            if url and item_id:
+                items.append((item_id, url))
+
+    return items
+
 
 def download_image(url: str) -> Image.Image | None:
     """
@@ -98,20 +99,20 @@ def download_image(url: str) -> Image.Image | None:
     except Exception:
         return None
 
+
 def process_urls(
-    urls: list[str],
+    items: list[tuple[str, str]],
     output_dir: Path,
     logger: logging.Logger,
     limit: int
 ) -> dict:
-    
     """
-    Downloads images in from a URLS and saves it to output_dir.
-    If a download fails, logs the error and returns "error".
+    Downloads images from a list of (item_id, url) tuples and saves them to output_dir.
+    If a download fails, logs the error and continues to the next item.
 
     Args:
-        urls: Image URLS to download.
-        output_dir: Directory to write the downloaded image to.
+        items: List of (item_id, url) tuples to download.
+        output_dir: Directory to write the downloaded images to.
         logger: Logger instance.
     Returns:
         A summary dictionary of the results.
@@ -119,12 +120,12 @@ def process_urls(
 
     # Summary format.
     summary = {"total": 0, "downloaded": 0, "image_download_failed": 0}
-    
-    # Try downloading the image to the downloaded_images folder.
-    for url in urls[:limit]:
 
-        # Make the filename by hashing the url and make it end with ".png".
-        filename = hashlib.md5(url.encode()).hexdigest() + ".png"
+    # Try downloading each image to the downloaded_images folder.
+    for item_id, url in items[:limit]:
+
+        # Use item_id as the filename.
+        filename = f"{item_id}.png"
 
         # Make the output path with the filename set.
         out_path = output_dir / filename
@@ -134,9 +135,9 @@ def process_urls(
 
         summary["total"] += 1
 
-        # If image failed fetch from url.
+        # If image failed to fetch from url.
         if image is None:
-            logger.error(f"[error] Failed to download: {url}")
+            logger.error(f"[error] Failed to download item_id {item_id}: {url}")
             summary["image_download_failed"] += 1
             continue
 
@@ -163,19 +164,21 @@ def main():
 
     limit = args.limit
 
-    urls = load_urls_from_csv(CSV_PATH)
+    items = load_urls_from_csv(CSV_PATH)
 
-    logger = setup_logging(LOG_PATH)    
+    logger = setup_logging(LOG_PATH)
 
     output_path = Path(OUTPUT_DIR)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    summary = process_urls(urls, output_path, logger, limit)
-    
+    summary = process_urls(items, output_path, logger, limit)
+
     print("\n--- Summary ---")
     print(f"  Total processed:        {summary['total']}")
     print(f"  Downloaded:             {summary['downloaded']}")
-    print(f"  Failed to download:     {summary['image_download_failed']}")
+    print(f"  Failed to download:     {summary['image_download_failed']}\n")
+
+    logger.info("download_images.py finished.\n")
 
 if __name__ == "__main__":
     main()
