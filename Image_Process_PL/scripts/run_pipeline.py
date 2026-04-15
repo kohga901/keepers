@@ -4,10 +4,10 @@ run_pipeline.py
 Pipeline Orchestrator
 
 Runs the full clothing image processing pipeline in sequence:
-  1. filter_people.py   — downloads images from CSV, filters people
-  2. filter_background.py — removes backgrounds, applies white background
-  3. feature_extraction.py — extracts CLIP embeddings, saves to .npy
-
+    1. fetch_catalog.py     — fetches item_id and item_img from DB, writes to CSV
+    2. download_images.py   — downloads images from CSV URLs
+    3. filter_background.py — removes backgrounds, applies white background
+    4. feature_extraction.py — extracts CLIP embeddings, saves to .npy
 Usage:
     python run_pipeline.py
     python run_pipeline.py --limit 50
@@ -46,6 +46,27 @@ def parse_args():
 # ---------------------------------------------------------------------------
 # PIPELINE STAGES
 # ---------------------------------------------------------------------------
+def run_fetch_catalog(limit: int, logger: logging.Logger) -> bool:
+    """
+    Runs fetch_catalog.py as a subprocess.
+    Returns True if successful, False if it failed.
+
+    Args:
+        limit: Max number of images to fetch from db. None means 10.
+        logger: Logger instance.
+    Returns:
+        True if script exited successfully, False otherwise.
+    """
+
+    # If the there is a limit specified
+    if limit is not None:
+        logger.info(f"Running fetch_catalog.py. Argument: {limit}.\n")
+        result = subprocess.run(["python", "fetch_catalog.py", "--limit", str(limit)])
+    else:
+        logger.info(f"Running fetch_catalog.py. Argument: None.\n")
+        result = subprocess.run(["python", "fetch_catalog.py"])
+
+    return result.returncode == 0
 
 def run_download_images(limit: int, logger: logging.Logger) -> bool:
     """
@@ -129,6 +150,10 @@ def main():
     args   = parse_args()
     logger = setup_logging(LOG_FILE)
     logger.info("Starting run_pipeline orchestrator.")
+
+    if not run_fetch_catalog(args.limit, logger):
+        logger.error(f"Error at run_fetch_catalog.")
+        return
 
     if not run_download_images(args.limit, logger):
         logger.error(f"Error at run_download_images.")
