@@ -44,23 +44,23 @@ class RecommendRequest(BaseModel):
   
 
 
+# This code below is suited for getting an array of likes, maybe not what we want yet. We want more User specific likes
+# @app.post(("/recommend"))
+# def recommend(body: RecommendRequest):
+#     indices = body.swiped_right_indices
+#     embeddings = catalog_embeddings[indices]
+#     all_indices = []
+#     for emb in embeddings:
+#         # get 20 or so neighbors for everything liked
+#         # 1 row with 512 columns (gotta be 2d matrix)
+#         # the index.search is the part where we actually feed the model and ask for neighbors
+#         _, indices = index.search(emb.reshape(1,-1), 5)  # type: ignore
+#         all_indices.extend(indices[0])
 
-@app.post(("/recommend"))
-def recommend(body: RecommendRequest):
-    indices = body.swiped_right_indices
-    embeddings = catalog_embeddings[indices]
-    all_indices = []
-    for emb in embeddings:
-        # get 20 or so neighbors for everything liked
-        # 1 row with 512 columns (gotta be 2d matrix)
-        # the index.search is the part where we actually feed the model and ask for neighbors
-        _, indices = index.search(emb.reshape(1,-1), 5)  # type: ignore
-        all_indices.extend(indices[0])
-
-    seen = set(indices)
-    unique_recs = []
-    for idx in all_indices:
-        if idx not in seen:
-            unique_recs.append(idx)
-            seen.add(idx)
-    return unique_recs[:10] # The number her is what we get back
+#     seen = set(indices)
+#     unique_recs = []
+#     for idx in all_indices:
+#         if idx not in seen:
+#             unique_recs.append(idx)
+#             seen.add(idx)
+#     return unique_recs[:10] # The number her is what we get back
