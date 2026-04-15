@@ -8,8 +8,6 @@ First stage of the pipeline.
 
 """
 
-
-
 import csv
 import os
 import logging
@@ -82,7 +80,11 @@ def main():
 
     write_to_csv(logger, OUTPUT_CSV, fetched_items)
 
-    logger.info("Script finished.")
+    print("\n--- Summary ---")
+    print(f"  Fetched:   {len(fetched_items)}")
+    print(f"  Written to: {OUTPUT_CSV}\n")
+
+    logger.info("fetch_catalog.py finished.\n")
 
 if __name__ == "__main__": 
     main()
