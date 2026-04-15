@@ -3,8 +3,7 @@ import numpy as np
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import faiss
-import numpy as np
+
 
 app = FastAPI()
 # how we allow connections
@@ -34,27 +33,34 @@ index.add(data_to_add)  # type: ignore
 # @app.route("/recommend", methods=["POST"])
 # def recommend():
 #     liked_items = request.json.get("liked_items", [])  # list of {item_img, ...}
+class RecommendRequest(BaseModel):
+    swiped_right_indices: list[int]
 
-def get_multi_recommendations(swiped_right_embeddings,swiped_right_indices,k=10):
-    """
-    We get 5 recommendation for each swiped_right item in swiped_right_embeddings
-    """
+
+# def get_multi_recommendations(swiped_right_embeddings,swiped_right_indices,k=10):
+#     """
+#     We get 5 recommendation for each swiped_right item in swiped_right_embeddings
+#     """
+  
+
+
+
+@app.post(("/recommend"))
+def recommend(body: RecommendRequest):
+    indices = body.swiped_right_indices
+    embeddings = catalog_embeddings[indices]
     all_indices = []
-    for emb in swiped_right_embeddings:
+    for emb in embeddings:
         # get 20 or so neighbors for everything liked
         # 1 row with 512 columns (gotta be 2d matrix)
         # the index.search is the part where we actually feed the model and ask for neighbors
         _, indices = index.search(emb.reshape(1,-1), 5)  # type: ignore
         all_indices.extend(indices[0])
 
-    seen = set(swiped_right_indices)
+    seen = set(indices)
     unique_recs = []
     for idx in all_indices:
         if idx not in seen:
             unique_recs.append(idx)
             seen.add(idx)
-    return unique_recs[:k]
-
-@app.route("/recommend", methods=["POST"])
-def recommend():
-    indices = 
+    return unique_recs[:10] # The number her is what we get back
