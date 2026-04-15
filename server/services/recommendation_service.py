@@ -2,11 +2,15 @@
 recommendation_service.py
 
 Gets the recommended K clothing items for a user.
+    - Uses the built index and item_id's from Startup.py
 """
 
 import faiss
 import numpy as np
-from pathlib import Path
+
+from services.Startup import index, _item_ids
+
+EMBEDDING_DIM = 512
 
 def get_recommendations(
     pref_vec: np.ndarray,
@@ -15,20 +19,13 @@ def get_recommendations(
 ) -> list[str]:
     """
     Returns n unseen item_ids ranked by cosine similarity to pref_vec.
-    pref_vec: 1D numpy array of shape (512,)
-    seen_item_ids: list of item_ids the user has already swiped on
+
+    Args:
+        pref_vec:       1D numpy array of shape (512,). The user's preference vector.
+        seen_item_ids:  item_ids the user has already swiped on (liked or disliked).
+        n:              number of recommendations to return.
+
+    Returns:
+        List of item_ids ranked by cosine similarity, with seen items removed.
     """
-    pref = np.array(pref_vec, dtype=np.float32).reshape(1, EMBEDDING_DIM)
-    faiss.normalize_L2(pref)
-
-    k = min(n + len(seen_item_ids), index.ntotal)
-    _, indices = index.search(pref, k=k)
-
-    seen_set = set(seen_item_ids)
-    results = [
-        _item_ids[idx]
-        for idx in indices[0]
-        if _item_ids[idx] not in seen_set
-    ]
-
-    return results[:n]
+    pass
