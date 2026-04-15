@@ -5,37 +5,80 @@
  * Date: 2026-04-01
  */
 
+import { useEffect, useState } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { lightTheme } from '../constants/theme';
 import { View, ActivityIndicator } from 'react-native';
+import type { Session } from '@supabase/supabase-js';
 
 import { useFonts } from 'expo-font';
-
-
-export function useAppTheme() {
-  return {
-    isDark: false,
-    theme: lightTheme,
-  };
-}
+import Auth from '../components/Auth';
+import { useAppTheme } from '../hooks/useAppTheme';
+import { supabase } from '../utils/supabase';
 
 
 export default function RootLayout() {
   const [loaded] = useFonts({
     GeorgiaProBlack: require('../assets/fonts/GeorgiaPro-Black.ttf'),
   });
+  const [session, setSession] = useState<Session | null>(null);
+  const [isSessionLoading, setIsSessionLoading] = useState(true);
   const { theme } = useAppTheme();
 
-  if (!loaded) {
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchSession = async () => {
+      const { data, error } = await supabase.auth.getSession();
+      if (error) {
+        console.error('Failed to restore auth session', error.message);
+      }
+
+      if (isMounted) {
+        setSession(data.session ?? null);
+        setIsSessionLoading(false);
+      }
+    };
+
+    fetchSession();
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_, nextSession) => {
+      setSession(nextSession);
+      setIsSessionLoading(false);
+    });
+
+    return () => {
+      isMounted = false;
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
+
+  if (!loaded || isSessionLoading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        
+      <View
+        style={{
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: theme.background,
+        }}
+      >
+        <ActivityIndicator size="large" color={theme.primary} />
       </View>
     );
   }
+
+  if (!session) {
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.background }}>
+        <Auth />
+        <StatusBar style="dark" />
+      </View>
+    );
+  }
+
   return (
-    <View style={{ flex: 1, backgroundColor: lightTheme.background }}>
+    <View style={{ flex: 1, backgroundColor: theme.background }}>
       <Stack>
         <Stack.Screen
           name="(tabs)"
@@ -43,10 +86,10 @@ export default function RootLayout() {
             headerShown: true,
             headerTransparent: true,
             title: 'K E E P E R S',
-            headerTintColor: lightTheme.headerText,
+            headerTintColor: theme.headerText,
             headerShadowVisible: true,
             headerStyle: {
-              backgroundColor: lightTheme.headerBg,
+              backgroundColor: theme.headerBg,
             },
             headerTitleStyle: {
               fontFamily: 'GeorgiaProBlack', // Font is now global

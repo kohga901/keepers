@@ -6,7 +6,7 @@
  */
 
 import React, { useRef, useState, useEffect } from "react";
-import { View, Text, StyleSheet, Dimensions, FlatList, Button } from "react-native";
+import { View, Text, StyleSheet, Dimensions } from "react-native";
 import Swiper from "react-native-deck-swiper";
 import { Image } from 'expo-image';
 import * as WebBrowser from 'expo-web-browser';
@@ -20,8 +20,30 @@ const CARD_VERTICAL_MARGIN = (height * (1 - CARD_HEIGHT_RATIO)) / 2;
 const App: React.FC = () => {
   const swiper = useRef<any>(null);
   const [cards, setCards] = useState<Item[]>([]);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
+    const checkSessionAndLoad = async () => {
+      const { data, error } = await supabase.auth.getSession();
+      if (error) {
+        console.error('Failed to read session', error.message);
+        setIsAuthReady(true);
+        return;
+      }
+
+      const hasSession = !!data.session;
+      setIsAuthenticated(hasSession);
+
+      if (hasSession) {
+        await initialDataFeed();
+      } else {
+        setCards([]);
+      }
+
+      setIsAuthReady(true);
+    };
+
     const initialDataFeed = async () => {
       const data = await getClothing()
       if (!data) return
@@ -40,8 +62,42 @@ const App: React.FC = () => {
       setCards((prev) => [...prev, ...parsedCards])
     }
 
-    initialDataFeed()
+    checkSessionAndLoad();
+
+    const { data: listener } = supabase.auth.onAuthStateChange(async (_, session) => {
+      const hasSession = !!session;
+      setIsAuthenticated(hasSession);
+
+      if (!hasSession) {
+        setCards([]);
+      } else {
+        setCards([]);
+        await initialDataFeed();
+      }
+
+      setIsAuthReady(true);
+    });
+
+    return () => {
+      listener.subscription.unsubscribe();
+    };
   }, [])
+
+  if (!isAuthReady) {
+    return (
+      <View style={styles.messageContainer}>
+        <Text style={styles.messageText}>Loading your feed...</Text>
+      </View>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <View style={styles.messageContainer}>
+        <Text style={styles.messageText}>Please sign in to view your style feed.</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -70,6 +126,10 @@ const App: React.FC = () => {
         }}
         onSwiped={async (index: number) => {
           //console.log('Swiped index:', index);
+          if (!isAuthenticated) {
+            return;
+          }
+
           if (index % 10 === 0) {
             const data = await getClothing();
             if (!data) return;
@@ -165,6 +225,18 @@ const overlayLabels = {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  messageContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  messageText: {
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
+    color: '#1A1A1A',
   },
   buttonContainer: {
     position: "absolute",
