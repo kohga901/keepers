@@ -1,5 +1,19 @@
 import faiss
 import numpy as np
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+import faiss
+import numpy as np
+
+app = FastAPI()
+# how we allow connections
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 catalog_embeddings = np.load("catalog_embeddings1.npy").astype("float32")
 index = faiss.IndexFlatL2(512) #IndexFlatL2. It's a brute force search, w/ caching
@@ -40,3 +54,7 @@ def get_multi_recommendations(swiped_right_embeddings,swiped_right_indices,k=10)
             unique_recs.append(idx)
             seen.add(idx)
     return unique_recs[:k]
+
+@app.route("/recommend", methods=["POST"])
+def recommend():
+    indices = 
