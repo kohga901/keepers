@@ -1,23 +1,41 @@
 import faiss
 import numpy as np
+from pathlib import Path
+
 """
-Startup.py Loads the Memory: It pulls that big catalog_embeddings.npy file into RAM so it's ready to go.
-It Initializes FAISS: it sets up the IndexFlatL2(512).
-It takes a new image (one that isn't already in your catalog), turns it into a vector, and asks FAISS to find the top 5 matches.
+Startup.py.
+
+      - Loads the Memory: Builds the FAISS index and stores it into RAM. 
+      - It Initializes FAISS: it sets up the IndexFlatL2(512).
+      - Returns K nearest embeddings that have not been seen by the user.
 """
-# clip documentation shows us 512 dim embeddings
-# every item gets embedded and stored here
+
+# Resolve paths relative to this file up to repo root
+_ROOT = Path(__file__).resolve().parents[2]
+_EMBEDDINGS_PATH = _ROOT / "Image_Process_PL" / "data" / "embedded_vectors" / "catalog_embeddings.npy"
+_IDS_PATH        = _ROOT / "Image_Process_PL" / "data" / "embedded_vectors" / "catalog_ids.npy"
+
 EMBEDDING_DIM = 512
-# IndexFlatL2 is exact KNN using euclidean distance
-# "Flat" means no compression, searches every vector
-# Good enough for an image folder under 1 million items
-# We init here:
-index = faiss.IndexFlatL2(EMBEDDING_DIM)
+
+# Load embeddings and their corresponding item_id's into disk.
+_embeddings = np.load(_EMBEDDINGS_PATH).astype(np.float32)
+_item_ids   = np.load(_IDS_PATH, allow_pickle=True).tolist()
+
+# Normalize the length of all vectors so their length is not a factor in similarity search.
+faiss.normalize_L2(_embeddings)
+
+# Build index
+# Using IndexFlatIP for directional relativity rather than magnitude. This is because the CLIP model
+# produces an embedding that is based on directional value. 
+index = faiss.IndexFlatIP(EMBEDDING_DIM)
+index.add(_embeddings)
+
+
 
 # The embeddings for our catalog will be a 2 dimensional array 
 # That means the shape is (num_items, 512)
 # data must be float32, float64 doesn't cut it (we'll crash if we try)
-catalog_embeddings = np.load("catalog_embeddings.npy").astype(np.float32)
+
 # There is a normalize method @KO can u figure out what that is? look into normalize_L2 for Faiss?
 # We CAN normalize in the indexing script after line 62? Or u can do it herev 
 # norm = 
