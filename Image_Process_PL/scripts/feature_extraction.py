@@ -209,12 +209,13 @@ def main():
     np.save(embeddings_path, embeddings_numpy)
     np.save(ids_path, np.array(successful_ids))
 
-    logger.info("Script finished.")
 
     print("\n--- Summary ---")
     print(f"  Total:        {summary['total']}")
     print(f"  Processed:    {summary['processed']}")
-    print(f"  Errors:       {summary['errors']}")
+    print(f"  Errors:       {summary['errors']}\n")
+
+    logger.info("feature_extraction.py finished.\n")
 
 
 if __name__ == "__main__":

@@ -152,6 +152,20 @@ def run_feature_extraction(limit: int, batch: int, logger: logging.Logger) -> bo
     result = subprocess.run(cmd)
     return result.returncode == 0
 
+def run_upload_embeddings(logger: logging.Logger) -> bool:
+    """
+    Runs upload_embeddings.py as a subprocess.
+    Returns True if successful, False if it failed.
+
+    Args:
+        logger: Logger instance.
+    Returns:
+        True if script exited successfully, False otherwise.
+    """
+    logger.info("Running upload_embeddings.py.")
+    result = subprocess.run(["python", "upload_embeddings.py"])
+    return result.returncode == 0
+
 # ---------------------------------------------------------------------------
 # ENTRY POINT
 # ---------------------------------------------------------------------------
@@ -164,8 +178,8 @@ def main():
     """
     args   = parse_args()
     logger = setup_logging(LOG_FILE)
-    logger.info("--------------------------------------------------------------------------------------------------------")
-    logger.info("Starting run_pipeline orchestrator.")
+    logger.info("--------------------------------------------------------------------------------------------------------\n")
+    logger.info("Starting run_pipeline orchestrator.\n")
 
     if args.clear:
         if not run_clear_data(logger):
@@ -187,9 +201,13 @@ def main():
     if not run_feature_extraction(args.limit, args.batch, logger):
         logger.error("Error at run_feature_extraction.")
         return
+    
+    # if not run_upload_embeddings(logger):
+    #     logger.error("Error at run_upload_embeddings.")
+    #     return
 
-    logger.info("Pipeline completed successfully.")
-    logger.info("--------------------------------------------------------------------------------------------------------")
+    logger.info("Pipeline completed successfully.\n")
+    logger.info("--------------------------------------------------------------------------------------------------------\n")
 
 
 if __name__ == "__main__":

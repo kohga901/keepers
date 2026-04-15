@@ -176,7 +176,9 @@ def main():
     print("\n--- Summary ---")
     print(f"  Total processed:        {summary['total']}")
     print(f"  Downloaded:             {summary['downloaded']}")
-    print(f"  Failed to download:     {summary['image_download_failed']}")
+    print(f"  Failed to download:     {summary['image_download_failed']}\n")
+
+    logger.info("download_images.py finished.\n")
 
 if __name__ == "__main__":
     main()
