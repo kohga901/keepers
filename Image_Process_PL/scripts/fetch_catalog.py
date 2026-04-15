@@ -42,7 +42,7 @@ def fetch(logger: logging.Logger, limit: int | None = None) -> list[dict] | None
         client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
         # Query item_id and item_img from the Clothing table.
-        query = client.table("Clothing").select("item_id, item_img")
+        query = client.table("Clothing").select("item_id, item_img").order("item_id")
 
         if limit is not None:
             query = query.limit(limit)
