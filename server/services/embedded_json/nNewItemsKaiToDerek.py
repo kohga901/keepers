@@ -1,9 +1,9 @@
 import faiss
 import numpy as np
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-
+import psycopg2  #Gabe give guidance
 
 app = FastAPI()
 # how we allow connections
@@ -34,9 +34,44 @@ index.add(data_to_add)  # type: ignore
 # def recommend():
 #     liked_items = request.json.get("liked_items", [])  # list of {item_img, ...}
 class RecommendRequest(BaseModel):
-    swiped_right_indices: list[int]
+    #swiped_right_indices: list[int]
+    uid: str  #UID over Swiped indices
 
 
+def get_likes_from_db(uid: str) -> list[int]:
+    conn = psycopg2.connect("postgresql://...") # gabe add in post pleaseeee
+    cur = conn.cursor()
+    cur.execute("SELECT item_index FROM likes WHERE user_id = %s", (uid,))
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return [row[0] for row in rows]
+
+@app.post(("/recommend"))
+def recommend(body: RecommendRequest):
+    likedIndices = get_likes_from_db(body.uid)
+
+    if not likedIndices:
+        raise HTTPException(status_code=404, detail="No likes found for this user")
+    #embeddings = catalog_embeddings[indices]
+    all_indices = []
+    for idx in likedIndices:
+        # get 20 or so neighbors for everything liked
+        # 1 row with 512 columns (gotta be 2d matrix)
+        # the index.search is the part where we actually feed the model and ask for neighbors
+        emb = catalog_embeddings[idx]  # look up embedding by item index
+        _, neighbors = index.search(emb.reshape(1, -1), 5) # type: ignore
+        all_indices.extend(neighbors[0].tolist())
+
+    seen = set(likedIndices)
+    unique_recs = []
+    for idx in all_indices:
+        if idx not in seen:
+            unique_recs.append(idx)
+            seen.add(idx)
+    rec_indices = unique_recs[:10]
+    return {"recommended_urls": [image_urls[i] for i in rec_indices]}
+     # The number her is what we get back
 # def get_multi_recommendations(swiped_right_embeddings,swiped_right_indices,k=10):
 #     """
 #     We get 5 recommendation for each swiped_right item in swiped_right_embeddings
