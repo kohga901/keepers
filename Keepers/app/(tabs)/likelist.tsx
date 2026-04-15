@@ -1,70 +1,71 @@
-/**
- * File: likelist.tsx
- * Description: Currently a placeholder for the liked and disliked history of the user.
- * Author: Kai Markley
- * Date: 2026-04-01
- */
-
-import React, { useState} from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-
+import React from 'react';
+import { StyleSheet, Text, View, Pressable } from 'react-native';
 import { useAppTheme } from '../../hooks/useAppTheme';
 
 export default function LikeList() {
   const { theme } = useAppTheme();
   const [activeTab, setActiveTab] = React.useState('liked');
+
   return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>   
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={styles.topTabs}>
-        
-        <Text
-          style={[
-            styles.tabText,
-            activeTab === 'liked' && {     color: theme.text,
- },
-          ]}
-          onPress={() => setActiveTab('liked')}
-        >
-          Liked
-        </Text>
-        <Text
-          style={[
-            styles.tabText,
-            activeTab === 'disliked' && {     color: theme.text,
- },
-          ]}
-          onPress={() => setActiveTab('disliked')}
-        >
-          Disliked
-        </Text>
+        <Pressable onPress={() => setActiveTab('liked')}>
+          <Text
+            style={[
+              styles.tabText,
+              { color: activeTab === 'liked' ? theme.text : theme.tabInactive },
+            ]}
+          >
+            Liked
+          </Text>
+        </Pressable>
+
+        <Pressable onPress={() => setActiveTab('disliked')}>
+          <Text
+            style={[
+              styles.tabText,
+              { color: activeTab === 'disliked' ? theme.text : theme.tabInactive },
+            ]}
+          >
+            Disliked
+          </Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.content}>
+        {activeTab === 'liked' ? (
+          <Text style={[styles.text, { color: theme.text }]}>Liked items go here</Text>
+        ) : (
+          <Text style={[styles.text, { color: theme.text }]}>Disliked items go here</Text>
+        )}
       </View>
     </View>
-
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    paddingTop: 120,
+  },
+  topTabs: {
+    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: 20,
-    color: '#4caf85',
+    width: '100%',
+    marginBottom: 24,
+  },
+  tabText: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginHorizontal: 24,
+  },
+  content: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   text: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#4caf85',
   },
-  topTabs: {
-    flexDirection: 'row',
-    marginBottom: 20,
-    color: '#4caf85',
-  },
-  tabText: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginRight: 20,
-    color: '#474747',
-  },
-
 });
