@@ -27,6 +27,15 @@ colors = [unique.index(g) for g in genders]
 # reduced = TSNE(n_components=2, random_state=70).fit_transform(reduced_pca)
 # Reducing to 2D so vectors no longer has 512 dimensions -> Becoems a map
 reduced = TSNE(n_components=2, random_state=70).fit_transform(data)
+
+# Write x/y back into the JSON
+for i, item in enumerate(meta):
+    item["tsne_x"] = float(reduced[i, 0])
+    item["tsne_y"] = float(reduced[i, 1])
+
+with open("metadata.json", "w") as f:
+    json.dump(meta, f, indent=2)
+
 my_colors = ["deepskyblue", "gray" , "hotpink", "gold", "plum", "cyan", "green", "black"]
 my_cmap = ListedColormap(my_colors[:len(unique)])
 # Create the visualization
