@@ -28,7 +28,7 @@ BETA  = 0.05    # step size for dislikes
 # --- Request / Response models ---
 
 # Using BaseModel to desereliaze the jsons in the http requests and responses.
-class SwipeRequest(BaseModel):
+class SwipeData(BaseModel):
     user_id: str
     item_id: str
     liked: bool
@@ -105,6 +105,9 @@ def _record_swipe(user_id: str, item_id: str, liked: bool) -> None:
     pass
 
 def _fetch_seen_item_ids(user_id: str) -> list[str]:
+    """
+    Fetch the items that a user has swiped on from the database,
+    """
     # TODO: query swipes table for all item_ids this user has swiped on
     return []
 
@@ -112,7 +115,11 @@ def _fetch_seen_item_ids(user_id: str) -> list[str]:
 # --- Endpoints ---
 
 @router.post("/swipe")
-def swipe(req: SwipeRequest):
+def swipe(req: SwipeData):
+    """
+    Takes in a swipe of a user and updates their preference vector.
+        - Records the swipe to the database.
+    """
     pref_vec = _fetch_pref_vec(req.user_id)
     pref_vec = _update_pref_vec(pref_vec, req.item_id, req.liked)
     _save_pref_vec(req.user_id, pref_vec)
