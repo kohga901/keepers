@@ -69,7 +69,7 @@ def is_image(filename: str) -> bool:
 # ---------------------------------------------------------------------------------------
 
 log.debug("Starting script...\n")
-with open("JSON/metadataStable", "r") as f:
+with open("JSON/metadataStable.json", "r") as f:
 # with open("../../Scrapers/Google/shoppingListingJSON/google_shopping_njfjte_2026-04-01T02-47-25-227Z.json", "r") as f:
     items = json.load(f)
     
@@ -95,7 +95,8 @@ for item in items:
             "item_price": item["item_price"],
             "item_gender": item["item_gender"],
             "item_img": item["item_img"],
-            "item_web_listing": item["item_web_listing"]
+            "item_web_listing": item["item_web_listing"],
+            "item_id": item["item_id"] # Gabe added this recently.
         })
     except Exception as e:
         log.warning(f"failed on {item.get('item_name', 'unknown')}: {e}")
