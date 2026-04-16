@@ -69,7 +69,7 @@ def is_image(filename: str) -> bool:
 # ---------------------------------------------------------------------------------------
 
 log.debug("Starting script...\n")
-with open("JSON/catalog.json", "r") as f:
+with open("JSON/metadataStable", "r") as f:
 # with open("../../Scrapers/Google/shoppingListingJSON/google_shopping_njfjte_2026-04-01T02-47-25-227Z.json", "r") as f:
     items = json.load(f)
     
