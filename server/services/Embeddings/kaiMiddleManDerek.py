@@ -6,7 +6,7 @@ from pydantic import BaseModel
 import psycopg2  #Gabe give guidance
 import json
 
-with open("your_catalog.json") as f:
+with open("metadata.json") as f:
     catalog = json.load(f)
 
 image_urls = [item["item_img"] for item in catalog]
@@ -40,16 +40,16 @@ def get_likes_from_db(uid: str) -> list[int]:
     conn.close()
     return [row[0] for row in rows]
 
-@app.post(("/recommend"))
+@app.post("/recommend")
 def recommend(body: RecommendRequest):
     likedIndices = get_likes_from_db(body.uid)
 
     if not likedIndices:
         raise HTTPException(status_code=404, detail="No likes found for this user")
-    #embeddings = catalog_embeddings[indices]
+
     all_indices = []
     for idx in likedIndices:
-        emb = catalog_embeddings[idx]  # look up embedding by item index
+        emb = catalog_embeddings[idx]
         _, neighbors = index.search(emb.reshape(1, -1), 5) # type: ignore
         all_indices.extend(neighbors[0].tolist())
 
@@ -59,6 +59,16 @@ def recommend(body: RecommendRequest):
         if idx not in seen:
             unique_recs.append(idx)
             seen.add(idx)
+
     rec_indices = unique_recs[:10]
-    return {"recommended_urls": [image_urls[i] for i in rec_indices]}
-     # The number here is what we get back
+    # return full item objects instead of just URLs
+    results = [
+        {
+            "item_img": catalog[i]["item_img"],
+            "item_name": catalog[i]["item_name"],
+            "item_price": catalog[i]["item_price"],
+            "item_web_listing": catalog[i]["item_web_listing"],
+        }
+        for i in rec_indices
+    ]
+    return {"recommendations": results}
