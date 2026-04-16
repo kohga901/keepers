@@ -13,7 +13,7 @@ data = np.load("catalog_embeddings1.npy")
 
 
 # we wnat to Load and process our metadata for coloring
-with open("catalogWithEmbeddings.json") as f:
+with open("catalog_with_embeddings.json") as f:
     meta = json.load(f)
 
 genders = [item["item_gender"] for item in meta]

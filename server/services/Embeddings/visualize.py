@@ -25,3 +25,6 @@ cbar.set_label("Gender")
 
 plt.title("CLIP Embeddings Visualized by Gender")
 plt.show()
+import numpy as np
+data = np.load("catalog_embeddings1.npy")
+print(data.shape)
