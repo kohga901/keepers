@@ -12,3 +12,7 @@ Endpoints (to be implemented):
     - POST /users/login     — authenticate and return a JWT token
     - GET  /users/me        — retrieve the currently authenticated user's profile
 """
+
+from fastapi import APIRouter
+
+router = APIRouter()
