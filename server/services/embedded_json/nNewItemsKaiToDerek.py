@@ -4,6 +4,12 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import psycopg2  #Gabe give guidance
+import json
+
+with open("your_catalog.json") as f:
+    catalog = json.load(f)
+
+image_urls = [item["item_img"] for item in catalog]
 
 app = FastAPI()
 # how we allow connections
