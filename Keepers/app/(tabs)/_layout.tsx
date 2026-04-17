@@ -17,7 +17,7 @@ export default function TabLayout() {
   return (
     <Tabs
         screenOptions={{
-          headerShown: false,   // 👈 ADD THIS
+          headerShown: false,
           tabBarActiveTintColor: theme.tabActive,
           tabBarInactiveTintColor: theme.tabInactive,
           headerStyle: {
@@ -34,7 +34,6 @@ export default function TabLayout() {
           },
         }}
       >
-    
       <Tabs.Screen
         name="index"
         options={{
@@ -52,6 +51,19 @@ export default function TabLayout() {
               size={24}
             />
           ),
+        }}
+      />
+      <Tabs.Screen
+        name="graph"
+        options={{
+          title: 'Graph',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? 'stats-chart' : 'stats-chart-outline'}
+              color={color}
+              size={24}
+            />
+          ),      
         }}
       />
       <Tabs.Screen
@@ -80,7 +92,6 @@ export default function TabLayout() {
           ),
         }}
       />
-
       <Tabs.Screen
         name="settings"
         options={{
