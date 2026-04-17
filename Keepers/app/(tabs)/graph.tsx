@@ -13,6 +13,7 @@ import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import { useHeaderHeight } from '@react-navigation/elements';
 
 import { GraphPoint, useEmbeddingGraph } from '../../contexts/EmbeddingGraphContext';
 import { useAppTheme } from '../../hooks/useAppTheme';
@@ -178,6 +179,7 @@ function clampTranslation(value: number, scale: number, size: number): number {
 
 export default function Graph() {
 	const { theme } = useAppTheme();
+	const headerHeight = useHeaderHeight();
 	const router = useRouter();
 	const {
 		graphPoints,
@@ -337,7 +339,12 @@ export default function Graph() {
 	const isLoadingInitialState = isGraphLoading && graphPoints.length === 0;
 
 	return (
-		<View style={[styles.container, { backgroundColor: theme.background }]}>
+		<View
+			style={[
+				styles.container,
+				{ backgroundColor: theme.background, paddingTop: headerHeight + 8 },
+			]}
+		>
 			<View style={styles.headerRow}>
 				<Text style={[styles.title, { color: theme.text }]}>Embedding Graph</Text>
 				<Pressable style={styles.refreshButton} onPress={() => void refreshGraphData()}>
@@ -465,7 +472,6 @@ const styles = StyleSheet.create({
 		flex: 1,
 		paddingHorizontal: 12,
 		paddingBottom: 12,
-		paddingTop: 72,
 	},
 	headerRow: {
 		alignItems: 'center',
