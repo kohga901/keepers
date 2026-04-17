@@ -36,17 +36,17 @@ export const getClothing = async () => {
     let query = supabase
         .from('Clothing')
         .select('*')
-        .limit(10);
+        
 
     if (likedIds.length > 0) {
         query = query.not('item_id', 'in', `(${likedIds.join(',')})`);
     }
-    const { data, error } = await query;
+    const { data, error } = await query.limit(50);
     if (error) {
         console.error(error);
         return;
     }
-    return data.sort(() => Math.random() - 0.5);
+    return (data.sort(() => Math.random() - 0.5)).slice(0,10);
 }
 
 export const saveLikedItem = async (clothesId: string) => {
@@ -60,7 +60,7 @@ export const saveLikedItem = async (clothesId: string) => {
     const userId = userData.user.id;
 
     const { error } = await supabase
-        .from('LikedItems')
+        .from('Likes')
         .insert([
         {
             user_id: userId,

@@ -12,7 +12,7 @@ import { Image } from 'expo-image';
 import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '../../utils/supabase';
 import { Item } from '../../models/Items';
-import { getClothing } from '../../services/dataServices';
+import { getClothing, saveLikedItem } from '../../services/dataServices';
 
 const { height } = Dimensions.get("window");
 const CARD_HEIGHT_RATIO = 0.7;
@@ -159,6 +159,9 @@ const App: React.FC = () => {
             WebBrowser.openBrowserAsync(item.itemUrl);
           }
         }}
+        onSwipedRight ={async (cardIndex: number) => {
+          await saveLikedItem(cards[cardIndex].id);
+        }}
         disableBottomSwipe={true}
         overlayLabels={overlayLabels}
         stackSize={3}
@@ -172,29 +175,6 @@ const App: React.FC = () => {
 };
 
 export default App;
-
-// const getClothing = async () => {
-//   // const { count } = await supabase
-//   //   .from('recipes')
-//   //   .select('*', { count: 'exact', head: true })
-
-//   const count = 4732 //Only use if know exact row count
-
-//   const randomOffset = Math.floor(Math.random() * count)
-
-//   const { data, error } = await supabase
-//     .from('Clothing')
-//     .select('*')
-//     .range(randomOffset, randomOffset + 9)
-//   if (error) {
-//     console.error(error)
-//     return
-//   }
-
-//   return data
-// }
-
-//const map
 
 const blurhash =
   '|rF?hV%2WCj[ayj[a|j[az_NaeWBj@ayfRayfQfQM{M|azj[azf6fQfQfQIpWXofj[ayj[j[fQayWCoeoeaya}j[ayfQa{oLj?j[WVj[ayayj[fQoff7azayj[ayj[j[ayofayayayj[fQj[ayayj[ayfjj[j[ayjuayj[';
