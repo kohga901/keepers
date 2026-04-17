@@ -13,7 +13,6 @@ import { Image } from 'expo-image';
 import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '../../utils/supabase';
 import { Item } from '../../models/Items';
-import { useEmbeddingGraph } from '../../contexts/EmbeddingGraphContext';
 
 const { height } = Dimensions.get("window");
 const CARD_HEIGHT_RATIO = 0.7;
@@ -24,7 +23,6 @@ const App: React.FC = () => {
   const [cards, setCards] = useState<Item[]>([]);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const { applySwipeFeedback } = useEmbeddingGraph();
   const { focusItemId } = useLocalSearchParams<{ focusItemId?: string }>();
 
   useEffect(() => {
@@ -196,22 +194,6 @@ const App: React.FC = () => {
 
             setCards((prev) => [...prev, ...parsedCards]);
           }
-        }}
-        onSwipedLeft={(cardIndex) => {
-          const item = cards[cardIndex];
-          if (!item) {
-            return;
-          }
-
-          void applySwipeFeedback(item.id, 'dislike');
-        }}
-        onSwipedRight={(cardIndex) => {
-          const item = cards[cardIndex];
-          if (!item) {
-            return;
-          }
-
-          void applySwipeFeedback(item.id, 'like');
         }}
         onSwipedTop={(cardIndex) => {
           // Swiper updates to next card after this callback. Scheduled after React-Native-Deck-Swiper update.
