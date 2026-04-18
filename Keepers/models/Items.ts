@@ -9,3 +9,14 @@ export interface Item {
   
   
 }
+
+export type LikedItemRow = {
+  clothes_id: string;
+  Clothing: {
+    item_id: string;
+    item_name: string;
+    item_price: string;
+    item_img: string;
+    item_web_listing: string;
+  } | null;
+};

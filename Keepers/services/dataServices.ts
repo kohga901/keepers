@@ -72,3 +72,29 @@ export const saveLikedItem = async (clothesId: string) => {
         console.error('Error saving liked item:', error.message);
     }
 };
+
+export const getLikedItems = async () => {
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+
+  if (userError || !userData.user) {
+    console.error('No user found');
+    return;
+  }
+
+  const userId = userData.user.id;
+
+  const { data, error } = await supabase
+    .from('Likes')
+    .select(`
+      clothes_id,
+      Clothing (*)
+    `)
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error('Error fetching liked items:', error.message);
+    return;
+  }
+
+  return data;
+};
