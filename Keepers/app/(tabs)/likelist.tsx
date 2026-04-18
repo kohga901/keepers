@@ -1,39 +1,42 @@
-import React, {useEffect, useState} from 'react';
+import React, {useCallback, useEffect, useState} from 'react';
 import { StyleSheet, Text, View, Pressable, FlatList } from 'react-native';
 import { Image } from 'expo-image';
 import { useAppTheme } from '../../hooks/useAppTheme';
-import { Item, LikedItemRow } from '../../models/Items';
+import { Item } from '../../models/Items';
 import { getClothing, getLikedItems } from '@/services/dataServices';
+import { useFocusEffect } from '@react-navigation/native';
 const App: React.FC = () => {
   const [allLikedItems, setAllLikedItems] = useState<Item[]>([]);
-
+    const addLikedItem = (item: Item) => {
+      setAllLikedItems((prev) => [...prev, { ...item, liked: true }]);
+    };
   
 
-    useEffect(() => {
-    const aquireLikedItems = async () => {
-      const data = await getLikedItems();
-      console.log('liked raw data:', JSON.stringify(data, null, 2));
+    useFocusEffect(
+      useCallback(() => {
+      const aquireLikedItems = async () => {
+        const data = await getLikedItems();
 
-      if (!data) return;
+        if (!data) return;
 
-      const parsedCards = (data as any[])
-        .filter((row) => row.Clothing)
-        .map((row) => ({
-          id: String(row.Clothing.item_id),
-          name: row.Clothing.item_name,
-          price: row.Clothing.item_price,
-          imageUrl: row.Clothing.item_img,
-          liked: true,
-          itemUrl: row.Clothing.item_web_listing,
-      }));
+        const parsedCards = (data as any[])
+          .filter((row) => row.Clothing)
+          .map((row) => ({
+            id: String(row.Clothing.item_id),
+            name: row.Clothing.item_name,
+            price: row.Clothing.item_price,
+            imageUrl: row.Clothing.item_img,
+            liked: true,
+            itemUrl: row.Clothing.item_web_listing,
+        }));
 
-      setAllLikedItems(parsedCards);
-    };
+        setAllLikedItems(parsedCards);
+      };
 
     aquireLikedItems(); 
   
-  }, []);
-
+    }, [])
+  );
   const { theme } = useAppTheme();
     
   const [activeTab, setActiveTab] = React.useState('liked');
@@ -94,7 +97,7 @@ const App: React.FC = () => {
     </View>
     );
   }
-
+  
   const styles = StyleSheet.create({
     container: {
       flex: 1,

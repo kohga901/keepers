@@ -5,9 +5,11 @@
  * Date: 2026-04-01
  */
 
-import React, { useRef, useState, useEffect } from "react";
+import React, { useCallback, useRef, useState, useEffect } from "react";
 import { View, Text, StyleSheet, Dimensions } from "react-native";
 import Swiper from "react-native-deck-swiper";
+import { useFocusEffect } from '@react-navigation/native';
+
 import { Image } from 'expo-image';
 import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '../../utils/supabase';
@@ -23,8 +25,8 @@ const App: React.FC = () => {
   const [cards, setCards] = useState<Item[]>([]);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+    useEffect(() => {
 
-  useEffect(() => {
     const checkSessionAndLoad = async () => {
       const { data, error } = await supabase.auth.getSession();
       if (error) {
@@ -161,6 +163,8 @@ const App: React.FC = () => {
         }}
         onSwipedRight ={async (cardIndex: number) => {
           await saveLikedItem(cards[cardIndex].id);
+          //addLikedItem(cards[cardIndex]);
+          
         }}
         disableBottomSwipe={true}
         overlayLabels={overlayLabels}
