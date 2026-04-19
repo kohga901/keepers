@@ -9,9 +9,7 @@ import { supabase } from '../utils/supabase';
 
 
 export const getClothing = async () => {
-  // const { count } = await supabase
-  //   .from('recipes')
-  //   .select('*', { count: 'exact', head: true })
+  
     const { data: userData, error: userError } = await supabase.auth.getUser();
 
     if (userError || !userData.user) {
@@ -19,10 +17,6 @@ export const getClothing = async () => {
         return;
     }
     const userId = userData.user.id;
-
-  //const count = 4732 //Only use if know exact row count
-
-  //const randomOffset = Math.floor(Math.random() * count)
 
     const{data:liked,error: likedError} = await supabase
         .from('Likes')

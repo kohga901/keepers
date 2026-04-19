@@ -1,3 +1,10 @@
+/**
+ * File: Items.ts
+ * Description: Defines the Item interface representing clothing items in the app.
+ * Author: Kai Markley
+ * Date: 2026-04-18
+ */
+
 export interface Item {
   gender?: string;
   id: string;
@@ -9,14 +16,3 @@ export interface Item {
   
   
 }
-
-export type LikedItemRow = {
-  clothes_id: string;
-  Clothing: {
-    item_id: string;
-    item_name: string;
-    item_price: string;
-    item_img: string;
-    item_web_listing: string;
-  } | null;
-};

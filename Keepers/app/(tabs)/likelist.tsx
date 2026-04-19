@@ -1,3 +1,10 @@
+/**
+ * File: likelist.tsx
+ * Description: Displays a list of items the user has liked, with tabs for liked and disliked items.
+ * Author: Kai Markley
+ * Date: 2026-04-18
+ */
+
 import React, {useCallback, useEffect, useState} from 'react';
 import { StyleSheet, Text, View, Pressable, FlatList } from 'react-native';
 import { Image } from 'expo-image';
@@ -5,6 +12,7 @@ import { useAppTheme } from '../../hooks/useAppTheme';
 import { Item } from '../../models/Items';
 import { getClothing, getLikedItems } from '@/services/dataServices';
 import { useFocusEffect } from '@react-navigation/native';
+
 const App: React.FC = () => {
   const [allLikedItems, setAllLikedItems] = useState<Item[]>([]);
     const addLikedItem = (item: Item) => {
