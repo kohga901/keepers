@@ -45,7 +45,7 @@ def load_rembg_session():
     Returns:
         A rembg session object to be passed into remove_background().
     """
-    return new_session("u2netp")
+    return new_session("u2net")
 
 
 
