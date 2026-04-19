@@ -1,33 +1,31 @@
 """
 routers/clothes.py
-Likes and dislikes here
-Defines the API routes for clothing-related operations in the Keepers app.
 
-Handles fetching clothing items for the swipe feed, recording swipe actions
-(like/dislike), and retrieving personalised recommendations. This router
-delegates business logic to the clothes service layer, which coordinates
-with the CLIP + FAISS recommendation engine.
+Defines the API routes for clothing-related operations in the Keepers app.
 
 Endpoints:
     - POST /clothes/swipe           — record a like or dislike swipe for a clothing item
-    - GET  /clothes/recommendations — return personalised recommendations based on the user's preference vector
+    - POST /clothes/recommendations — return personalised recommendations based on the user's preference vector
 """
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import numpy as np
+import json
 
+
+from db import supabase
 from services.recommendation_service import get_recommendations
-from services.Startup import EMBEDDING_DIM
+from services.Startup import EMBEDDING_DIM, item_id_to_embedding
 
 router = APIRouter(prefix="/clothes")
 
-ALPHA = 0.1     # step size for likes
-BETA  = 0.05    # step size for dislikes
+ALPHA = 0.1
+BETA  = 0.05
+
 
 # --- Request / Response models ---
 
-# Using BaseModel to desereliaze the jsons in the http requests and responses.
 class SwipeData(BaseModel):
     user_id: str
     item_id: str
@@ -43,100 +41,65 @@ class RecommendationResponse(BaseModel):
 
 # --- Helpers ---
 
+
 def _fetch_pref_vec(user_id: str) -> np.ndarray:
-    """
-    Fetches a user's preference vector from the db.
-    
-    Args:
-        - User's id.
-    
-    Returns:
-        - User's preference vector.
-    """
-    # TODO: query preferences table in DB for this user_id
-    # return np.array(row.pref_vec, dtype=np.float32)
-    return np.zeros(EMBEDDING_DIM, dtype=np.float32)
-
+    response = supabase.table("User_Preferences").select("pref_vec").eq("user_id", user_id).execute()
+    if not response.data or response.data[0]["pref_vec"] is None:
+        return np.zeros(EMBEDDING_DIM, dtype=np.float32)
+    return np.array(json.loads(response.data[0]["pref_vec"]), dtype=np.float32)
 def _update_pref_vec(pref_vec: np.ndarray, item_id: str, liked: bool) -> np.ndarray:
-    """
-    Updates a preference vector with given single item and liked status.
-
-    Args:
-        - A preference vector.
-        - item id.
-        - liked status.
-    
-    Returns:
-        - Updated preference vector.
-
-    """
-    # TODO: fetch item embedding from index by item_id
-    # item_embedding = _item_ids_to_embedding[item_id]
-    item_embedding = np.zeros(EMBEDDING_DIM, dtype=np.float32)  # stub
-
+    item_embedding = item_id_to_embedding.get(item_id)
+    if item_embedding is None:
+        return pref_vec
     if liked:
         pref_vec = pref_vec + ALPHA * item_embedding
     else:
-        pref_vec = pref_vec - BETA  * item_embedding
-
-    # Normalize after update so magnitude stays at 1.0
+        pref_vec = pref_vec - BETA * item_embedding
     norm = np.linalg.norm(pref_vec)
     if norm > 0.0:
         pref_vec = pref_vec / norm
-
     return pref_vec
 
 def _save_pref_vec(user_id: str, pref_vec: np.ndarray) -> None:
-    """
-    Upload a user's preference vector to the database.
-
-    Args:
-        - A preference vector.
-        - User id.
-    """
-    # TODO: write updated pref_vec back to preferences table in DB
-    pass
+    supabase.table("User_Preferences").upsert({
+        "user_id": user_id,
+        "pref_vec": pref_vec.tolist()
+    }).execute()
 
 def _record_swipe(user_id: str, item_id: str, liked: bool) -> None:
-    """
-    Uploads a user's like or dislike on an item to the database.
-    """
-    # TODO: insert row into swipes table in DB
-    pass
+    table = "Likes" if liked else "Dislikes"
+    supabase.table(table).upsert({
+        "user_id": user_id,
+        "clothes_id": int(item_id)
+    }).execute()
 
 def _fetch_seen_item_ids(user_id: str) -> list[str]:
-    """
-    Fetch the items that a user has swiped on from the database,
-    """
-    # TODO: query swipes table for all item_ids this user has swiped on
-    return []
+    likes    = supabase.table("Likes").select("clothes_id").eq("user_id", user_id).execute()
+    dislikes = supabase.table("Dislikes").select("clothes_id").eq("user_id", user_id).execute()
+    seen = [str(row["clothes_id"]) for row in likes.data]
+    seen += [str(row["clothes_id"]) for row in dislikes.data]
+    return seen
 
 
 # --- Endpoints ---
 
 @router.post("/swipe")
 def swipe(req: SwipeData):
-    """
-    Takes in a swipe of a user and updates their preference vector.
-        - Records the swipe to the database.
-    """
     pref_vec = _fetch_pref_vec(req.user_id)
     pref_vec = _update_pref_vec(pref_vec, req.item_id, req.liked)
     _save_pref_vec(req.user_id, pref_vec)
     _record_swipe(req.user_id, req.item_id, req.liked)
     return {"status": "ok"}
 
-
 @router.post("/recommendations")
 def recommendations(req: RecommendationRequest) -> RecommendationResponse:
-    pref_vec     = _fetch_pref_vec(req.user_id)
+    pref_vec      = _fetch_pref_vec(req.user_id)
     seen_item_ids = _fetch_seen_item_ids(req.user_id)
 
-    # Cold start — user has no preference vector yet
     if np.all(pref_vec == 0.0):
         raise HTTPException(
             status_code=400,
-            detail="User has no preference vector yet. Swipe on some items first."
+            detail="No preference data yet. Swipe on some items first."
         )
 
     results = get_recommendations(pref_vec, seen_item_ids, n=req.n)
