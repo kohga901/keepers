@@ -5,14 +5,16 @@
  * Date: 2026-04-01
  */
 
-import React, { useRef, useState, useEffect } from "react";
+import React, { useCallback, useRef, useState, useEffect } from "react";
 import { View, Text, StyleSheet, Dimensions } from "react-native";
 import Swiper from "react-native-deck-swiper";
-import { useLocalSearchParams } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
+
 import { Image } from 'expo-image';
 import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '../../utils/supabase';
 import { Item } from '../../models/Items';
+import { getClothing, saveLikedItem } from '../../services/dataServices';
 
 const { height } = Dimensions.get("window");
 const CARD_HEIGHT_RATIO = 0.7;
@@ -23,9 +25,8 @@ const App: React.FC = () => {
   const [cards, setCards] = useState<Item[]>([]);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const { focusItemId } = useLocalSearchParams<{ focusItemId?: string }>();
+    useEffect(() => {
 
-  useEffect(() => {
     const checkSessionAndLoad = async () => {
       const { data, error } = await supabase.auth.getSession();
       if (error) {
@@ -84,51 +85,6 @@ const App: React.FC = () => {
       listener.subscription.unsubscribe();
     };
   }, [])
-
-  useEffect(() => {
-    if (!isAuthenticated || !isAuthReady || !focusItemId) {
-      return;
-    }
-
-    const normalizedFocusId = String(focusItemId);
-    const existingIndex = cards.findIndex((card) => card.id === normalizedFocusId);
-
-    if (existingIndex >= 0) {
-      swiper.current?.jumpToCardIndex(existingIndex);
-      return;
-    }
-
-    const fetchFocusedItem = async () => {
-      const focusedItem = await getClothingById(normalizedFocusId);
-      if (!focusedItem) {
-        return;
-      }
-
-      const parsedItem: Item = {
-        id: String(focusedItem.item_id),
-        name: focusedItem.item_name,
-        price: focusedItem.item_price,
-        imageUrl: focusedItem.item_img,
-        liked: false,
-        itemUrl: focusedItem.item_web_listing,
-      };
-
-      setCards((previousCards) => {
-        const alreadyExists = previousCards.some((card) => card.id === parsedItem.id);
-        if (alreadyExists) {
-          return previousCards;
-        }
-
-        return [parsedItem, ...previousCards];
-      });
-
-      setTimeout(() => {
-        swiper.current?.jumpToCardIndex(0);
-      }, 0);
-    };
-
-    void fetchFocusedItem();
-  }, [cards, focusItemId, isAuthReady, isAuthenticated]);
 
   if (!isAuthReady) {
     return (
@@ -205,6 +161,11 @@ const App: React.FC = () => {
             WebBrowser.openBrowserAsync(item.itemUrl);
           }
         }}
+        onSwipedRight ={async (cardIndex: number) => {
+          await saveLikedItem(cards[cardIndex].id);
+          //addLikedItem(cards[cardIndex]);
+          
+        }}
         disableBottomSwipe={true}
         overlayLabels={overlayLabels}
         stackSize={3}
@@ -218,51 +179,6 @@ const App: React.FC = () => {
 };
 
 export default App;
-
-const getClothing = async () => {
-  // const { count } = await supabase
-  //   .from('recipes')
-  //   .select('*', { count: 'exact', head: true })
-
-  const count = 4732 //Only use if know exact row count
-
-  const randomOffset = Math.floor(Math.random() * count)
-
-  const { data, error } = await supabase
-    .from('Clothing')
-    .select('*')
-    .range(randomOffset, randomOffset + 9)
-  if (error) {
-    console.error(error)
-    return
-  }
-
-  return data
-}
-
-const getClothingById = async (itemId: string) => {
-  const numericId = Number(itemId);
-
-  const queries = Number.isFinite(numericId)
-    ? [
-        supabase.from('Clothing').select('*').eq('item_id', numericId).limit(1).maybeSingle(),
-        supabase.from('Clothing').select('*').eq('item_id', itemId).limit(1).maybeSingle(),
-      ]
-    : [supabase.from('Clothing').select('*').eq('item_id', itemId).limit(1).maybeSingle()];
-
-  for (const query of queries) {
-    const { data, error } = await query;
-    if (error || !data) {
-      continue;
-    }
-
-    return data;
-  }
-
-  return null;
-}
-
-//const map
 
 const blurhash =
   '|rF?hV%2WCj[ayj[a|j[az_NaeWBj@ayfRayfQfQM{M|azj[azf6fQfQfQIpWXofj[ayj[j[fQayWCoeoeaya}j[ayfQa{oLj?j[WVj[ayayj[fQoff7azayj[ayj[j[ayofayayayj[fQj[ayayj[ayfjj[j[ayjuayj[';

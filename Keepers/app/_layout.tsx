@@ -21,6 +21,15 @@ import { supabase } from '../utils/supabase';
 export default function RootLayout() {
   const [loaded] = useFonts({
     GeorgiaProBlack: require('../assets/fonts/GeorgiaPro-Black.ttf'),
+    GeorgiaProBlackItalic: require('../assets/fonts/GeorgiaPro-BlackItalic.ttf'),
+    GeorgiaProBold: require('../assets/fonts/GeorgiaPro-Bold.ttf'),
+    GeorgiaProBoldItalic: require('../assets/fonts/GeorgiaPro-BoldItalic.ttf'),
+    GeorgiaProItalic: require('../assets/fonts/GeorgiaPro-Italic.ttf'),
+    GeorgiaProLight: require('../assets/fonts/GeorgiaPro-Light.ttf'),
+    GeorgiaProLightItalic: require('../assets/fonts/GeorgiaPro-LightItalic.ttf'),
+    GeorgiaProRegular: require('../assets/fonts/GeorgiaPro-Regular.ttf'),
+    GeorgiaProSemiBold: require('../assets/fonts/GeorgiaPro-SemiBold.ttf'),
+    GeorgiaProSemiBoldItalic: require('../assets/fonts/GeorgiaPro-SemiBoldItalic.ttf'),
   });
   const [session, setSession] = useState<Session | null>(null);
   const [isSessionLoading, setIsSessionLoading] = useState(true);
