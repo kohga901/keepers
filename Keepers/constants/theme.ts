@@ -1,3 +1,10 @@
+/**
+ *File: theme.ts
+ *Description: Defines the AppTheme type and exports light and dark theme objects for use in the app.
+ *Author: Kai Markley
+  *Date: 2026-04-18 
+*/
+
 export type AppTheme = {
   background: string;
   surface: string;
