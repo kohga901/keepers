@@ -33,7 +33,7 @@ def get_recommendations(
     # Normalize it so the vector magnitude is 1.
     faiss.normalize_L2(pref)
 
-    # Get number of clothes to search = n + number of seen items. 
+    # Get number of clothes to search which is n + number of seen items. 
     k = min(n + len(seen_item_ids), index.ntotal)       # index.ntotal is number total items.
 
     # Getting unseen items with their respective faiss index.
@@ -42,7 +42,7 @@ def get_recommendations(
     # Seen set of items.
     seen_set = set(seen_item_ids)
 
-    # Getting the unseen items with the faiss index.
+    # Filtering out the seen items from the fetched items.
     results = [
         _item_ids[idx]
         for idx in indices[0]
