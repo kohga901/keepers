@@ -1,10 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { useHeaderHeight } from '@react-navigation/elements';
+import { Image } from 'expo-image';
+import * as WebBrowser from 'expo-web-browser';
 
 import { useAppTheme } from '../../hooks/useAppTheme';
+import nodeDataJson from '../../data/nodeData.json';
+import { getClothingById } from '../../services/dataServices';
 
 type GraphNode = {
   clothesId: number;
@@ -25,46 +29,16 @@ type ScreenNode = {
   y: number;
 };
 
+type ClothingRecord = Record<string, unknown>;
+
 const AnimatedView = Animated.createAnimatedComponent(View);
 
 const GRAPH_PADDING = 16;
 const MIN_SCALE = 1;
-const MAX_SCALE = 7;
+const MAX_SCALE = 15;
+const NODE_TAP_RADIUS = 20;
 
-const nodeData: GraphNode[] = [
-  { clothesId: 1, x: -0.92, y: 0.71 },
-  { clothesId: 2, x: -0.85, y: 0.66 },
-  { clothesId: 3, x: -0.77, y: 0.59 },
-  { clothesId: 4, x: -0.63, y: 0.52 },
-  { clothesId: 5, x: -0.54, y: 0.44 },
-  { clothesId: 6, x: -0.38, y: 0.33 },
-  { clothesId: 7, x: -0.22, y: 0.25 },
-  { clothesId: 8, x: -0.11, y: 0.14 },
-  { clothesId: 9, x: 0.02, y: 0.05 },
-  { clothesId: 10, x: 0.18, y: -0.04 },
-  { clothesId: 11, x: 0.31, y: -0.11 },
-  { clothesId: 12, x: 0.47, y: -0.22 },
-  { clothesId: 13, x: 0.59, y: -0.33 },
-  { clothesId: 14, x: 0.68, y: -0.41 },
-  { clothesId: 15, x: 0.74, y: -0.52 },
-  { clothesId: 16, x: 0.82, y: -0.61 },
-  { clothesId: 17, x: 0.89, y: -0.7 },
-  { clothesId: 18, x: -0.73, y: -0.66 },
-  { clothesId: 19, x: -0.61, y: -0.58 },
-  { clothesId: 20, x: -0.49, y: -0.51 },
-  { clothesId: 21, x: -0.36, y: -0.46 },
-  { clothesId: 22, x: -0.24, y: -0.39 },
-  { clothesId: 23, x: -0.12, y: -0.3 },
-  { clothesId: 24, x: 0.04, y: -0.2 },
-  { clothesId: 25, x: 0.14, y: -0.14 },
-  { clothesId: 26, x: 0.23, y: 0.18 },
-  { clothesId: 27, x: 0.34, y: 0.27 },
-  { clothesId: 28, x: 0.44, y: 0.36 },
-  { clothesId: 29, x: 0.52, y: 0.45 },
-  { clothesId: 30, x: 0.61, y: 0.55 },
-  { clothesId: 31, x: 0.72, y: 0.62 },
-  { clothesId: 32, x: 0.83, y: 0.71 },
-];
+const nodeData: GraphNode[] = nodeDataJson;
 
 function clampTranslation(value: number, scale: number, size: number): number {
   'worklet';
@@ -135,11 +109,30 @@ function worldToScreen(
   };
 }
 
+function getStringField(record: ClothingRecord | null, keys: string[]): string {
+  if (!record) {
+    return '';
+  }
+
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value;
+    }
+  }
+
+  return '';
+}
+
 export default function Graph() {
   const { theme } = useAppTheme();
   const headerHeight = useHeaderHeight();
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
+  const [selectedItem, setSelectedItem] = useState<ClothingRecord | null>(null);
+  const [isLoadingItem, setIsLoadingItem] = useState(false);
+  const [itemError, setItemError] = useState<string | null>(null);
+  const activeRequestId = useRef(0);
 
   const scale = useSharedValue(1);
   const pinchStartScale = useSharedValue(1);
@@ -182,6 +175,7 @@ export default function Graph() {
   });
 
   const panGesture = Gesture.Pan()
+    .minDistance(10)
     .onBegin(() => {
       panStartX.value = translateX.value;
       panStartY.value = translateY.value;
@@ -210,13 +204,125 @@ export default function Graph() {
       translateY.value = clampTranslation(translateY.value, nextScale, viewportHeight.value);
     });
 
-  const combinedGesture = Gesture.Simultaneous(panGesture, pinchGesture);
-
   const onViewportLayout = (event: LayoutChangeEvent) => {
     const { width, height } = event.nativeEvent.layout;
     setViewport({ width, height });
     viewportWidth.value = Math.max(width, 1);
     viewportHeight.value = Math.max(height, 1);
+  };
+
+  const handleNodePress = async (node: GraphNode) => {
+    setSelectedNode(node);
+    setItemError(null);
+    setIsLoadingItem(true);
+
+    const requestId = activeRequestId.current + 1;
+    activeRequestId.current = requestId;
+
+    try {
+      const clothing = await getClothingById(String(node.clothesId));
+      if (activeRequestId.current !== requestId) {
+        return;
+      }
+
+      if (!clothing) {
+        setSelectedItem(null);
+        setItemError(`No clothing item found for ID ${node.clothesId}.`);
+        return;
+      }
+
+      setSelectedItem(clothing as ClothingRecord);
+    } catch {
+      if (activeRequestId.current !== requestId) {
+        return;
+      }
+
+      setSelectedItem(null);
+      setItemError('Failed to load clothing item details.');
+    } finally {
+      if (activeRequestId.current === requestId) {
+        setIsLoadingItem(false);
+      }
+    }
+  };
+
+  const handleGraphTap = useCallback(
+    (tapX: number, tapY: number) => {
+      if (viewport.width === 0 || viewport.height === 0 || screenNodes.length === 0) {
+        return;
+      }
+
+      const currentScale = scale.value;
+      const currentTranslateX = translateX.value;
+      const currentTranslateY = translateY.value;
+      const centerX = viewport.width / 2;
+      const centerY = viewport.height / 2;
+
+      let closestNode: GraphNode | null = null;
+      let closestDistanceSquared = Number.POSITIVE_INFINITY;
+
+      for (const { node, x, y } of screenNodes) {
+        const transformedX = (x - centerX) * currentScale + centerX + currentTranslateX;
+        const transformedY = (y - centerY) * currentScale + centerY + currentTranslateY;
+        const deltaX = tapX - transformedX;
+        const deltaY = tapY - transformedY;
+        const distanceSquared = deltaX * deltaX + deltaY * deltaY;
+
+        if (distanceSquared < closestDistanceSquared) {
+          closestDistanceSquared = distanceSquared;
+          closestNode = node;
+        }
+      }
+
+      if (!closestNode || closestDistanceSquared > NODE_TAP_RADIUS * NODE_TAP_RADIUS) {
+        return;
+      }
+
+      handleNodePress(closestNode).catch(() => {
+        // Errors are already handled in handleNodePress state.
+      });
+    },
+    [handleNodePress, scale, screenNodes, translateX, translateY, viewport.height, viewport.width],
+  );
+
+  const tapGesture = Gesture.Tap()
+    .maxDistance(12)
+    .onEnd((event, success) => {
+      if (!success) {
+        return;
+      }
+
+      runOnJS(handleGraphTap)(event.x, event.y);
+    });
+
+  const combinedGesture = Gesture.Simultaneous(panGesture, pinchGesture, tapGesture);
+
+  const selectedItemName = useMemo(() => {
+    return getStringField(selectedItem, ['item_name', 'name']);
+  }, [selectedItem]);
+
+  const selectedItemPrice = useMemo(() => {
+    return getStringField(selectedItem, ['item_price', 'price']);
+  }, [selectedItem]);
+
+  const selectedItemImage = useMemo(() => {
+    return getStringField(selectedItem, ['item_img', 'imageUrl', 'image_url']);
+  }, [selectedItem]);
+
+  const selectedItemUrl = useMemo(() => {
+    return getStringField(selectedItem, ['item_web_listing', 'itemUrl', 'item_url', 'url']);
+  }, [selectedItem]);
+
+  const onPricePress = async () => {
+    if (!selectedItemUrl) {
+      return;
+    }
+
+    try {
+      await WebBrowser.openBrowserAsync(selectedItemUrl);
+    } catch {
+      setItemError('Unable to open product link.');
+    }
   };
 
   return (
@@ -233,25 +339,77 @@ export default function Graph() {
 
       <Text style={[styles.helpText, { color: theme.text }]}>Source: local JSON file</Text>
 
-      <GestureDetector gesture={combinedGesture}>
-        <View style={styles.graphViewport} onLayout={onViewportLayout}>
+      <View style={styles.graphViewport} onLayout={onViewportLayout}>
+        <GestureDetector gesture={combinedGesture}>
           <AnimatedView style={[styles.graphLayer, transformStyle]}>
             {screenNodes.map(({ node, x, y }) => (
-              <Pressable
+              <View
                 key={node.clothesId}
                 style={[
                   styles.nodeDot,
+                  selectedNode?.clothesId === node.clothesId ? styles.nodeDotSelected : null,
                   {
-                    left: x - 4,
-                    top: y - 4,
+                    left: x - 1,
+                    top: y - 1,
                   },
                 ]}
-                onPress={() => setSelectedNode(node)}
               />
             ))}
           </AnimatedView>
-        </View>
-      </GestureDetector>
+        </GestureDetector>
+
+          {isLoadingItem ? (
+            <View style={styles.popupContainer} pointerEvents="box-none">
+              <Text style={styles.loadingText}>Loading item details...</Text>
+            </View>
+          ) : null}
+
+          {itemError ? (
+            <View style={styles.popupContainer} pointerEvents="box-none">
+              <Text style={styles.errorText}>{itemError}</Text>
+            </View>
+          ) : null}
+
+          {selectedItem ? (
+            <View style={styles.popupContainer} pointerEvents="box-none">
+              <View style={styles.itemCard}>
+                <View style={styles.imageContainer}>
+                  {selectedItemImage ? (
+                    <Image
+                      style={styles.itemImage}
+                      source={{ uri: selectedItemImage }}
+                      contentFit="cover"
+                      transition={300}
+                    />
+                  ) : (
+                    <View style={styles.imageFallback}>
+                      <Text style={styles.imageFallbackText}>No image</Text>
+                    </View>
+                  )}
+                </View>
+
+                <View style={styles.itemInfo}>
+                  <Text style={styles.itemName} numberOfLines={2}>
+                    {selectedItemName || 'Unnamed item'}
+                  </Text>
+                  <Pressable
+                    onPress={() => {
+                      onPricePress().catch(() => {
+                        setItemError('Unable to open product link.');
+                      });
+                    }}
+                    disabled={!selectedItemUrl}
+                    hitSlop={8}
+                  >
+                    <Text style={[styles.itemPrice, !selectedItemUrl ? styles.itemPriceDisabled : null]}>
+                      {selectedItemPrice || 'Price unavailable'}
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          ) : null}
+      </View>
 
       <View style={styles.footerRow}>
         <Text style={[styles.footerText, { color: theme.text }]}>Pinch to zoom • Drag to pan</Text>
@@ -304,11 +462,22 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
   nodeDot: {
-    backgroundColor: '#1D4ED8',
-    borderRadius: 4,
-    height: 8,
+    backgroundColor: '#4caf85',
+    borderRadius: 1,
+    height: 2,
     position: 'absolute',
-    width: 8,
+    width: 2,
+  },
+  nodeDotSelected: {
+    backgroundColor: '#FF6B35',
+    borderColor: '#FFE9DF',
+    borderWidth: 0.5,
+  },
+  popupContainer: {
+    left: 8,
+    position: 'absolute',
+    right: 8,
+    top: 8,
   },
   footerRow: {
     marginTop: 10,
@@ -323,5 +492,81 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     marginTop: 6,
+  },
+  loadingText: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderRadius: 8,
+    color: '#0B5FFF',
+    fontSize: 12,
+    fontWeight: '600',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  errorText: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderRadius: 8,
+    color: '#B3261E',
+    fontSize: 12,
+    fontWeight: '600',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  itemCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.97)',
+    borderColor: '#E8E8E8',
+    borderRadius: 10,
+    borderWidth: 1,
+    flexDirection: 'row',
+    minHeight: 120,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+  },
+  imageContainer: {
+    borderTopLeftRadius: 10,
+    borderBottomLeftRadius: 10,
+    overflow: 'hidden',
+    width: 110,
+  },
+  itemImage: {
+    backgroundColor: '#F1F5F9',
+    height: 120,
+    width: 110,
+  },
+  imageFallback: {
+    alignItems: 'center',
+    backgroundColor: '#F1F5F9',
+    height: 120,
+    justifyContent: 'center',
+    width: 110,
+  },
+  imageFallbackText: {
+    color: '#64748B',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  itemInfo: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  itemName: {
+    color: '#0F172A',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  itemPrice: {
+    color: '#007AFF',
+    fontSize: 16,
+    fontWeight: '600',
+    marginTop: 6,
+    textDecorationLine: 'underline',
+  },
+  itemPriceDisabled: {
+    color: '#64748B',
+    textDecorationLine: 'none',
   },
 });
