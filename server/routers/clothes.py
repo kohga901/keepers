@@ -18,7 +18,6 @@ import random
 
 from db import supabase
 from services.recommendation_service import get_recommendations
-from services.Startup import EMBEDDING_DIM, item_id_to_embedding
 
 router = APIRouter(prefix="/clothes")
 
@@ -37,12 +36,24 @@ class RecommendationRequest(BaseModel):
     user_id: str
     n: int = 10
 
+class ClothingItem(BaseModel):
+    item_id: int
+    item_name: str
+    item_price: str | None
+    item_gender: str | None
+    item_img: str | None
+    item_web_listing: str | None
+
 class RecommendationResponse(BaseModel):
-    recommendations: list[str]
+    recommendations: list[ClothingItem]
 
 
 # --- Helpers ---
-
+def _fetch_clothing_items(item_ids: list[str]) -> list[dict]:
+    response = supabase.table("Clothing").select("*").in_("item_id", [int(i) for i in item_ids]).execute()
+    # preserve the order FAISS returned
+    order = {int(i): idx for idx, i in enumerate(item_ids)}
+    return sorted(response.data, key=lambda x: order.get(x["item_id"], 999))
 
 def _fetch_pref_vec(user_id: str) -> np.ndarray:
     """
@@ -149,20 +160,22 @@ def swipe(req: SwipeData):
 
 @router.post("/recommendations")
 def recommendations(req: RecommendationRequest) -> RecommendationResponse:
-    """
-    End point for requesting new recommendations for client.
-        - Fetches the user's pref_vec
-        - Fetches the seen items of the user
-        - If user has no pref_vec yet, return n random items.
-    """
     pref_vec      = _fetch_pref_vec(req.user_id)
     seen_item_ids = _fetch_seen_item_ids(req.user_id)
 
-    # If user has no pref_vec, return n random items.
     if np.all(pref_vec == 0.0):
-        
         random_ids = random.sample(_item_ids, k=min(req.n, len(_item_ids)))
-        return RecommendationResponse(recommendations=random_ids)
+        items = _fetch_clothing_items(random_ids)
+        return RecommendationResponse(recommendations=items)
 
     results = get_recommendations(pref_vec, seen_item_ids, n=req.n)
-    return RecommendationResponse(recommendations=results)
+    items   = _fetch_clothing_items(results)
+    return RecommendationResponse(recommendations=items)
+
+@router.post("/recommendations/debug")
+def recommendations_debug(req: RecommendationRequest):
+    from services.recommendation_service import get_recommendations_with_scores
+    pref_vec = _fetch_pref_vec(req.user_id)
+    seen_item_ids = _fetch_seen_item_ids(req.user_id)
+    results = get_recommendations_with_scores(pref_vec, seen_item_ids, n=req.n)
+    return {"recommendations": [{"item_id": r[0], "score": r[1]} for r in results]}
