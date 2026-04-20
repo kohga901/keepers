@@ -171,3 +171,11 @@ def recommendations(req: RecommendationRequest) -> RecommendationResponse:
     results = get_recommendations(pref_vec, seen_item_ids, n=req.n)
     items   = _fetch_clothing_items(results)
     return RecommendationResponse(recommendations=items)
+
+@router.post("/recommendations/debug")
+def recommendations_debug(req: RecommendationRequest):
+    from services.recommendation_service import get_recommendations_with_scores
+    pref_vec = _fetch_pref_vec(req.user_id)
+    seen_item_ids = _fetch_seen_item_ids(req.user_id)
+    results = get_recommendations_with_scores(pref_vec, seen_item_ids, n=req.n)
+    return {"recommendations": [{"item_id": r[0], "score": r[1]} for r in results]}
