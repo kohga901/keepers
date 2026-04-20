@@ -50,4 +50,24 @@ def get_recommendations(
     ]
 
     return results[:n]
+
+def get_recommendations_with_scores(
+    pref_vec: np.ndarray,
+    seen_item_ids: list[str],
+    n: int = 20
+) -> list[tuple[str, float]]:
+    pref = np.array(pref_vec, dtype=np.float32).reshape(1, EMBEDDING_DIM)
+    faiss.normalize_L2(pref)
+
+    k = min(n + len(seen_item_ids), index.ntotal)
+    scores, indices = index.search(pref, k=k)
+
+    seen_set = set(seen_item_ids)
+    results = [
+        (_item_ids[idx], float(scores[0][i]))
+        for i, idx in enumerate(indices[0])
+        if _item_ids[idx] not in seen_set
+    ]
+
+    return results[:n]
     
