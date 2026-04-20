@@ -1,11 +1,43 @@
+# Generated artifacts
+artifacts/
+*.npy
+
+# FAISS indexes
+*.index
+faiss_index/
+
+# Model weights and checkpoints (CLIP, torch)
+*.pt
+*.pth
+*.bin
+*.onnx
+*.pkl
+models/
+checkpoints/
+
+
+# Torch / HuggingFace model cache
+.cache/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.env
+venv/
+.venv/
+
 # OS
 .DS_Store
 Thumbs.db
 
-# Editors
-.vscode/
+# IDEs
 .idea/
-
-# Environment variables
-.env
-.env.*
+.vscode/

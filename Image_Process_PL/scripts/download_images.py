@@ -60,7 +60,7 @@ def load_urls_from_csv(csv_path: str) -> list[tuple[str, str]]:
     items = []
 
     # Open the csv file.
-    with open(csv_path, newline="") as f:
+    with open(csv_path, newline="", encoding="utf-8") as f:
 
         # Make a csv reader.
         reader = csv.DictReader(f)
