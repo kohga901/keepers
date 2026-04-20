@@ -1,6 +1,7 @@
 import csv
 import json
-
+# This script is written as a testing script. 
+# Ensures that ALL of the JSON is synchronized from the CSV
 # Get IDs from CSV
 csv_ids = set()
 with open("Clothing_rows.csv", "r") as f:
