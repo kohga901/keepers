@@ -1,6 +1,10 @@
 import pandas as pd
 from pathlib import Path
+"""
+CSVtoJSON.py
 
+Turns CSV to JSON, used for Clothing_rows.csv
+"""
 src = Path("./")
 dst = Path("./JSON")
 

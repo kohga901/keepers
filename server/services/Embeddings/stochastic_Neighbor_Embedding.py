@@ -4,7 +4,11 @@ import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
 from matplotlib.colors import ListedColormap
 from sklearn.decomposition import PCA
+"""
+stochastic_Neighbor_Embedding.py.py
 
+This script visualizes AND adds the embeddings to our JSON folder
+"""
 # T-distributed Stochastic Neighbor Embedding
 
 

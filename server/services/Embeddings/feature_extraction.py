@@ -12,6 +12,8 @@ import numpy as np
 
 
 """
+feature_extraction.py
+
 Clip is OpenAi's clip model from github, gets an embedding for 
 each file in the folder of scraped clothing and saves it to an npy
 """
