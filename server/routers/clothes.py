@@ -18,7 +18,6 @@ import random
 
 from db import supabase
 from services.recommendation_service import get_recommendations
-from services.Startup import EMBEDDING_DIM, item_id_to_embedding
 
 router = APIRouter(prefix="/clothes")
 
@@ -36,9 +35,6 @@ class SwipeData(BaseModel):
 class RecommendationRequest(BaseModel):
     user_id: str
     n: int = 10
-
-class RecommendationResponse(BaseModel):
-    recommendations: list[str]
 
 class ClothingItem(BaseModel):
     item_id: int
@@ -168,7 +164,6 @@ def recommendations(req: RecommendationRequest) -> RecommendationResponse:
     seen_item_ids = _fetch_seen_item_ids(req.user_id)
 
     if np.all(pref_vec == 0.0):
-        import random
         random_ids = random.sample(_item_ids, k=min(req.n, len(_item_ids)))
         items = _fetch_clothing_items(random_ids)
         return RecommendationResponse(recommendations=items)
