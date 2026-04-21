@@ -43,8 +43,10 @@ type PlotSize = {
 	height: number;
 };
 
+// Raw graph data loaded from the generated node dataset.
 const RAW_NODE_DATA: unknown = require('../../data/nodeData.json');
 
+// Utility helpers used by both the WebView graph and the React overlay.
 function clamp(value: number, min: number, max: number): number {
 	if (min > max) {
 		return min;
@@ -53,6 +55,7 @@ function clamp(value: number, min: number, max: number): number {
 	return Math.max(min, Math.min(max, value));
 }
 
+// Convert the JSON payload into a predictable list of graph points.
 function normalizeNodeData(raw: unknown): NodePoint[] {
 	const source = (raw as { default?: unknown })?.default ?? raw;
 	if (!Array.isArray(source)) {
@@ -77,6 +80,7 @@ function normalizeNodeData(raw: unknown): NodePoint[] {
 		);
 }
 
+// Find the outer world-space bounds so the graph can be framed on load.
 function calculateBounds(points: NodePoint[]): Bounds | null {
 	if (points.length === 0) {
 		return null;
@@ -97,6 +101,7 @@ function calculateBounds(points: NodePoint[]): Bounds | null {
 	return { minX, maxX, minY, maxY };
 }
 
+// Build the HTML and canvas renderer that run inside the WebView.
 function buildPlotHtml(points: NodePoint[], bounds: Bounds, colors: {
 	background: string;
 	grid: string;
@@ -113,6 +118,7 @@ function buildPlotHtml(points: NodePoint[], bounds: Bounds, colors: {
 <!doctype html>
 <html>
 <head>
+	<!-- WebView page setup and full-screen canvas styling. -->
 	<meta charset="utf-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
 	<style>
@@ -150,6 +156,7 @@ function buildPlotHtml(points: NodePoint[], bounds: Bounds, colors: {
 			const canvas = document.getElementById('plot');
 			const ctx = canvas.getContext('2d');
 
+			// Camera state tracks pan, zoom, and which node is selected.
 			const camera = {
 				centerX: (BOUNDS.minX + BOUNDS.maxX) * 0.5,
 				centerY: (BOUNDS.minY + BOUNDS.maxY) * 0.5,
@@ -157,6 +164,7 @@ function buildPlotHtml(points: NodePoint[], bounds: Bounds, colors: {
 				selectedId: null,
 			};
 
+			// Touch bookkeeping keeps pan, pinch, and tap behavior separated.
 			const touchState = {
 				points: new Map(),
 				mode: 'none',
@@ -166,6 +174,7 @@ function buildPlotHtml(points: NodePoint[], bounds: Bounds, colors: {
 				maxMovement: 0,
 			};
 
+			// Mouse bookkeeping mirrors the touch tap/pan behavior on desktop.
 			const mouseState = {
 				down: false,
 				moved: 0,
@@ -173,12 +182,14 @@ function buildPlotHtml(points: NodePoint[], bounds: Bounds, colors: {
 				lastY: 0,
 			};
 
+			// Canvas size and draw scheduling state.
 			let width = 1;
 			let height = 1;
 			let dpr = Math.max(1, window.devicePixelRatio || 1);
 			let rafPending = false;
 			let lastAnchorSent = null;
 
+			// Bridge messages go back to React Native when selection changes.
 			function postMessage(payload) {
 				if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
 					window.ReactNativeWebView.postMessage(JSON.stringify(payload));
@@ -231,6 +242,7 @@ function buildPlotHtml(points: NodePoint[], bounds: Bounds, colors: {
 				return base * magnitude;
 			}
 
+			// Keep the canvas resolution aligned with the visible viewport.
 			function configureCanvas() {
 				dpr = Math.max(1, window.devicePixelRatio || 1);
 				width = Math.max(1, window.innerWidth);
@@ -242,6 +254,7 @@ function buildPlotHtml(points: NodePoint[], bounds: Bounds, colors: {
 				ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 			}
 
+			// Batch redraws so drag and pinch updates stay smooth.
 			function scheduleDraw() {
 				if (rafPending) return;
 				rafPending = true;
@@ -251,6 +264,7 @@ function buildPlotHtml(points: NodePoint[], bounds: Bounds, colors: {
 				});
 			}
 
+			// Draw the background grid and axis lines behind the points.
 			function drawGrid() {
 				const s = scale();
 				const worldStep = niceStep(90 / s);
@@ -293,13 +307,9 @@ function buildPlotHtml(points: NodePoint[], bounds: Bounds, colors: {
 				ctx.moveTo(yAxisX, 0);
 				ctx.lineTo(yAxisX, height);
 				ctx.stroke();
-
-				ctx.fillStyle = COLORS.text;
-				ctx.font = '12px sans-serif';
-				ctx.fillText('x', width - 14, Math.max(14, xAxisY - 6));
-				ctx.fillText('y', Math.max(6, yAxisX + 6), 14);
 			}
 
+			// Send the current anchor position for the selected node back to React.
 			function sendSelectedAnchor(clothesId, x, y) {
 				if (!Number.isFinite(clothesId) || !Number.isFinite(x) || !Number.isFinite(y)) {
 					return;
@@ -318,6 +328,7 @@ function buildPlotHtml(points: NodePoint[], bounds: Bounds, colors: {
 				postMessage({ type: 'selectedAnchor', clothesId, screenX: x, screenY: y });
 			}
 
+			// Render all visible points and remember the selected point's screen position.
 			function drawPoints() {
 				let selectedScreen = null;
 
@@ -341,6 +352,7 @@ function buildPlotHtml(points: NodePoint[], bounds: Bounds, colors: {
 				return selectedScreen;
 			}
 
+			// Clear, redraw, and notify React when the selected anchor moves or disappears.
 			function draw() {
 				sanitizeCamera();
 				ctx.clearRect(0, 0, width, height);
@@ -357,6 +369,7 @@ function buildPlotHtml(points: NodePoint[], bounds: Bounds, colors: {
 				}
 			}
 
+			// Find the closest point to a tap location in screen space.
 			function findNearestPoint(sx, sy) {
 				let winnerPoint = null;
 				let winnerScreenX = 0;
@@ -390,6 +403,7 @@ function buildPlotHtml(points: NodePoint[], bounds: Bounds, colors: {
 				};
 			}
 
+			// Handle a tap by selecting the nearest node or clearing the selection.
 			function selectPointFromTap(sx, sy) {
 				const nearest = findNearestPoint(sx, sy);
 				if (!nearest) {
@@ -411,6 +425,7 @@ function buildPlotHtml(points: NodePoint[], bounds: Bounds, colors: {
 				scheduleDraw();
 			}
 
+			// Touch helpers for pan and pinch gesture tracking.
 			function getTwoActiveTouches() {
 				const values = Array.from(touchState.points.values());
 				if (values.length < 2) return null;
@@ -451,6 +466,7 @@ function buildPlotHtml(points: NodePoint[], bounds: Bounds, colors: {
 				return touchState.points.size;
 			}
 
+			// Touch listeners support pan, pinch zoom, and tap selection.
 			canvas.addEventListener('touchstart', function (event) {
 				event.preventDefault();
 				for (let i = 0; i < event.changedTouches.length; i += 1) {
@@ -587,6 +603,7 @@ function buildPlotHtml(points: NodePoint[], bounds: Bounds, colors: {
 			canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
 			canvas.addEventListener('touchcancel', handleTouchEnd, { passive: false });
 
+			// Wheel zoom keeps the pointer location anchored while scaling.
 			canvas.addEventListener('wheel', function (event) {
 				event.preventDefault();
 				const oldScale = scale();
@@ -601,6 +618,7 @@ function buildPlotHtml(points: NodePoint[], bounds: Bounds, colors: {
 				scheduleDraw();
 			}, { passive: false });
 
+			// Desktop mouse support mirrors the touch interactions above.
 			canvas.addEventListener('mousedown', function (event) {
 				mouseState.down = true;
 				mouseState.moved = 0;
@@ -632,11 +650,13 @@ function buildPlotHtml(points: NodePoint[], bounds: Bounds, colors: {
 				}
 			});
 
+			// Recompute the canvas size whenever the viewport changes.
 			window.addEventListener('resize', function () {
 				configureCanvas();
 				scheduleDraw();
 			});
 
+			// Start with the graph framed to the available viewport.
 			(function initZoom() {
 				const rangeX = Math.max(1e-9, BOUNDS.maxX - BOUNDS.minX);
 				const rangeY = Math.max(1e-9, BOUNDS.maxY - BOUNDS.minY);
@@ -652,6 +672,7 @@ function buildPlotHtml(points: NodePoint[], bounds: Bounds, colors: {
 				sanitizeCamera();
 			})();
 
+			// React Native can call this to clear the current selection.
 			window.__keepersClearSelection = function () {
 				camera.selectedId = null;
 				lastAnchorSent = null;
@@ -669,6 +690,7 @@ function buildPlotHtml(points: NodePoint[], bounds: Bounds, colors: {
 export default function GraphTab() {
 	const { theme } = useAppTheme();
 
+	// Local UI state for the selected point and the item details popup.
 	const [selectedPointId, setSelectedPointId] = useState<number | null>(null);
 	const [selectedAnchor, setSelectedAnchor] = useState<SelectedAnchor | null>(null);
 	const [plotSize, setPlotSize] = useState<PlotSize>({ width: 0, height: 0 });
@@ -679,9 +701,11 @@ export default function GraphTab() {
 	const webViewRef = useRef<WebView>(null);
 	const itemCacheRef = useRef<Map<number, SelectedItem>>(new Map());
 
+	// Normalize the dataset once and derive the graph bounds from it.
 	const points = useMemo(() => normalizeNodeData(RAW_NODE_DATA), []);
 	const bounds = useMemo(() => calculateBounds(points), [points]);
 
+	// Rebuild the WebView HTML whenever the theme colors or bounds change.
 	const webContent = useMemo(() => {
 		if (!bounds) {
 			return '';
@@ -697,6 +721,7 @@ export default function GraphTab() {
 		});
 	}, [bounds, points, theme.background, theme.primary]);
 
+	// Load the selected item's metadata and cache it for repeat taps.
 	useEffect(() => {
 		if (selectedPointId == null) {
 			setSelectedItem(null);
@@ -760,6 +785,7 @@ export default function GraphTab() {
 		};
 	}, [selectedPointId]);
 
+	// Convert the graph anchor into an on-screen popup position.
 	const popupPosition = useMemo(() => {
 		if (!selectedAnchor || plotSize.width <= 0 || plotSize.height <= 0) {
 			return null;
@@ -796,6 +822,7 @@ export default function GraphTab() {
 		};
 	}, [plotSize.height, plotSize.width, selectedAnchor, selectedItem]);
 
+	// Clear the React selection and tell the WebView to do the same.
 	const clearSelection = () => {
 		setSelectedPointId(null);
 		setSelectedAnchor(null);
@@ -805,11 +832,13 @@ export default function GraphTab() {
 		webViewRef.current?.injectJavaScript('window.__keepersClearSelection && window.__keepersClearSelection(); true;');
 	};
 
+	// Track the rendered size of the plot area so the popup can be clamped.
 	const onPlotLayout = (event: LayoutChangeEvent) => {
 		const { width, height } = event.nativeEvent.layout;
 		setPlotSize({ width, height });
 	};
 
+	// Receive selection and anchor updates from the WebView renderer.
 	const handleWebMessage = (event: WebViewMessageEvent) => {
 		try {
 			const payload = JSON.parse(event.nativeEvent.data) as {
@@ -862,6 +891,7 @@ export default function GraphTab() {
 		}
 	};
 
+	// Empty-state view when there is no usable graph data.
 	if (!bounds || points.length === 0) {
 		return (
 			<View style={[styles.centered, { backgroundColor: theme.background }]}>
@@ -870,8 +900,10 @@ export default function GraphTab() {
 		);
 	}
 
+	// Main graph screen: WebView plot plus floating details popup and title bar.
 	return (
 		<View style={[styles.container, { backgroundColor: theme.background }]}>
+			{/* Plot canvas lives inside the WebView so rendering stays smooth. */}
 			<View style={styles.plotWrap} onLayout={onPlotLayout}>
 				<WebView
 					ref={webViewRef}
@@ -883,6 +915,7 @@ export default function GraphTab() {
 					style={styles.webView}
 				/>
 
+				{/* Floating popup shows the selected node's item metadata. */}
 				{selectedPointId != null && popupPosition ? (
 					<View pointerEvents="box-none" style={styles.popupLayer}>
 						<View
@@ -956,6 +989,7 @@ export default function GraphTab() {
 				) : null}
 			</View>
 
+			{/* Small overlay explains how to use the graph. */}
 			<View style={[styles.overlayTop, { borderColor: theme.border }]}> 
 				<Text style={styles.overlayTitle}>Interactive Style Map</Text>
 				<Text style={styles.overlaySubtitle}>Pinch to zoom, drag to pan, tap a node for item details.</Text>
