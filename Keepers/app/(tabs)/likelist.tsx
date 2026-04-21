@@ -115,14 +115,14 @@ const App: React.FC = () => {
                         transition={1000}
                       />
                       <View style={styles.itemInfo}>
-                        <Text style={[styles.itemName, { color: theme.text }]}>
+                        <Text style={[styles.itemName, { color: 'black' }, { fontFamily: 'GeorgiaProSemiBold', fontSize: 18 }]}>
                           {item.name}
                         </Text>
                         <View style={styles.priceGenderRow}>
-                          <Text style={[styles.itemPrice, { color: theme.text }]}>
+                          <Text style={[styles.itemPrice, { color: 'blue' }, { fontFamily: 'GeorgiaProSemiBold' }]}>
                             {item.price}
                           </Text>
-                          <Text style={[styles.itemGender, { color: theme.text }]}>
+                          <Text style={[styles.itemGender, { color: 'black' }, { fontFamily: 'GeorgiaProSemiBold' }]}>
                             {item.gender.toUpperCase()}
                           </Text>
                         </View>
@@ -165,7 +165,7 @@ const App: React.FC = () => {
                           }
                           
                         }}>
-                          <Text style={styles.closeButtonText}>Go to Website</Text>
+                          <Text style={styles.closeButtonText}>Go to Store Page</Text>
                         </Pressable>
                       </View>
                     </>
@@ -230,6 +230,7 @@ const styles = StyleSheet.create({
     padding: 12,
     justifyContent: 'flex-start',
     marginLeft: 10,
+    
   },
   itemName: {
     fontSize: 16,
@@ -279,9 +280,10 @@ const styles = StyleSheet.create({
   },
 
   modalImage: {
-    width: 200,
-    height: 200,
+    width: '100%',
+    height: 300,
     marginBottom: 10,
+    borderRadius: 15,
   },
   textAndButtonContainer: {
     backgroundColor: '#4caf85',
@@ -298,9 +300,10 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   closeButtonText: {
-    color: 'red',
+    color: 'Black',
     fontSize: 16,
     fontWeight: 'bold',
+    fontFamily: 'GeorgiaProSemiBold',
   },
   deleteAction: {
     backgroundColor: 'red',
