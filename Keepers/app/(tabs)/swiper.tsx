@@ -163,7 +163,6 @@ const App: React.FC = () => {
         }}
         onSwipedRight ={async (cardIndex: number) => {
           await saveLikedItem(cards[cardIndex].id);
-          //addLikedItem(cards[cardIndex]);
           
         }}
         disableBottomSwipe={true}
