@@ -125,19 +125,21 @@ const App: React.FC = () => {
                           style={styles.modalImage}
                           source={{ uri: selectedItem.imageUrl }}
                         />
-                        <View style={{ height: 1, backgroundColor: theme.background, width: '100%', marginVertical: 10 }} />
-                        <Text style={{ color: theme.text, fontSize: 18 }}>
-                          {selectedItem.name}
-                        </Text>
-                        <Text style={{ color: theme.text }}>
-                          {selectedItem.price}
-                        </Text>
+                        <View style={styles.textAndButtonContainer}>
+                          <View style={{ height: 1, backgroundColor: theme.background, width: '100%', marginVertical: 10 }} />
+                          <Text style={{ color: theme.headerBg, fontSize: 18 ,fontWeight: '600', fontFamily: 'GeorgiaProSemiBold' }}>
+                            {selectedItem.name}
+                          </Text>
+                          <Text style={{ color: theme.headerBg, fontFamily: 'GeorgiaProSemiBold'  }}>
+                            {selectedItem.price}
+                          </Text>
+
+                          <Pressable style={styles.closeButton} onPress={() => setModalVisible(false)}>
+                            <Text style={styles.closeButtonText}>Close</Text>
+                          </Pressable>
+                        </View>
                       </>
                     )}
-
-                    <Pressable onPress={() => setModalVisible(false)}>
-                      <Text style={{ color: 'red', marginTop: 10 }}>Close</Text>
-                    </Pressable>
                   </View>
                 </View>
               </Modal>
@@ -231,7 +233,7 @@ const App: React.FC = () => {
       width: '80%',
       padding: 20,
       backgroundColor: 'white',
-      borderRadius: 10,
+      borderRadius: 20,
       alignItems: 'center',
     },
 
@@ -239,6 +241,25 @@ const App: React.FC = () => {
       width: 200,
       height: 200,
       marginBottom: 10,
+    },
+    textAndButtonContainer: {
+      backgroundColor: '#4caf85',
+      padding: 10,
+      borderRadius: 10,
+      width: '100%',
+      alignItems: 'center',
+    },
+    closeButton: {
+      backgroundColor: '#fff',
+      paddingVertical: 10,
+      paddingHorizontal: 20,
+      borderRadius: 10,
+      marginTop: 20,
+    },
+    closeButtonText: {
+      color: 'red',
+      fontSize: 16,
+      fontWeight: 'bold',
     },
   });
 export default App;
