@@ -1,632 +1,1131 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
-import { LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
-import { useHeaderHeight } from '@react-navigation/elements';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+	ActivityIndicator,
+	LayoutChangeEvent,
+	Pressable,
+	StyleSheet,
+	Text,
+	View,
+} from 'react-native';
 import { Image } from 'expo-image';
-import * as WebBrowser from 'expo-web-browser';
+import { WebView, WebViewMessageEvent } from 'react-native-webview';
 
 import { useAppTheme } from '../../hooks/useAppTheme';
-import nodeDataJson from '../../data/nodeData.json';
 import { getClothingById } from '../../services/dataServices';
 
-type GraphNode = {
-  clothesId: number;
-  x: number;
-  y: number;
+type NodePoint = {
+	clothesId: number;
+	x: number;
+	y: number;
 };
 
 type Bounds = {
-  minX: number;
-  maxX: number;
-  minY: number;
-  maxY: number;
+	minX: number;
+	maxX: number;
+	minY: number;
+	maxY: number;
 };
 
-type ScreenNode = {
-  node: GraphNode;
-  x: number;
-  y: number;
+type SelectedItem = {
+	id: string;
+	name: string;
+	price: string;
+	imageUrl: string;
 };
 
-type ClothingRecord = Record<string, unknown>;
+type SelectedAnchor = {
+	x: number;
+	y: number;
+};
 
-const AnimatedView = Animated.createAnimatedComponent(View);
+type PlotSize = {
+	width: number;
+	height: number;
+};
 
-const GRAPH_PADDING = 16;
-const MIN_SCALE = 1;
-const MAX_SCALE = 15;
-const NODE_TAP_RADIUS = 24;
+const RAW_NODE_DATA: unknown = require('../../data/nodeData.json');
 
-const nodeData: GraphNode[] = nodeDataJson;
+function clamp(value: number, min: number, max: number): number {
+	if (min > max) {
+		return min;
+	}
 
-function clampTranslation(value: number, scale: number, size: number): number {
-  'worklet';
-  const maxOffset = ((scale - 1) * size) / 2;
-
-  if (maxOffset <= 0) {
-    return 0;
-  }
-
-  return Math.max(-maxOffset, Math.min(maxOffset, value));
+	return Math.max(min, Math.min(max, value));
 }
 
-function sanitizeNodes(nodes: GraphNode[]): GraphNode[] {
-  return nodes.filter((node) => {
-    return (
-      Number.isInteger(node.clothesId) &&
-      Number.isFinite(node.x) &&
-      Number.isFinite(node.y)
-    );
-  });
+function normalizeNodeData(raw: unknown): NodePoint[] {
+	const source = (raw as { default?: unknown })?.default ?? raw;
+	if (!Array.isArray(source)) {
+		return [];
+	}
+
+	return source
+		.map((entry) => {
+			const row = entry as { clothesId?: unknown; x?: unknown; y?: unknown };
+
+			return {
+				clothesId: Number(row.clothesId),
+				x: Number(row.x),
+				y: Number(row.y),
+			};
+		})
+		.filter(
+			(point) =>
+				Number.isFinite(point.clothesId) &&
+				Number.isFinite(point.x) &&
+				Number.isFinite(point.y)
+		);
 }
 
-function getBounds(nodes: GraphNode[]): Bounds {
-  if (nodes.length === 0) {
-    return { minX: -1, maxX: 1, minY: -1, maxY: 1 };
-  }
+function calculateBounds(points: NodePoint[]): Bounds | null {
+	if (points.length === 0) {
+		return null;
+	}
 
-  let minX = Number.POSITIVE_INFINITY;
-  let maxX = Number.NEGATIVE_INFINITY;
-  let minY = Number.POSITIVE_INFINITY;
-  let maxY = Number.NEGATIVE_INFINITY;
+	let minX = points[0].x;
+	let maxX = points[0].x;
+	let minY = points[0].y;
+	let maxY = points[0].y;
 
-  for (const node of nodes) {
-    minX = Math.min(minX, node.x);
-    maxX = Math.max(maxX, node.x);
-    minY = Math.min(minY, node.y);
-    maxY = Math.max(maxY, node.y);
-  }
+	for (const point of points) {
+		if (point.x < minX) minX = point.x;
+		if (point.x > maxX) maxX = point.x;
+		if (point.y < minY) minY = point.y;
+		if (point.y > maxY) maxY = point.y;
+	}
 
-  if (Math.abs(maxX - minX) < 1e-6) {
-    maxX += 1;
-    minX -= 1;
-  }
-
-  if (Math.abs(maxY - minY) < 1e-6) {
-    maxY += 1;
-    minY -= 1;
-  }
-
-  return { minX, maxX, minY, maxY };
+	return { minX, maxX, minY, maxY };
 }
 
-function worldToScreen(
-  node: GraphNode,
-  bounds: Bounds,
-  width: number,
-  height: number,
-  padding: number,
-): { x: number; y: number } {
-  const usableWidth = Math.max(width - padding * 2, 1);
-  const usableHeight = Math.max(height - padding * 2, 1);
-  const xRatio = (node.x - bounds.minX) / (bounds.maxX - bounds.minX);
-  const yRatio = (node.y - bounds.minY) / (bounds.maxY - bounds.minY);
+function buildPlotHtml(points: NodePoint[], bounds: Bounds, colors: {
+	background: string;
+	grid: string;
+	axis: string;
+	point: string;
+	pointSelected: string;
+	text: string;
+}) {
+	const pointsJson = JSON.stringify(points);
+	const boundsJson = JSON.stringify(bounds);
+	const colorsJson = JSON.stringify(colors);
 
-  return {
-    x: padding + xRatio * usableWidth,
-    y: padding + (1 - yRatio) * usableHeight,
-  };
+	return `
+<!doctype html>
+<html>
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+	<style>
+		html, body {
+			margin: 0;
+			padding: 0;
+			width: 100%;
+			height: 100%;
+			overflow: hidden;
+			background: ${colors.background};
+			touch-action: none;
+			overscroll-behavior: none;
+		}
+		#plot {
+			display: block;
+			width: 100%;
+			height: 100%;
+			background: ${colors.background};
+		}
+	</style>
+</head>
+<body>
+	<canvas id="plot"></canvas>
+	<script>
+		(function () {
+			const POINTS = ${pointsJson};
+			const BOUNDS = ${boundsJson};
+			const COLORS = ${colorsJson};
+
+			const MIN_ZOOM_EXP = -120;
+			const MAX_ZOOM_EXP = 120;
+			const TAP_DISTANCE_PX = 12;
+			const ANCHOR_EPSILON = 0.7;
+
+			const canvas = document.getElementById('plot');
+			const ctx = canvas.getContext('2d');
+
+			const camera = {
+				centerX: (BOUNDS.minX + BOUNDS.maxX) * 0.5,
+				centerY: (BOUNDS.minY + BOUNDS.maxY) * 0.5,
+				zoomExp: 0,
+				selectedId: null,
+			};
+
+			const touchState = {
+				points: new Map(),
+				mode: 'none',
+				lastSingle: null,
+				lastMid: null,
+				lastDistance: 0,
+				maxMovement: 0,
+			};
+
+			const mouseState = {
+				down: false,
+				moved: 0,
+				lastX: 0,
+				lastY: 0,
+			};
+
+			let width = 1;
+			let height = 1;
+			let dpr = Math.max(1, window.devicePixelRatio || 1);
+			let rafPending = false;
+			let lastAnchorSent = null;
+
+			function postMessage(payload) {
+				if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+					window.ReactNativeWebView.postMessage(JSON.stringify(payload));
+				}
+			}
+
+			function scale() {
+				return Math.pow(2, camera.zoomExp);
+			}
+
+			function sanitizeCamera() {
+				if (!Number.isFinite(camera.centerX)) camera.centerX = 0;
+				if (!Number.isFinite(camera.centerY)) camera.centerY = 0;
+				if (!Number.isFinite(camera.zoomExp)) camera.zoomExp = 0;
+				if (camera.zoomExp < MIN_ZOOM_EXP) camera.zoomExp = MIN_ZOOM_EXP;
+				if (camera.zoomExp > MAX_ZOOM_EXP) camera.zoomExp = MAX_ZOOM_EXP;
+			}
+
+			function worldToScreen(x, y) {
+				const s = scale();
+				return {
+					x: (x - camera.centerX) * s + width * 0.5,
+					y: (camera.centerY - y) * s + height * 0.5,
+				};
+			}
+
+			function screenToWorld(sx, sy, customScale) {
+				const s = customScale || scale();
+				return {
+					x: (sx - width * 0.5) / s + camera.centerX,
+					y: camera.centerY - (sy - height * 0.5) / s,
+				};
+			}
+
+			function niceStep(target) {
+				const safe = Math.max(target, 1e-18);
+				const exponent = Math.floor(Math.log10(safe));
+				const magnitude = Math.pow(10, exponent);
+				const residual = safe / magnitude;
+				let base = 1;
+
+				if (residual > 5) {
+					base = 10;
+				} else if (residual > 2) {
+					base = 5;
+				} else if (residual > 1) {
+					base = 2;
+				}
+
+				return base * magnitude;
+			}
+
+			function configureCanvas() {
+				dpr = Math.max(1, window.devicePixelRatio || 1);
+				width = Math.max(1, window.innerWidth);
+				height = Math.max(1, window.innerHeight);
+				canvas.width = Math.round(width * dpr);
+				canvas.height = Math.round(height * dpr);
+				canvas.style.width = width + 'px';
+				canvas.style.height = height + 'px';
+				ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+			}
+
+			function scheduleDraw() {
+				if (rafPending) return;
+				rafPending = true;
+				requestAnimationFrame(function () {
+					rafPending = false;
+					draw();
+				});
+			}
+
+			function drawGrid() {
+				const s = scale();
+				const worldStep = niceStep(90 / s);
+
+				const minWorld = screenToWorld(0, height);
+				const maxWorld = screenToWorld(width, 0);
+
+				const startX = Math.floor(minWorld.x / worldStep) * worldStep;
+				const endX = Math.ceil(maxWorld.x / worldStep) * worldStep;
+				const startY = Math.floor(minWorld.y / worldStep) * worldStep;
+				const endY = Math.ceil(maxWorld.y / worldStep) * worldStep;
+
+				ctx.lineWidth = 1;
+				ctx.strokeStyle = COLORS.grid;
+				ctx.beginPath();
+
+				for (let x = startX; x <= endX; x += worldStep) {
+					const sx = worldToScreen(x, 0).x;
+					ctx.moveTo(sx, 0);
+					ctx.lineTo(sx, height);
+				}
+
+				for (let y = startY; y <= endY; y += worldStep) {
+					const sy = worldToScreen(0, y).y;
+					ctx.moveTo(0, sy);
+					ctx.lineTo(width, sy);
+				}
+
+				ctx.stroke();
+
+				ctx.strokeStyle = COLORS.axis;
+				ctx.lineWidth = 1.5;
+				ctx.beginPath();
+
+				const xAxisY = worldToScreen(0, 0).y;
+				const yAxisX = worldToScreen(0, 0).x;
+
+				ctx.moveTo(0, xAxisY);
+				ctx.lineTo(width, xAxisY);
+				ctx.moveTo(yAxisX, 0);
+				ctx.lineTo(yAxisX, height);
+				ctx.stroke();
+
+				ctx.fillStyle = COLORS.text;
+				ctx.font = '12px sans-serif';
+				ctx.fillText('x', width - 14, Math.max(14, xAxisY - 6));
+				ctx.fillText('y', Math.max(6, yAxisX + 6), 14);
+			}
+
+			function sendSelectedAnchor(clothesId, x, y) {
+				if (!Number.isFinite(clothesId) || !Number.isFinite(x) || !Number.isFinite(y)) {
+					return;
+				}
+
+				if (
+					lastAnchorSent &&
+					lastAnchorSent.clothesId === clothesId &&
+					Math.abs(lastAnchorSent.x - x) < ANCHOR_EPSILON &&
+					Math.abs(lastAnchorSent.y - y) < ANCHOR_EPSILON
+				) {
+					return;
+				}
+
+				lastAnchorSent = { clothesId, x, y };
+				postMessage({ type: 'selectedAnchor', clothesId, screenX: x, screenY: y });
+			}
+
+			function drawPoints() {
+				let selectedScreen = null;
+
+				for (let i = 0; i < POINTS.length; i += 1) {
+					const point = POINTS[i];
+					const screen = worldToScreen(point.x, point.y);
+					if (screen.x < -20 || screen.x > width + 20 || screen.y < -20 || screen.y > height + 20) {
+						continue;
+					}
+
+					const selected = camera.selectedId === point.clothesId;
+					if (selected) {
+						selectedScreen = screen;
+					}
+					ctx.fillStyle = selected ? COLORS.pointSelected : COLORS.point;
+					ctx.beginPath();
+					ctx.arc(screen.x, screen.y, selected ? 4.8 : 2.9, 0, Math.PI * 2);
+					ctx.fill();
+				}
+
+				return selectedScreen;
+			}
+
+			function draw() {
+				sanitizeCamera();
+				ctx.clearRect(0, 0, width, height);
+				drawGrid();
+				const selectedScreen = drawPoints();
+
+				if (camera.selectedId !== null) {
+					if (selectedScreen) {
+						sendSelectedAnchor(camera.selectedId, selectedScreen.x, selectedScreen.y);
+					} else if (lastAnchorSent !== null) {
+						lastAnchorSent = null;
+						postMessage({ type: 'selectedAnchorHidden', clothesId: camera.selectedId });
+					}
+				}
+			}
+
+			function findNearestPoint(sx, sy) {
+				let winnerPoint = null;
+				let winnerScreenX = 0;
+				let winnerScreenY = 0;
+				let bestSq = Number.POSITIVE_INFINITY;
+				const maxSq = TAP_DISTANCE_PX * TAP_DISTANCE_PX;
+
+				for (let i = 0; i < POINTS.length; i += 1) {
+					const point = POINTS[i];
+					const screen = worldToScreen(point.x, point.y);
+					const dx = screen.x - sx;
+					const dy = screen.y - sy;
+					const sq = dx * dx + dy * dy;
+
+					if (sq < bestSq) {
+						bestSq = sq;
+						winnerPoint = point;
+						winnerScreenX = screen.x;
+						winnerScreenY = screen.y;
+					}
+				}
+
+				if (!winnerPoint || bestSq > maxSq) {
+					return null;
+				}
+
+				return {
+					point: winnerPoint,
+					screenX: winnerScreenX,
+					screenY: winnerScreenY,
+				};
+			}
+
+			function selectPointFromTap(sx, sy) {
+				const nearest = findNearestPoint(sx, sy);
+				if (!nearest) {
+					camera.selectedId = null;
+					lastAnchorSent = null;
+					postMessage({ type: 'clearSelection' });
+					scheduleDraw();
+					return;
+				}
+
+				camera.selectedId = nearest.point.clothesId;
+				lastAnchorSent = null;
+				postMessage({
+					type: 'pointSelected',
+					clothesId: nearest.point.clothesId,
+					screenX: nearest.screenX,
+					screenY: nearest.screenY,
+				});
+				scheduleDraw();
+			}
+
+			function getTwoActiveTouches() {
+				const values = Array.from(touchState.points.values());
+				if (values.length < 2) return null;
+				return [values[0], values[1]];
+			}
+
+			function touchDistance(a, b) {
+				const dx = a.x - b.x;
+				const dy = a.y - b.y;
+				return Math.hypot(dx, dy);
+			}
+
+			function touchMid(a, b) {
+				return {
+					x: (a.x + b.x) * 0.5,
+					y: (a.y + b.y) * 0.5,
+				};
+			}
+
+			function beginPan(singleTouch) {
+				touchState.mode = 'pan';
+				touchState.lastSingle = singleTouch;
+				touchState.maxMovement = 0;
+			}
+
+			function beginPinch() {
+				const touches = getTwoActiveTouches();
+				if (!touches) return;
+				const mid = touchMid(touches[0], touches[1]);
+				const dist = touchDistance(touches[0], touches[1]);
+				touchState.mode = 'pinch';
+				touchState.lastMid = mid;
+				touchState.lastDistance = dist;
+				touchState.maxMovement = 0;
+			}
+
+			function activeTouchesCount() {
+				return touchState.points.size;
+			}
+
+			canvas.addEventListener('touchstart', function (event) {
+				event.preventDefault();
+				for (let i = 0; i < event.changedTouches.length; i += 1) {
+					const t = event.changedTouches[i];
+					touchState.points.set(t.identifier, { x: t.clientX, y: t.clientY });
+				}
+
+				const count = activeTouchesCount();
+				if (count === 1) {
+					const single = Array.from(touchState.points.values())[0];
+					beginPan(single);
+				} else if (count >= 2) {
+					beginPinch();
+				}
+			}, { passive: false });
+
+			canvas.addEventListener('touchmove', function (event) {
+				event.preventDefault();
+
+				for (let i = 0; i < event.changedTouches.length; i += 1) {
+					const t = event.changedTouches[i];
+					if (touchState.points.has(t.identifier)) {
+						touchState.points.set(t.identifier, { x: t.clientX, y: t.clientY });
+					}
+				}
+
+				const count = activeTouchesCount();
+
+				if (count === 1 && touchState.mode === 'pan') {
+					const current = Array.from(touchState.points.values())[0];
+					const prev = touchState.lastSingle;
+					if (!prev) {
+						touchState.lastSingle = current;
+						return;
+					}
+
+					const dx = current.x - prev.x;
+					const dy = current.y - prev.y;
+					touchState.maxMovement = Math.max(touchState.maxMovement, Math.hypot(dx, dy));
+
+					const s = scale();
+					camera.centerX -= dx / s;
+					camera.centerY += dy / s;
+
+					touchState.lastSingle = current;
+					scheduleDraw();
+					return;
+				}
+
+				if (count >= 2) {
+					const touches = getTwoActiveTouches();
+					if (!touches) return;
+
+					const mid = touchMid(touches[0], touches[1]);
+					const dist = touchDistance(touches[0], touches[1]);
+
+					if (touchState.mode !== 'pinch') {
+						beginPinch();
+						return;
+					}
+
+					const prevMid = touchState.lastMid;
+					const prevDist = touchState.lastDistance;
+					if (!prevMid || !Number.isFinite(prevDist) || prevDist <= 0 || dist <= 0) {
+						touchState.lastMid = mid;
+						touchState.lastDistance = dist;
+						return;
+					}
+
+					const oldScale = scale();
+					const moveDx = mid.x - prevMid.x;
+					const moveDy = mid.y - prevMid.y;
+					touchState.maxMovement = Math.max(touchState.maxMovement, Math.hypot(moveDx, moveDy));
+
+					camera.centerX -= moveDx / oldScale;
+					camera.centerY += moveDy / oldScale;
+
+					const worldAtMid = {
+						x: (mid.x - width * 0.5) / oldScale + camera.centerX,
+						y: camera.centerY - (mid.y - height * 0.5) / oldScale,
+					};
+
+					const zoomDelta = Math.log2(dist / prevDist);
+					if (Number.isFinite(zoomDelta)) {
+						camera.zoomExp += zoomDelta;
+						sanitizeCamera();
+
+						const newScale = scale();
+						camera.centerX = worldAtMid.x - (mid.x - width * 0.5) / newScale;
+						camera.centerY = worldAtMid.y + (mid.y - height * 0.5) / newScale;
+					}
+
+					touchState.lastMid = mid;
+					touchState.lastDistance = dist;
+					scheduleDraw();
+				}
+			}, { passive: false });
+
+			function handleTouchEnd(event) {
+				event.preventDefault();
+
+				const priorMode = touchState.mode;
+				const priorMovement = touchState.maxMovement;
+
+				for (let i = 0; i < event.changedTouches.length; i += 1) {
+					const t = event.changedTouches[i];
+					touchState.points.delete(t.identifier);
+				}
+
+				const count = activeTouchesCount();
+
+				if (count === 0) {
+					if (priorMode === 'pan' && priorMovement < 7 && event.changedTouches.length > 0) {
+						const tap = event.changedTouches[0];
+						selectPointFromTap(tap.clientX, tap.clientY);
+					}
+					touchState.mode = 'none';
+					touchState.lastSingle = null;
+					touchState.lastMid = null;
+					touchState.lastDistance = 0;
+					touchState.maxMovement = 0;
+					return;
+				}
+
+				if (count === 1) {
+					const single = Array.from(touchState.points.values())[0];
+					beginPan(single);
+					return;
+				}
+
+				beginPinch();
+			}
+
+			canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+			canvas.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+
+			canvas.addEventListener('wheel', function (event) {
+				event.preventDefault();
+				const oldScale = scale();
+				const worldAtPointer = screenToWorld(event.clientX, event.clientY, oldScale);
+
+				camera.zoomExp += -event.deltaY * 0.0025;
+				sanitizeCamera();
+
+				const newScale = scale();
+				camera.centerX = worldAtPointer.x - (event.clientX - width * 0.5) / newScale;
+				camera.centerY = worldAtPointer.y + (event.clientY - height * 0.5) / newScale;
+				scheduleDraw();
+			}, { passive: false });
+
+			canvas.addEventListener('mousedown', function (event) {
+				mouseState.down = true;
+				mouseState.moved = 0;
+				mouseState.lastX = event.clientX;
+				mouseState.lastY = event.clientY;
+			});
+
+			window.addEventListener('mousemove', function (event) {
+				if (!mouseState.down) return;
+
+				const dx = event.clientX - mouseState.lastX;
+				const dy = event.clientY - mouseState.lastY;
+				mouseState.moved = Math.max(mouseState.moved, Math.hypot(dx, dy));
+
+				const s = scale();
+				camera.centerX -= dx / s;
+				camera.centerY += dy / s;
+
+				mouseState.lastX = event.clientX;
+				mouseState.lastY = event.clientY;
+				scheduleDraw();
+			});
+
+			window.addEventListener('mouseup', function (event) {
+				if (!mouseState.down) return;
+				mouseState.down = false;
+				if (mouseState.moved < 5) {
+					selectPointFromTap(event.clientX, event.clientY);
+				}
+			});
+
+			window.addEventListener('resize', function () {
+				configureCanvas();
+				scheduleDraw();
+			});
+
+			(function initZoom() {
+				const rangeX = Math.max(1e-9, BOUNDS.maxX - BOUNDS.minX);
+				const rangeY = Math.max(1e-9, BOUNDS.maxY - BOUNDS.minY);
+				const paddedX = rangeX * 1.2;
+				const paddedY = rangeY * 1.2;
+
+				configureCanvas();
+
+				const scaleFromX = width / paddedX;
+				const scaleFromY = height / paddedY;
+				const initialScale = Math.max(1e-9, Math.min(scaleFromX, scaleFromY));
+				camera.zoomExp = Math.log2(initialScale);
+				sanitizeCamera();
+			})();
+
+			window.__keepersClearSelection = function () {
+				camera.selectedId = null;
+				lastAnchorSent = null;
+				scheduleDraw();
+			};
+
+			scheduleDraw();
+		})();
+	</script>
+</body>
+</html>
+	`;
 }
 
-function getStringField(record: ClothingRecord | null, keys: string[]): string {
-  if (!record) {
-    return '';
-  }
+export default function GraphTab() {
+	const { theme } = useAppTheme();
 
-  for (const key of keys) {
-    const value = record[key];
-    if (typeof value === 'string' && value.trim().length > 0) {
-      return value;
-    }
-  }
+	const [selectedPointId, setSelectedPointId] = useState<number | null>(null);
+	const [selectedAnchor, setSelectedAnchor] = useState<SelectedAnchor | null>(null);
+	const [plotSize, setPlotSize] = useState<PlotSize>({ width: 0, height: 0 });
+	const [selectedItem, setSelectedItem] = useState<SelectedItem | null>(null);
+	const [isLoadingItem, setIsLoadingItem] = useState(false);
+	const [loadError, setLoadError] = useState<string | null>(null);
 
-  return '';
-}
+	const webViewRef = useRef<WebView>(null);
+	const itemCacheRef = useRef<Map<number, SelectedItem>>(new Map());
 
-export default function Graph() {
-  const { theme } = useAppTheme();
-  const headerHeight = useHeaderHeight();
-  const [viewport, setViewport] = useState({ width: 0, height: 0 });
-  const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
-  const [selectedItem, setSelectedItem] = useState<ClothingRecord | null>(null);
-  const [isLoadingItem, setIsLoadingItem] = useState(false);
-  const [itemError, setItemError] = useState<string | null>(null);
-  const activeRequestId = useRef(0);
-  const graphViewportRef = useRef<View>(null);
-  const viewportPageOffset = useRef({ x: 0, y: 0 });
+	const points = useMemo(() => normalizeNodeData(RAW_NODE_DATA), []);
+	const bounds = useMemo(() => calculateBounds(points), [points]);
 
-  const scale = useSharedValue(1);
-  const pinchStartScale = useSharedValue(1);
-  const translateX = useSharedValue(0);
-  const translateY = useSharedValue(0);
-  const panStartX = useSharedValue(0);
-  const panStartY = useSharedValue(0);
-  const viewportWidth = useSharedValue(1);
-  const viewportHeight = useSharedValue(1);
+	const webContent = useMemo(() => {
+		if (!bounds) {
+			return '';
+		}
 
-  const nodes = useMemo(() => sanitizeNodes(nodeData), []);
+		return buildPlotHtml(points, bounds, {
+			background: theme.background,
+			grid: '#d6cbc1',
+			axis: '#6f6154',
+			point: theme.primary,
+			pointSelected: '#cf3c2f',
+			text: '#5d5146',
+		});
+	}, [bounds, points, theme.background, theme.primary]);
 
-  const bounds = useMemo(() => {
-    return getBounds(nodes);
-  }, [nodes]);
+	useEffect(() => {
+		if (selectedPointId == null) {
+			setSelectedItem(null);
+			setLoadError(null);
+			setIsLoadingItem(false);
+			return;
+		}
 
-  const screenNodes = useMemo<ScreenNode[]>(() => {
-    if (viewport.width === 0 || viewport.height === 0) {
-      return [];
-    }
+		const cached = itemCacheRef.current.get(selectedPointId);
+		if (cached) {
+			setSelectedItem(cached);
+			setLoadError(null);
+			setIsLoadingItem(false);
+			return;
+		}
 
-    return nodes.map((node) => {
-      const position = worldToScreen(node, bounds, viewport.width, viewport.height, GRAPH_PADDING);
-      return {
-        node,
-        x: position.x,
-        y: position.y,
-      };
-    });
-  }, [bounds, nodes, viewport.height, viewport.width]);
+		let cancelled = false;
 
-  const transformStyle = useAnimatedStyle(() => {
-    return {
-      transform: [
-        { translateX: translateX.value },
-        { translateY: translateY.value },
-        { scale: scale.value },
-      ],
-    };
-  });
+		const fetchItem = async () => {
+			setIsLoadingItem(true);
+			setLoadError(null);
 
-  const panGesture = Gesture.Pan()
-    .minDistance(10)
-    .onBegin(() => {
-      panStartX.value = translateX.value;
-      panStartY.value = translateY.value;
-    })
-    .onUpdate((event) => {
-      translateX.value = clampTranslation(
-        panStartX.value + event.translationX,
-        scale.value,
-        viewportWidth.value,
-      );
-      translateY.value = clampTranslation(
-        panStartY.value + event.translationY,
-        scale.value,
-        viewportHeight.value,
-      );
-    });
+			try {
+				const data = await getClothingById(String(selectedPointId));
 
-  const pinchGesture = Gesture.Pinch()
-    .onBegin(() => {
-      pinchStartScale.value = scale.value;
-    })
-    .onUpdate((event) => {
-      const nextScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, pinchStartScale.value * event.scale));
-      scale.value = nextScale;
-      translateX.value = clampTranslation(translateX.value, nextScale, viewportWidth.value);
-      translateY.value = clampTranslation(translateY.value, nextScale, viewportHeight.value);
-    });
+				if (cancelled) {
+					return;
+				}
 
-  const onViewportLayout = (event: LayoutChangeEvent) => {
-    const { width, height } = event.nativeEvent.layout;
-    setViewport({ width, height });
-    viewportWidth.value = Math.max(width, 1);
-    viewportHeight.value = Math.max(height, 1);
+				if (!data) {
+					setSelectedItem(null);
+					setLoadError('No clothing item found for this point.');
+					return;
+				}
 
-    graphViewportRef.current?.measureInWindow((x, y) => {
-      viewportPageOffset.current = { x, y };
-    });
-  };
+				const mapped: SelectedItem = {
+					id: String(data.item_id ?? selectedPointId),
+					name: String(data.item_name ?? 'Unnamed item'),
+					price: String(data.item_price ?? 'N/A'),
+					imageUrl: String(data.item_img ?? ''),
+				};
 
-  const handleNodePress = async (node: GraphNode) => {
-    setSelectedNode(node);
-    setItemError(null);
-    setIsLoadingItem(true);
+				itemCacheRef.current.set(selectedPointId, mapped);
+				setSelectedItem(mapped);
+			} catch {
+				if (!cancelled) {
+					setSelectedItem(null);
+					setLoadError('Unable to load item details right now.');
+				}
+			} finally {
+				if (!cancelled) {
+					setIsLoadingItem(false);
+				}
+			}
+		};
 
-    const requestId = activeRequestId.current + 1;
-    activeRequestId.current = requestId;
+		fetchItem();
 
-    try {
-      const clothing = await getClothingById(String(node.clothesId));
-      if (activeRequestId.current !== requestId) {
-        return;
-      }
+		return () => {
+			cancelled = true;
+		};
+	}, [selectedPointId]);
 
-      if (!clothing) {
-        setSelectedItem(null);
-        setItemError(`No clothing item found for ID ${node.clothesId}.`);
-        return;
-      }
+	const popupPosition = useMemo(() => {
+		if (!selectedAnchor || plotSize.width <= 0 || plotSize.height <= 0) {
+			return null;
+		}
 
-      setSelectedItem(clothing as ClothingRecord);
-    } catch {
-      if (activeRequestId.current !== requestId) {
-        return;
-      }
+		const cardWidth = 250;
+		const cardHeight = selectedItem ? 168 : 126;
+		const margin = 8;
+		const topMin = 84;
+		const aboveTop = selectedAnchor.y - cardHeight - 20;
+		const showAbove = aboveTop >= topMin;
+		const targetTop = showAbove ? aboveTop : selectedAnchor.y + 18;
 
-      setSelectedItem(null);
-      setItemError('Failed to load clothing item details.');
-    } finally {
-      if (activeRequestId.current === requestId) {
-        setIsLoadingItem(false);
-      }
-    }
-  };
+		const left = clamp(
+			selectedAnchor.x - cardWidth * 0.5,
+			margin,
+			plotSize.width - cardWidth - margin
+		);
 
-  const handleGraphTap = useCallback(
-    (tapX: number, tapY: number, absoluteX: number, absoluteY: number) => {
-      if (viewport.width === 0 || viewport.height === 0 || screenNodes.length === 0) {
-        return;
-      }
+		const top = clamp(
+			targetTop,
+			topMin,
+			plotSize.height - cardHeight - margin
+		);
 
-      const currentScale = scale.value;
-      const currentTranslateX = translateX.value;
-      const currentTranslateY = translateY.value;
-      const centerX = viewport.width / 2;
-      const centerY = viewport.height / 2;
-      const tapCandidates = [
-        { x: tapX, y: tapY },
-        {
-          x: absoluteX - viewportPageOffset.current.x,
-          y: absoluteY - viewportPageOffset.current.y,
-        },
-      ];
+		const arrowLeft = clamp(selectedAnchor.x - left - 8, 12, cardWidth - 24);
 
-      let closestNode: GraphNode | null = null;
-      let closestDistanceSquared = Number.POSITIVE_INFINITY;
+		return {
+			left,
+			top,
+			width: cardWidth,
+			showAbove,
+			arrowLeft,
+		};
+	}, [plotSize.height, plotSize.width, selectedAnchor, selectedItem]);
 
-      for (const candidate of tapCandidates) {
-        for (const { node, x, y } of screenNodes) {
-          const transformedXTranslateThenScale =
-            (x - centerX) * currentScale + centerX + currentTranslateX * currentScale;
-          const transformedYTranslateThenScale =
-            (y - centerY) * currentScale + centerY + currentTranslateY * currentScale;
+	const clearSelection = () => {
+		setSelectedPointId(null);
+		setSelectedAnchor(null);
+		setSelectedItem(null);
+		setLoadError(null);
+		setIsLoadingItem(false);
+		webViewRef.current?.injectJavaScript('window.__keepersClearSelection && window.__keepersClearSelection(); true;');
+	};
 
-          const transformedXScaleThenTranslate =
-            (x - centerX) * currentScale + centerX + currentTranslateX;
-          const transformedYScaleThenTranslate =
-            (y - centerY) * currentScale + centerY + currentTranslateY;
+	const onPlotLayout = (event: LayoutChangeEvent) => {
+		const { width, height } = event.nativeEvent.layout;
+		setPlotSize({ width, height });
+	};
 
-          const distanceTranslateThenScale =
-            (candidate.x - transformedXTranslateThenScale) *
-              (candidate.x - transformedXTranslateThenScale) +
-            (candidate.y - transformedYTranslateThenScale) *
-              (candidate.y - transformedYTranslateThenScale);
+	const handleWebMessage = (event: WebViewMessageEvent) => {
+		try {
+			const payload = JSON.parse(event.nativeEvent.data) as {
+				type?: string;
+				clothesId?: number;
+				screenX?: number;
+				screenY?: number;
+			};
 
-          const distanceScaleThenTranslate =
-            (candidate.x - transformedXScaleThenTranslate) *
-              (candidate.x - transformedXScaleThenTranslate) +
-            (candidate.y - transformedYScaleThenTranslate) *
-              (candidate.y - transformedYScaleThenTranslate);
+			if (payload.type === 'clearSelection') {
+				setSelectedPointId(null);
+				setSelectedAnchor(null);
+				return;
+			}
 
-          const distanceSquared = Math.min(distanceTranslateThenScale, distanceScaleThenTranslate);
+			if (payload.type === 'selectedAnchorHidden') {
+				setSelectedAnchor(null);
+				return;
+			}
 
-          if (distanceSquared < closestDistanceSquared) {
-            closestDistanceSquared = distanceSquared;
-            closestNode = node;
-          }
-        }
-      }
+			if (
+				payload.type === 'selectedAnchor' &&
+				Number.isFinite(payload.screenX) &&
+				Number.isFinite(payload.screenY)
+			) {
+				setSelectedAnchor({
+					x: Number(payload.screenX),
+					y: Number(payload.screenY),
+				});
+				return;
+			}
 
-      if (!closestNode || closestDistanceSquared > NODE_TAP_RADIUS * NODE_TAP_RADIUS) {
-        return;
-      }
+			if (
+				payload.type === 'pointSelected' &&
+				Number.isFinite(payload.clothesId)
+			) {
+				setSelectedPointId(Number(payload.clothesId));
+				if (
+					Number.isFinite(payload.screenX) &&
+					Number.isFinite(payload.screenY)
+				) {
+					setSelectedAnchor({
+						x: Number(payload.screenX),
+						y: Number(payload.screenY),
+					});
+				}
+			}
+		} catch {
+			// Ignore malformed bridge messages from the WebView.
+		}
+	};
 
-      handleNodePress(closestNode).catch(() => {
-        // Errors are already handled in handleNodePress state.
-      });
-    },
-    [handleNodePress, scale, screenNodes, translateX, translateY, viewport.height, viewport.width],
-  );
+	if (!bounds || points.length === 0) {
+		return (
+			<View style={[styles.centered, { backgroundColor: theme.background }]}>
+				<Text style={[styles.messageText, { color: theme.text }]}>No plot data found.</Text>
+			</View>
+		);
+	}
 
-  const tapGesture = Gesture.Tap()
-    .maxDistance(20)
-    .onEnd((event, success) => {
-      if (!success) {
-        return;
-      }
+	return (
+		<View style={[styles.container, { backgroundColor: theme.background }]}>
+			<View style={styles.plotWrap} onLayout={onPlotLayout}>
+				<WebView
+					ref={webViewRef}
+					originWhitelist={['*']}
+					source={{ html: webContent }}
+					onMessage={handleWebMessage}
+					javaScriptEnabled
+					domStorageEnabled
+					style={styles.webView}
+				/>
 
-      runOnJS(handleGraphTap)(event.x, event.y, event.absoluteX, event.absoluteY);
-    });
+				{selectedPointId != null && popupPosition ? (
+					<View pointerEvents="box-none" style={styles.popupLayer}>
+						<View
+							style={[
+								styles.popupCard,
+								{
+									left: popupPosition.left,
+									top: popupPosition.top,
+									width: popupPosition.width,
+									backgroundColor: theme.surface,
+									borderColor: theme.border,
+								},
+							]}
+						>
+							<View style={styles.popupHeader}>
+								<Text style={styles.popupTitle}>Point #{selectedPointId}</Text>
+								<Pressable onPress={clearSelection} style={styles.closeButton}>
+									<Text style={styles.closeButtonText}>Close</Text>
+								</Pressable>
+							</View>
 
-  const combinedGesture = Gesture.Simultaneous(panGesture, pinchGesture, tapGesture);
+							{isLoadingItem ? (
+								<View style={styles.loadingRow}>
+									<ActivityIndicator size="small" color="#4caf85" />
+									<Text style={styles.loadingText}>Loading item...</Text>
+								</View>
+							) : loadError ? (
+								<Text style={styles.errorText}>{loadError}</Text>
+							) : selectedItem ? (
+								<View style={styles.itemRow}>
+									<View style={styles.imageFrame}>
+										{selectedItem.imageUrl ? (
+											<Image
+												style={styles.itemImage}
+												source={{ uri: selectedItem.imageUrl }}
+												contentFit="cover"
+												transition={300}
+											/>
+										) : (
+											<View style={styles.noImageWrap}>
+												<Text style={styles.noImageText}>No Image</Text>
+											</View>
+										)}
+									</View>
+									<View style={styles.itemInfo}>
+										<Text style={styles.itemName}>{selectedItem.name}</Text>
+										<Text style={styles.itemPrice}>{selectedItem.price}</Text>
+									</View>
+								</View>
+							) : (
+								<Text style={styles.sheetHint}>No details available.</Text>
+							)}
 
-  const selectedItemName = useMemo(() => {
-    return getStringField(selectedItem, ['item_name', 'name']);
-  }, [selectedItem]);
+							{popupPosition.showAbove ? (
+								<View
+									style={[
+										styles.popupArrowDown,
+										{ left: popupPosition.arrowLeft, borderTopColor: theme.surface },
+									]}
+								/>
+							) : (
+								<View
+									style={[
+										styles.popupArrowUp,
+										{ left: popupPosition.arrowLeft, borderBottomColor: theme.surface },
+									]}
+								/>
+							)}
+						</View>
+					</View>
+				) : null}
+			</View>
 
-  const selectedItemPrice = useMemo(() => {
-    return getStringField(selectedItem, ['item_price', 'price']);
-  }, [selectedItem]);
+			<View style={[styles.overlayTop, { borderColor: theme.border }]}> 
+				<Text style={styles.overlayTitle}>Interactive Style Map</Text>
+				<Text style={styles.overlaySubtitle}>Pinch to zoom, drag to pan, tap a node for item details.</Text>
+			</View>
 
-  const selectedItemImage = useMemo(() => {
-    return getStringField(selectedItem, ['item_img', 'imageUrl', 'image_url']);
-  }, [selectedItem]);
-
-  const selectedItemUrl = useMemo(() => {
-    return getStringField(selectedItem, ['item_web_listing', 'itemUrl', 'item_url', 'url']);
-  }, [selectedItem]);
-
-  const onPricePress = async () => {
-    if (!selectedItemUrl) {
-      return;
-    }
-
-    try {
-      await WebBrowser.openBrowserAsync(selectedItemUrl);
-    } catch {
-      setItemError('Unable to open product link.');
-    }
-  };
-
-  const onDismissItemPopup = () => {
-    setSelectedItem(null);
-    setItemError(null);
-    setIsLoadingItem(false);
-  };
-
-  return (
-    <View
-      style={[
-        styles.container,
-        { backgroundColor: theme.background, paddingTop: headerHeight + 8 },
-      ]}
-    >
-      <View style={styles.headerRow}>
-        <Text style={[styles.title, { color: theme.text }]}>Embedding Graph</Text>
-        <Text style={[styles.metaText, { color: theme.text }]}>{nodes.length} nodes</Text>
-      </View>
-
-      <Text style={[styles.helpText, { color: theme.text }]}>Source: local JSON file</Text>
-
-      <View ref={graphViewportRef} style={styles.graphViewport} onLayout={onViewportLayout}>
-        <GestureDetector gesture={combinedGesture}>
-          <AnimatedView style={[styles.graphLayer, transformStyle]}>
-            {screenNodes.map(({ node, x, y }) => (
-              <View
-                key={node.clothesId}
-                style={[
-                  styles.nodeDot,
-                  selectedNode?.clothesId === node.clothesId ? styles.nodeDotSelected : null,
-                  {
-                    left: x - 1,
-                    top: y - 1,
-                  },
-                ]}
-              />
-            ))}
-          </AnimatedView>
-        </GestureDetector>
-
-          {isLoadingItem ? (
-            <View style={styles.popupContainer} pointerEvents="box-none">
-              <Text style={styles.loadingText}>Loading item details...</Text>
-            </View>
-          ) : null}
-
-          {itemError ? (
-            <View style={styles.popupContainer} pointerEvents="box-none">
-              <Text style={styles.errorText}>{itemError}</Text>
-            </View>
-          ) : null}
-
-          {selectedItem ? (
-            <View style={styles.popupContainer} pointerEvents="box-none">
-              <View style={styles.itemCard}>
-                <Pressable style={styles.closeButton} onPress={onDismissItemPopup} hitSlop={8}>
-                  <Text style={styles.closeButtonText}>X</Text>
-                </Pressable>
-                <View style={styles.imageContainer}>
-                  {selectedItemImage ? (
-                    <Image
-                      style={styles.itemImage}
-                      source={{ uri: selectedItemImage }}
-                      contentFit="cover"
-                      transition={300}
-                    />
-                  ) : (
-                    <View style={styles.imageFallback}>
-                      <Text style={styles.imageFallbackText}>No image</Text>
-                    </View>
-                  )}
-                </View>
-
-                <View style={styles.itemInfo}>
-                  <Text style={styles.itemName} numberOfLines={2}>
-                    {selectedItemName || 'Unnamed item'}
-                  </Text>
-                  <Pressable
-                    onPress={() => {
-                      onPricePress().catch(() => {
-                        setItemError('Unable to open product link.');
-                      });
-                    }}
-                    disabled={!selectedItemUrl}
-                    hitSlop={8}
-                  >
-                    <Text style={[styles.itemPrice, !selectedItemUrl ? styles.itemPriceDisabled : null]}>
-                      {selectedItemPrice || 'Price unavailable'}
-                    </Text>
-                  </Pressable>
-                </View>
-              </View>
-            </View>
-          ) : null}
-      </View>
-
-      <View style={styles.footerRow}>
-        <Text style={[styles.footerText, { color: theme.text }]}>Pinch to zoom • Drag to pan</Text>
-        {selectedNode ? (
-          <Text style={styles.selectedText}>
-            Selected ID: {selectedNode.clothesId} (x: {selectedNode.x.toFixed(3)}, y: {selectedNode.y.toFixed(3)})
-          </Text>
-        ) : (
-          <Text style={styles.footerText}>Tap a node to view clothes ID</Text>
-        )}
-      </View>
-    </View>
-  );
+		</View>
+	);
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    paddingHorizontal: 12,
-    paddingBottom: 12,
-  },
-  headerRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: '700',
-  },
-  metaText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  helpText: {
-    fontSize: 12,
-    fontWeight: '500',
-    marginTop: 8,
-  },
-  graphViewport: {
-    backgroundColor: '#EEF2F5',
-    borderColor: '#C8D5E0',
-    borderRadius: 12,
-    borderWidth: 1,
-    flex: 1,
-    marginTop: 10,
-    overflow: 'hidden',
-  },
-  graphLayer: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  nodeDot: {
-    backgroundColor: '#4caf85',
-    borderRadius: 1,
-    height: 2,
-    position: 'absolute',
-    width: 2,
-  },
-  nodeDotSelected: {
-    backgroundColor: '#FF6B35',
-    borderColor: '#FFE9DF',
-    borderWidth: 0.5,
-  },
-  popupContainer: {
-    left: 8,
-    position: 'absolute',
-    right: 8,
-    top: 8,
-  },
-  footerRow: {
-    marginTop: 10,
-  },
-  footerText: {
-    color: '#1F2937',
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  selectedText: {
-    color: '#0F172A',
-    fontSize: 12,
-    fontWeight: '700',
-    marginTop: 6,
-  },
-  loadingText: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: 8,
-    color: '#0B5FFF',
-    fontSize: 12,
-    fontWeight: '600',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  errorText: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: 8,
-    color: '#B3261E',
-    fontSize: 12,
-    fontWeight: '600',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  itemCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.97)',
-    borderColor: '#E8E8E8',
-    borderRadius: 10,
-    borderWidth: 1,
-    flexDirection: 'row',
-    minHeight: 120,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-  },
-  closeButton: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(15, 23, 42, 0.08)',
-    borderRadius: 10,
-    height: 20,
-    justifyContent: 'center',
-    position: 'absolute',
-    right: 8,
-    top: 8,
-    width: 20,
-    zIndex: 1,
-  },
-  closeButtonText: {
-    color: '#0F172A',
-    fontSize: 11,
-    fontWeight: '700',
-    lineHeight: 12,
-  },
-  imageContainer: {
-    borderTopLeftRadius: 10,
-    borderBottomLeftRadius: 10,
-    overflow: 'hidden',
-    width: 110,
-  },
-  itemImage: {
-    backgroundColor: '#F1F5F9',
-    height: 120,
-    width: 110,
-  },
-  imageFallback: {
-    alignItems: 'center',
-    backgroundColor: '#F1F5F9',
-    height: 120,
-    justifyContent: 'center',
-    width: 110,
-  },
-  imageFallbackText: {
-    color: '#64748B',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  itemInfo: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  itemName: {
-    color: '#0F172A',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  itemPrice: {
-    color: '#007AFF',
-    fontSize: 16,
-    fontWeight: '600',
-    marginTop: 6,
-    textDecorationLine: 'underline',
-  },
-  itemPriceDisabled: {
-    color: '#64748B',
-    textDecorationLine: 'none',
-  },
+	container: {
+		flex: 1,
+	},
+	centered: {
+		flex: 1,
+		alignItems: 'center',
+		justifyContent: 'center',
+		paddingHorizontal: 24,
+	},
+	messageText: {
+		fontFamily: 'GeorgiaProSemiBold',
+		fontSize: 16,
+	},
+	plotWrap: {
+		flex: 1,
+	},
+	popupLayer: {
+		...StyleSheet.absoluteFillObject,
+	},
+	popupCard: {
+		position: 'absolute',
+		borderWidth: 1,
+		borderRadius: 12,
+		paddingHorizontal: 10,
+		paddingVertical: 10,
+		minHeight: 120,
+	},
+	popupHeader: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'space-between',
+	},
+	popupTitle: {
+		color: '#f5f7f8',
+		fontFamily: 'GeorgiaProSemiBold',
+		fontSize: 15,
+	},
+	popupArrowDown: {
+		position: 'absolute',
+		bottom: -10,
+		width: 0,
+		height: 0,
+		borderLeftWidth: 8,
+		borderRightWidth: 8,
+		borderTopWidth: 10,
+		borderLeftColor: 'transparent',
+		borderRightColor: 'transparent',
+	},
+	popupArrowUp: {
+		position: 'absolute',
+		top: -10,
+		width: 0,
+		height: 0,
+		borderLeftWidth: 8,
+		borderRightWidth: 8,
+		borderBottomWidth: 10,
+		borderLeftColor: 'transparent',
+		borderRightColor: 'transparent',
+	},
+	webView: {
+		flex: 1,
+		backgroundColor: 'transparent',
+	},
+	overlayTop: {
+		position: 'absolute',
+		top: 14,
+		left: 14,
+		right: 14,
+		borderWidth: 1,
+		borderRadius: 12,
+		paddingVertical: 10,
+		paddingHorizontal: 12,
+		backgroundColor: 'rgba(247, 242, 236, 0.92)',
+	},
+	overlayTitle: {
+		fontFamily: 'GeorgiaProBlack',
+		fontSize: 16,
+		color: '#102026',
+	},
+	overlaySubtitle: {
+		marginTop: 2,
+		fontFamily: 'GeorgiaProRegular',
+		fontSize: 13,
+		color: '#384046',
+	},
+	closeButton: {
+		backgroundColor: '#4caf85',
+		borderRadius: 8,
+		paddingVertical: 6,
+		paddingHorizontal: 10,
+	},
+	closeButtonText: {
+		color: '#0c191f',
+		fontFamily: 'GeorgiaProSemiBold',
+		fontSize: 12,
+	},
+	sheetHint: {
+		marginTop: 12,
+		color: '#d6e3ea',
+		fontFamily: 'GeorgiaProRegular',
+		fontSize: 14,
+	},
+	loadingRow: {
+		marginTop: 12,
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 10,
+	},
+	loadingText: {
+		color: '#d6e3ea',
+		fontFamily: 'GeorgiaProRegular',
+		fontSize: 14,
+	},
+	errorText: {
+		marginTop: 12,
+		color: '#f39aa0',
+		fontFamily: 'GeorgiaProRegular',
+		fontSize: 14,
+	},
+	itemRow: {
+		marginTop: 12,
+		flexDirection: 'row',
+		alignItems: 'center',
+	},
+	imageFrame: {
+		width: 90,
+		height: 90,
+		borderRadius: 10,
+		borderWidth: 1,
+		borderColor: '#3f4e57',
+		overflow: 'hidden',
+		backgroundColor: '#0e161b',
+	},
+	itemImage: {
+		width: '100%',
+		height: '100%',
+	},
+	noImageWrap: {
+		flex: 1,
+		alignItems: 'center',
+		justifyContent: 'center',
+	},
+	noImageText: {
+		color: '#c5d4dc',
+		fontFamily: 'GeorgiaProRegular',
+		fontSize: 12,
+	},
+	itemInfo: {
+		flex: 1,
+		marginLeft: 12,
+	},
+	itemName: {
+		color: '#f0f5f8',
+		fontFamily: 'GeorgiaProSemiBold',
+		fontSize: 15,
+		marginBottom: 6,
+	},
+	itemPrice: {
+		color: '#8de4b7',
+		fontFamily: 'GeorgiaProBold',
+		fontSize: 15,
+	},
 });
