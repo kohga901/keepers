@@ -358,6 +358,12 @@ export default function Graph() {
     }
   };
 
+  const onDismissItemPopup = () => {
+    setSelectedItem(null);
+    setItemError(null);
+    setIsLoadingItem(false);
+  };
+
   return (
     <View
       style={[
@@ -406,6 +412,9 @@ export default function Graph() {
           {selectedItem ? (
             <View style={styles.popupContainer} pointerEvents="box-none">
               <View style={styles.itemCard}>
+                <Pressable style={styles.closeButton} onPress={onDismissItemPopup} hitSlop={8}>
+                  <Text style={styles.closeButtonText}>X</Text>
+                </Pressable>
                 <View style={styles.imageContainer}>
                   {selectedItemImage ? (
                     <Image
@@ -556,6 +565,24 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 4,
+  },
+  closeButton: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(15, 23, 42, 0.08)',
+    borderRadius: 10,
+    height: 20,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: 8,
+    top: 8,
+    width: 20,
+    zIndex: 1,
+  },
+  closeButtonText: {
+    color: '#0F172A',
+    fontSize: 11,
+    fontWeight: '700',
+    lineHeight: 12,
   },
   imageContainer: {
     borderTopLeftRadius: 10,
