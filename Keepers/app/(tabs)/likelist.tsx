@@ -14,6 +14,7 @@ import { useAppTheme } from '../../hooks/useAppTheme';
 import { Item } from '../../models/Items';
 import { deleteLikedItem, getLikedItems } from '@/services/dataServices';
 import { useFocusEffect } from '@react-navigation/native';
+import * as WebBrowser from 'expo-web-browser';
 
 
 const App: React.FC = () => {
@@ -43,6 +44,7 @@ const App: React.FC = () => {
             imageUrl: row.Clothing.item_img,
             liked: true,
             itemUrl: row.Clothing.item_web_listing,
+            gender: row.Clothing.item_gender,
           }));
 
         setAllLikedItems(parsedCards);
@@ -116,9 +118,14 @@ const App: React.FC = () => {
                         <Text style={[styles.itemName, { color: theme.text }]}>
                           {item.name}
                         </Text>
-                        <Text style={[styles.itemPrice, { color: theme.text }]}>
-                          {item.price}
-                        </Text>
+                        <View style={styles.priceGenderRow}>
+                          <Text style={[styles.itemPrice, { color: theme.text }]}>
+                            {item.price}
+                          </Text>
+                          <Text style={[styles.itemGender, { color: theme.text }]}>
+                            {item.gender.toUpperCase()}
+                          </Text>
+                        </View>
                       </View>
                     </View>
                   </Pressable>
@@ -140,16 +147,25 @@ const App: React.FC = () => {
                         source={{ uri: selectedItem.imageUrl }}
                       />
                       <View style={styles.textAndButtonContainer}>
-                        <View style={{ height: 1, backgroundColor: theme.background, width: '100%', marginVertical: 10 }} />
                         <Text style={{ color: theme.headerBg, fontSize: 18, fontWeight: '600', fontFamily: 'GeorgiaProSemiBold' }}>
                           {selectedItem.name}
                         </Text>
-                        <Text style={{ color: theme.headerBg, fontFamily: 'GeorgiaProSemiBold' }}>
+                        <View style={{ height: 1, backgroundColor: theme.background, width: '100%', marginVertical: 10 }} />
+
+                        <Text style={{ color: theme.headerBg, fontFamily: 'GeorgiaProSemiBold', alignSelf: 'flex-start' }}>
                           {selectedItem.price}
                         </Text>
+                        <Text style={{ color: theme.headerBg, fontFamily: 'GeorgiaProSemiBold', alignSelf: 'flex-end' }}>
+                          {selectedItem.gender.toUpperCase()}
+                        </Text>
 
-                        <Pressable style={styles.closeButton} onPress={() => setModalVisible(false)}>
-                          <Text style={styles.closeButtonText}>Close</Text>
+                        <Pressable style={styles.closeButton} onPress={() => {
+                          if (selectedItem.itemUrl) {
+                            WebBrowser.openBrowserAsync(selectedItem.itemUrl);
+                          }
+                          
+                        }}>
+                          <Text style={styles.closeButtonText}>Go to Website</Text>
                         </Pressable>
                       </View>
                     </>
@@ -225,6 +241,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     fontFamily: 'GeorgiaProRegular',
+  },
+  itemGender: {
+    fontSize: 12,
+    fontWeight: '400',
+    fontFamily: 'GeorgiaProRegular',
+  },
+  priceGenderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 4,
   },
   text: {
     fontSize: 18,
