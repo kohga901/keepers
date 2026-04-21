@@ -6,7 +6,7 @@
  */
 
 import React, {useCallback, useEffect, useState} from 'react';
-import { StyleSheet, Text, View, Pressable, FlatList } from 'react-native';
+import { StyleSheet, Text, View, Pressable, FlatList, Modal } from 'react-native';
 import { Image } from 'expo-image';
 import { useAppTheme } from '../../hooks/useAppTheme';
 import { Item } from '../../models/Items';
@@ -15,6 +15,8 @@ import { useFocusEffect } from '@react-navigation/native';
 
 const App: React.FC = () => {
   const [allLikedItems, setAllLikedItems] = useState<Item[]>([]);
+  const [selectedItem, setSelectedItem] = useState<Item | null>(null);
+  const [modalVisible, setModalVisible] = useState(false);
     const addLikedItem = (item: Item) => {
       setAllLikedItems((prev) => [...prev, { ...item, liked: true }]);
     };
@@ -77,30 +79,74 @@ const App: React.FC = () => {
 
         <View style={styles.content}>
           {activeTab === 'liked' ? (
-            <FlatList
-              data={allLikedItems} 
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={styles.list}
-              renderItem={({ item }) => (
-                <Pressable style={styles.card}>
-                  <View style={styles.imageContainer}>
-                    <Image
-                      style={styles.image}
-                      source={{ uri: item.imageUrl }}
-                      contentFit="cover"
-                     transition={1000}
-                    />
-                   <View style={styles.itemInfo}>
-                      <Text style={[styles.itemName, { color: theme.text }]}>{item.name}</Text>
-                      <Text style={[styles.itemPrice, { color: theme.text }]}>{item.price}</Text>
-                   </View>
+            <>
+              <FlatList
+                data={allLikedItems}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={styles.list}
+                renderItem={({ item }) => (
+                  <Pressable
+                    style={styles.card}
+                    onPress={() => {
+                      setSelectedItem(item);
+                      setModalVisible(true);
+                    }}
+                  >
+                    <View style={styles.imageContainer}>
+                      <Image
+                        style={styles.image}
+                        source={{ uri: item.imageUrl }}
+                        contentFit="cover"
+                        transition={1000}
+                      />
+                      <View style={styles.itemInfo}>
+                        <Text style={[styles.itemName, { color: theme.text }]}>
+                          {item.name}
+                        </Text>
+                        <Text style={[styles.itemPrice, { color: theme.text }]}>
+                          {item.price}
+                        </Text>
+                      </View>
+                    </View>
+                  </Pressable>
+                )}
+              />
+
+              <Modal
+                visible={modalVisible}
+                transparent={true}
+                animationType="slide"
+              >
+                <View style={styles.modalBackground}>
+                  <View style={styles.modalContainer}>
+                    {selectedItem && (
+                      <>
+                        <Image
+                          style={styles.modalImage}
+                          source={{ uri: selectedItem.imageUrl }}
+                        />
+                        <View style={{ height: 1, backgroundColor: theme.background, width: '100%', marginVertical: 10 }} />
+                        <Text style={{ color: theme.text, fontSize: 18 }}>
+                          {selectedItem.name}
+                        </Text>
+                        <Text style={{ color: theme.text }}>
+                          {selectedItem.price}
+                        </Text>
+                      </>
+                    )}
+
+                    <Pressable onPress={() => setModalVisible(false)}>
+                      <Text style={{ color: 'red', marginTop: 10 }}>Close</Text>
+                    </Pressable>
                   </View>
-               </Pressable>
-              )}
-            />
-          ) : (            
-          <Text style={[styles.text, { color: theme.text }]}>Disliked items go here</Text>
-        )}
+                </View>
+              </Modal>
+            </>
+          ) : (
+            <Text style={[styles.text, { color: theme.text }]}>
+              Disliked items go here
+            </Text>
+          )}
       </View>
     </View>
     );
@@ -125,8 +171,6 @@ const App: React.FC = () => {
       fontFamily: 'GeorgiaProSemiBold',
     },
     content: {
-      // alignItems: 'center',
-      // justifyContent: 'center',
       flex: 1,
     },
     list: {
@@ -175,6 +219,26 @@ const App: React.FC = () => {
       flexDirection: 'row',
       alignItems: 'center',
       padding: 10,
+    },
+    modalBackground: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: 'rgba(0,0,0,0.5)',
+    },
+
+    modalContainer: {
+      width: '80%',
+      padding: 20,
+      backgroundColor: 'white',
+      borderRadius: 10,
+      alignItems: 'center',
+    },
+
+    modalImage: {
+      width: 200,
+      height: 200,
+      marginBottom: 10,
     },
   });
 export default App;
