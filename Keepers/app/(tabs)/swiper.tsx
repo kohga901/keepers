@@ -59,6 +59,7 @@ const App: React.FC = () => {
           imageUrl: row.item_img,
           liked: false,
           itemUrl: row.item_web_listing,
+          gender: row.item_gender,
         }
       })
 
@@ -145,6 +146,7 @@ const App: React.FC = () => {
                 imageUrl: row.item_img,
                 liked: false,
                 itemUrl: row.item_web_listing,
+                gender: row.item_gender,
               };
             });
 
@@ -163,7 +165,6 @@ const App: React.FC = () => {
         }}
         onSwipedRight ={async (cardIndex: number) => {
           await saveLikedItem(cards[cardIndex].id);
-          //addLikedItem(cards[cardIndex]);
           
         }}
         disableBottomSwipe={true}

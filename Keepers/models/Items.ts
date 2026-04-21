@@ -6,7 +6,7 @@
  */
 
 export interface Item {
-  gender?: string;
+  gender: string;
   id: string;
   imageUrl: string;
   name: string;
