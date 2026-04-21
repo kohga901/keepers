@@ -12,8 +12,9 @@ import { Swipeable } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '../../hooks/useAppTheme';
 import { Item } from '../../models/Items';
-import { getClothing, getLikedItems } from '@/services/dataServices';
+import { deleteLikedItem, getLikedItems } from '@/services/dataServices';
 import { useFocusEffect } from '@react-navigation/native';
+
 
 const App: React.FC = () => {
   const [allLikedItems, setAllLikedItems] = useState<Item[]>([]);
@@ -22,6 +23,7 @@ const App: React.FC = () => {
 
   const deleteItem = (id: string) => {
     setAllLikedItems(prev => prev.filter(item => item.id !== id));
+    deleteLikedItem(id);
   };
 
 
