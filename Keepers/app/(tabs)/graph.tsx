@@ -36,7 +36,7 @@ const AnimatedView = Animated.createAnimatedComponent(View);
 const GRAPH_PADDING = 16;
 const MIN_SCALE = 1;
 const MAX_SCALE = 15;
-const NODE_TAP_RADIUS = 20;
+const NODE_TAP_RADIUS = 24;
 
 const nodeData: GraphNode[] = nodeDataJson;
 
@@ -133,6 +133,8 @@ export default function Graph() {
   const [isLoadingItem, setIsLoadingItem] = useState(false);
   const [itemError, setItemError] = useState<string | null>(null);
   const activeRequestId = useRef(0);
+  const graphViewportRef = useRef<View>(null);
+  const viewportPageOffset = useRef({ x: 0, y: 0 });
 
   const scale = useSharedValue(1);
   const pinchStartScale = useSharedValue(1);
@@ -209,6 +211,10 @@ export default function Graph() {
     setViewport({ width, height });
     viewportWidth.value = Math.max(width, 1);
     viewportHeight.value = Math.max(height, 1);
+
+    graphViewportRef.current?.measureInWindow((x, y) => {
+      viewportPageOffset.current = { x, y };
+    });
   };
 
   const handleNodePress = async (node: GraphNode) => {
@@ -247,7 +253,7 @@ export default function Graph() {
   };
 
   const handleGraphTap = useCallback(
-    (tapX: number, tapY: number) => {
+    (tapX: number, tapY: number, absoluteX: number, absoluteY: number) => {
       if (viewport.width === 0 || viewport.height === 0 || screenNodes.length === 0) {
         return;
       }
@@ -257,20 +263,47 @@ export default function Graph() {
       const currentTranslateY = translateY.value;
       const centerX = viewport.width / 2;
       const centerY = viewport.height / 2;
+      const tapCandidates = [
+        { x: tapX, y: tapY },
+        {
+          x: absoluteX - viewportPageOffset.current.x,
+          y: absoluteY - viewportPageOffset.current.y,
+        },
+      ];
 
       let closestNode: GraphNode | null = null;
       let closestDistanceSquared = Number.POSITIVE_INFINITY;
 
-      for (const { node, x, y } of screenNodes) {
-        const transformedX = (x - centerX) * currentScale + centerX + currentTranslateX;
-        const transformedY = (y - centerY) * currentScale + centerY + currentTranslateY;
-        const deltaX = tapX - transformedX;
-        const deltaY = tapY - transformedY;
-        const distanceSquared = deltaX * deltaX + deltaY * deltaY;
+      for (const candidate of tapCandidates) {
+        for (const { node, x, y } of screenNodes) {
+          const transformedXTranslateThenScale =
+            (x - centerX) * currentScale + centerX + currentTranslateX * currentScale;
+          const transformedYTranslateThenScale =
+            (y - centerY) * currentScale + centerY + currentTranslateY * currentScale;
 
-        if (distanceSquared < closestDistanceSquared) {
-          closestDistanceSquared = distanceSquared;
-          closestNode = node;
+          const transformedXScaleThenTranslate =
+            (x - centerX) * currentScale + centerX + currentTranslateX;
+          const transformedYScaleThenTranslate =
+            (y - centerY) * currentScale + centerY + currentTranslateY;
+
+          const distanceTranslateThenScale =
+            (candidate.x - transformedXTranslateThenScale) *
+              (candidate.x - transformedXTranslateThenScale) +
+            (candidate.y - transformedYTranslateThenScale) *
+              (candidate.y - transformedYTranslateThenScale);
+
+          const distanceScaleThenTranslate =
+            (candidate.x - transformedXScaleThenTranslate) *
+              (candidate.x - transformedXScaleThenTranslate) +
+            (candidate.y - transformedYScaleThenTranslate) *
+              (candidate.y - transformedYScaleThenTranslate);
+
+          const distanceSquared = Math.min(distanceTranslateThenScale, distanceScaleThenTranslate);
+
+          if (distanceSquared < closestDistanceSquared) {
+            closestDistanceSquared = distanceSquared;
+            closestNode = node;
+          }
         }
       }
 
@@ -286,13 +319,13 @@ export default function Graph() {
   );
 
   const tapGesture = Gesture.Tap()
-    .maxDistance(12)
+    .maxDistance(20)
     .onEnd((event, success) => {
       if (!success) {
         return;
       }
 
-      runOnJS(handleGraphTap)(event.x, event.y);
+      runOnJS(handleGraphTap)(event.x, event.y, event.absoluteX, event.absoluteY);
     });
 
   const combinedGesture = Gesture.Simultaneous(panGesture, pinchGesture, tapGesture);
@@ -339,7 +372,7 @@ export default function Graph() {
 
       <Text style={[styles.helpText, { color: theme.text }]}>Source: local JSON file</Text>
 
-      <View style={styles.graphViewport} onLayout={onViewportLayout}>
+      <View ref={graphViewportRef} style={styles.graphViewport} onLayout={onViewportLayout}>
         <GestureDetector gesture={combinedGesture}>
           <AnimatedView style={[styles.graphLayer, transformStyle]}>
             {screenNodes.map(({ node, x, y }) => (
