@@ -182,6 +182,7 @@ function buildPlotHtml(points: NodePoint[], bounds: Bounds, colors: {
 				lastMid: null,
 				lastDistance: 0,
 				maxMovement: 0,
+				hadMultiTouchGesture: false,
 			};
 
 			// Mouse bookkeeping mirrors the touch tap/pan behavior on desktop.
@@ -493,6 +494,7 @@ function buildPlotHtml(points: NodePoint[], bounds: Bounds, colors: {
 				touchState.lastMid = mid;
 				touchState.lastDistance = dist;
 				touchState.maxMovement = 0;
+				touchState.hadMultiTouchGesture = true;
 			}
 
 			function activeTouchesCount() {
@@ -509,9 +511,11 @@ function buildPlotHtml(points: NodePoint[], bounds: Bounds, colors: {
 
 				const count = activeTouchesCount();
 				if (count === 1) {
+					touchState.hadMultiTouchGesture = false;
 					const single = Array.from(touchState.points.values())[0];
 					beginPan(single);
 				} else if (count >= 2) {
+					touchState.hadMultiTouchGesture = true;
 					beginPinch();
 				}
 			}, { passive: false });
@@ -550,6 +554,7 @@ function buildPlotHtml(points: NodePoint[], bounds: Bounds, colors: {
 				}
 
 				if (count >= 2) {
+					touchState.hadMultiTouchGesture = true;
 					const touches = getTwoActiveTouches();
 					if (!touches) return;
 
@@ -612,7 +617,7 @@ function buildPlotHtml(points: NodePoint[], bounds: Bounds, colors: {
 				const count = activeTouchesCount();
 
 				if (count === 0) {
-					if (priorMode === 'pan' && priorMovement < 7 && event.changedTouches.length > 0) {
+					if (!touchState.hadMultiTouchGesture && priorMode === 'pan' && priorMovement < 7 && event.changedTouches.length > 0) {
 						const tap = event.changedTouches[0];
 						selectPointFromTap(tap.clientX, tap.clientY);
 					}
@@ -621,6 +626,7 @@ function buildPlotHtml(points: NodePoint[], bounds: Bounds, colors: {
 					touchState.lastMid = null;
 					touchState.lastDistance = 0;
 					touchState.maxMovement = 0;
+					touchState.hadMultiTouchGesture = false;
 					return;
 				}
 
