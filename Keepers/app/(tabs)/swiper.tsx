@@ -8,7 +8,7 @@
 import React, { useRef, useState, useEffect } from "react";
 import { View, Text, StyleSheet, Dimensions } from "react-native";
 import Swiper from "react-native-deck-swiper";
-import {getRecommendationsFromServer} from '../../services/serverApi';
+import {getRecommendationsFromServer, sendSwipeToServer} from '../../services/serverApi';
 
 import { Image } from 'expo-image';
 import * as WebBrowser from 'expo-web-browser';
@@ -19,6 +19,8 @@ import {  saveLikedItem } from '../../services/dataServices';
 const { height } = Dimensions.get("window");
 const CARD_HEIGHT_RATIO = 0.7;
 const CARD_VERTICAL_MARGIN = (height * (1 - CARD_HEIGHT_RATIO)) / 2;
+
+const amountOfItemsToFetch = 10;
 
 const App: React.FC = () => {
   const swiper = useRef<any>(null);
@@ -48,7 +50,7 @@ const App: React.FC = () => {
     };
 
     const initialDataFeed = async () => {
-      const data = await getRecommendationsFromServer(23)
+      const data = await getRecommendationsFromServer(amountOfItemsToFetch);
       if (!data) return
 
       const parsedCards: Item[] = data.map((row: ClothingRow) => {
@@ -134,8 +136,8 @@ const App: React.FC = () => {
             return;
           }
 
-          if ((index+1) % 20 === 0) {
-            const data = await getRecommendationsFromServer(20);
+          if ((index+1) % amountOfItemsToFetch === 0) {
+            const data = await getRecommendationsFromServer(amountOfItemsToFetch);
             if (!data) return;
 
             const parsedCards: Item[] = data.map((row: ClothingRow) => {
@@ -163,8 +165,11 @@ const App: React.FC = () => {
             WebBrowser.openBrowserAsync(item.itemUrl);
           }
         }}
+        onSwipedLeft={async (cardIndex: number) => {
+          await sendSwipeToServer(cards[cardIndex].id, false);
+        }}
         onSwipedRight ={async (cardIndex: number) => {
-          await saveLikedItem(cards[cardIndex].id);
+          await sendSwipeToServer(cards[cardIndex].id, true);
           
         }}
         disableBottomSwipe={true}
