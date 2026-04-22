@@ -1,7 +1,12 @@
 import json
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
+"""
+visualize.py
 
+This script is visualizes, with a plot, the embeddings that
+are contained inside of our metadata.json file
+"""
 with open("metadata.json") as f:
     meta = json.load(f)
 

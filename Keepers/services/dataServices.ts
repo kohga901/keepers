@@ -114,3 +114,24 @@ export const getLikedItems = async () => {
 
   return data;
 };
+
+export const deleteLikedItem = async (clothesId: string) => {
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+
+  if (userError || !userData.user) {
+    console.error('No user found');
+    return;
+  }
+
+  const userId = userData.user.id;
+
+  const { error } = await supabase
+    .from('Likes')
+    .delete()
+    .eq('user_id', userId)
+    .eq('clothes_id', clothesId);
+
+  if (error) {
+    console.error('Error deleting liked item:', error.message);
+  }
+};

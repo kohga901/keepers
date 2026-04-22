@@ -6,7 +6,7 @@
  */
 
 export interface Item {
-  gender?: string;
+  gender: string;
   id: string;
   imageUrl: string;
   name: string;
@@ -16,3 +16,12 @@ export interface Item {
   
   
 }
+
+export type ClothingRow = {
+  item_id: string;
+  item_name: string;
+  item_price: string;
+  item_img: string;
+  item_web_listing: string;
+  item_gender: string;
+};

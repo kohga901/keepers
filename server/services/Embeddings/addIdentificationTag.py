@@ -1,5 +1,10 @@
 import json
+# 
+"""
+addItentificationTag.py
 
+This script adds item_id tags to the metadata.json file. 
+"""
 with open("metadata.json", "r") as f:
     data = json.load(f)
 

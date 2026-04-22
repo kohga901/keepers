@@ -1,7 +1,13 @@
 import csv
 import json
 
-# Get IDs from CSV
+"""
+findDiscrepancies.py
+
+This script is written as a testing script. 
+Ensures that ALL of the JSON is synchronized from the CSV
+Get IDs from CSV
+"""
 csv_ids = set()
 with open("Clothing_rows.csv", "r") as f:
     reader = csv.DictReader(f)

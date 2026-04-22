@@ -14,35 +14,51 @@ import numpy as np
 import json
 from services.Startup import EMBEDDING_DIM, item_id_to_embedding, _item_ids
 import random
-
-
 from db import supabase
 from services.recommendation_service import get_recommendations
-from services.Startup import EMBEDDING_DIM, item_id_to_embedding
 
 router = APIRouter(prefix="/clothes")
 
 ALPHA = 0.1
 BETA  = 0.05
 
-
 # --- Request / Response models ---
 
 class SwipeData(BaseModel):
     user_id: str
-    item_id: str
+    item_id: int
     liked: bool
 
 class RecommendationRequest(BaseModel):
     user_id: str
     n: int = 10
 
+class ClothingItem(BaseModel):
+    item_id: int
+    item_name: str
+    item_price: str | None
+    item_gender: str | None
+    item_img: str | None
+    item_web_listing: str | None
+
 class RecommendationResponse(BaseModel):
-    recommendations: list[str]
+    recommendations: list[ClothingItem]
 
 
 # --- Helpers ---
+def _fetch_clothing_items(item_ids: list[int]) -> list[dict]:
+    """
+    Fetch clothing items based on item_id's and then return a dictionary 
+    """
+    # SELECT * FROM "Clothing" WHERE item_id IN (list of item_id's)
+    response = supabase.table("Clothing").select("*").in_("item_id", item_ids).execute()
 
+    # Go through the item_ids and put the FAISS ranking and their FAISS ranking in a dict.
+    # dict = {ranking : index of item in the item_ids list}
+    order = {i: idx for idx, i in enumerate(item_ids)}
+    
+    # Return the 
+    return sorted(response.data, key=lambda x: order.get(x["item_id"], 999))
 
 def _fetch_pref_vec(user_id: str) -> np.ndarray:
     """
@@ -53,13 +69,14 @@ def _fetch_pref_vec(user_id: str) -> np.ndarray:
 
     # If user has no preference vector, initialize it all to 0.
     if not response.data or response.data[0]["pref_vec"] is None:
+
         # Return an all 0 vector.
         return np.zeros(EMBEDDING_DIM, dtype=np.float32)
     
     # Return preference vector
     return np.array(json.loads(response.data[0]["pref_vec"]), dtype=np.float32)
 
-def _update_pref_vec(pref_vec: np.ndarray, item_id: str, liked: bool) -> np.ndarray:
+def _update_pref_vec(pref_vec: np.ndarray, item_id: int, liked: bool) -> np.ndarray:
     """
     Updates a preference vector with a given vector and liked status.
 
@@ -100,7 +117,7 @@ def _save_pref_vec(user_id: str, pref_vec: np.ndarray) -> None:
         "pref_vec": pref_vec.tolist()
     }).execute()
 
-def _record_swipe(user_id: str, item_id: str, liked: bool) -> None:
+def _record_swipe(user_id: str, item_id: int, liked: bool) -> None:
     """
     Records a user's swipe and update the db.
     """
@@ -110,10 +127,10 @@ def _record_swipe(user_id: str, item_id: str, liked: bool) -> None:
     # Make a SQL insert query.
     supabase.table(table).upsert({
         "user_id": user_id,
-        "clothes_id": int(item_id)
+        "clothes_id": item_id
     }).execute()
 
-def _fetch_seen_item_ids(user_id: str) -> list[str]:
+def _fetch_seen_item_ids(user_id: str) -> list[int]:
     """
     Fetch the item_id's of clothes that the user has already seen.
     """
@@ -124,8 +141,8 @@ def _fetch_seen_item_ids(user_id: str) -> list[str]:
     dislikes = supabase.table("Dislikes").select("clothes_id").eq("user_id", user_id).execute()
 
     # Join likes and dislikes.
-    seen = [str(row["clothes_id"]) for row in likes.data]
-    seen += [str(row["clothes_id"]) for row in dislikes.data]
+    seen = [row["clothes_id"] for row in likes.data]
+    seen += [row["clothes_id"] for row in dislikes.data]
     return seen
 
 
@@ -141,28 +158,48 @@ def swipe(req: SwipeData):
         - Updates the pref_vec with the swiped item
         - Records the swipe
     """
+    # Get pref_vec of the user.
     pref_vec = _fetch_pref_vec(req.user_id)
+
+    # Update the pref_vec of the user.
     pref_vec = _update_pref_vec(pref_vec, req.item_id, req.liked)
+
+    # Save and upload the pref_vec to db.
     _save_pref_vec(req.user_id, pref_vec)
+    
+    # Save and upload the save data to the db.
     _record_swipe(req.user_id, req.item_id, req.liked)
+
+    # Return status to client.
     return {"status": "ok"}
 
 @router.post("/recommendations")
 def recommendations(req: RecommendationRequest) -> RecommendationResponse:
-    """
-    End point for requesting new recommendations for client.
-        - Fetches the user's pref_vec
-        - Fetches the seen items of the user
-        - If user has no pref_vec yet, return n random items.
-    """
-    pref_vec      = _fetch_pref_vec(req.user_id)
+    # Get pref_vec of the user.
+    pref_vec = _fetch_pref_vec(req.user_id)
+
+    # Get seen items of the user.
     seen_item_ids = _fetch_seen_item_ids(req.user_id)
 
-    # If user has no pref_vec, return n random items.
+    # If the pref_vec of a user is 0, get n random items from the db.
     if np.all(pref_vec == 0.0):
-        
         random_ids = random.sample(_item_ids, k=min(req.n, len(_item_ids)))
-        return RecommendationResponse(recommendations=random_ids)
+        items = _fetch_clothing_items(random_ids)
+        return RecommendationResponse(recommendations=items)
 
+    # If user already has an existing pref_vec fetch n items and return it to client.
     results = get_recommendations(pref_vec, seen_item_ids, n=req.n)
-    return RecommendationResponse(recommendations=results)
+
+    # Fetch the recommended items from the db.
+    items = _fetch_clothing_items(results)
+
+    # Send HTTP POST response to client.
+    return RecommendationResponse(recommendations=items)
+
+@router.post("/recommendations/debug")
+def recommendations_debug(req: RecommendationRequest):
+    from services.recommendation_service import get_recommendations_with_scores
+    pref_vec = _fetch_pref_vec(req.user_id)
+    seen_item_ids = _fetch_seen_item_ids(req.user_id)
+    results = get_recommendations_with_scores(pref_vec, seen_item_ids, n=req.n)
+    return {"recommendations": [{"item_id": r[0], "score": r[1]} for r in results]}
