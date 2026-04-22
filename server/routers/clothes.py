@@ -16,6 +16,20 @@ from services.Startup import EMBEDDING_DIM, item_id_to_embedding, _item_ids
 import random
 from db import supabase
 from services.recommendation_service import get_recommendations
+from services.Startup import umap_reducer
+import time
+
+
+def _supabase_execute(query, retries=3, delay=0.5):
+    for attempt in range(retries):
+        try:
+            return query.execute()
+        except Exception:
+            if attempt < retries - 1:
+                time.sleep(delay)
+            else:
+                raise
+
 
 router = APIRouter(prefix="/clothes")
 
@@ -51,7 +65,7 @@ def _fetch_clothing_items(item_ids: list[int]) -> list[dict]:
     Fetch clothing items based on item_id's and then return a dictionary 
     """
     # SELECT * FROM "Clothing" WHERE item_id IN (list of item_id's)
-    response = supabase.table("Clothing").select("*").in_("item_id", item_ids).execute()
+    response = _supabase_execute(supabase.table("Clothing").select("*").in_("item_id", item_ids))
 
     # Go through the item_ids and put the FAISS ranking and their FAISS ranking in a dict.
     # dict = {ranking : index of item in the item_ids list}
@@ -65,7 +79,7 @@ def _fetch_pref_vec(user_id: str) -> np.ndarray:
     Fetches a user's preference vector from the db.
     """
     # SQL query to db.
-    response = supabase.table("User_Preferences").select("pref_vec").eq("user_id", user_id).execute()
+    response = _supabase_execute(supabase.table("User_Preferences").select("pref_vec").eq("user_id", user_id))
 
     # If user has no preference vector, initialize it all to 0.
     if not response.data or response.data[0]["pref_vec"] is None:
@@ -98,13 +112,6 @@ def _update_pref_vec(pref_vec: np.ndarray, item_id: int, liked: bool) -> np.ndar
          # Deduct the item's embedding from the pref_vec.
         pref_vec = pref_vec - BETA * item_embedding
 
-    # Compute new vector's magnitude.
-    norm = np.linalg.norm(pref_vec)
-
-    # Divide each element by the vector's magnitude so 
-    # magnitude of the vector is 1.
-    if norm > 0.0:
-        pref_vec = pref_vec / norm
     return pref_vec
 
 def _save_pref_vec(user_id: str, pref_vec: np.ndarray) -> None:
@@ -112,10 +119,10 @@ def _save_pref_vec(user_id: str, pref_vec: np.ndarray) -> None:
     Replace a user's pref_vec with a new pref_vec.
     """
     # Make a SQL insert query.
-    supabase.table("User_Preferences").upsert({
+    _supabase_execute(supabase.table("User_Preferences").upsert({
         "user_id": user_id,
         "pref_vec": pref_vec.tolist()
-    }).execute()
+    }))
 
 def _record_swipe(user_id: str, item_id: int, liked: bool) -> None:
     """
@@ -125,20 +132,20 @@ def _record_swipe(user_id: str, item_id: int, liked: bool) -> None:
     table = "Likes" if liked else "Dislikes"
 
     # Make a SQL insert query.
-    supabase.table(table).upsert({
+    _supabase_execute(supabase.table(table).upsert({
         "user_id": user_id,
         "clothes_id": item_id
-    }).execute()
+    }))
 
 def _fetch_seen_item_ids(user_id: str) -> list[int]:
     """
     Fetch the item_id's of clothes that the user has already seen.
     """
     # Likes of the user.
-    likes    = supabase.table("Likes").select("clothes_id").eq("user_id", user_id).execute()
+    likes    = _supabase_execute(supabase.table("Likes").select("clothes_id").eq("user_id", user_id))
 
     # Dislikes of the user.
-    dislikes = supabase.table("Dislikes").select("clothes_id").eq("user_id", user_id).execute()
+    dislikes = _supabase_execute(supabase.table("Dislikes").select("clothes_id").eq("user_id", user_id))
 
     # Join likes and dislikes.
     seen = [row["clothes_id"] for row in likes.data]
@@ -146,18 +153,18 @@ def _fetch_seen_item_ids(user_id: str) -> list[int]:
     return seen
 
 
-# --- Endpoints ---
+def _save_user_coordinates(user_id: str, pref_vec: np.ndarray) -> None:
+    coords = umap_reducer.transform(pref_vec.reshape(1, -1))[0]
+    _supabase_execute(supabase.table("Coordinates").upsert({
+        "user_id": user_id,
+        "x": float(coords[0]),
+        "y": float(coords[1])
+    }))
 
+# --- Endpoints ---
 
 @router.post("/swipe")
 def swipe(req: SwipeData):
-    """
-    End point for swipes. 
-        - Takes a swipe POST request
-        - Fetches the user's pref_vec from db
-        - Updates the pref_vec with the swiped item
-        - Records the swipe
-    """
     # Get pref_vec of the user.
     pref_vec = _fetch_pref_vec(req.user_id)
 
@@ -166,9 +173,17 @@ def swipe(req: SwipeData):
 
     # Save and upload the pref_vec to db.
     _save_pref_vec(req.user_id, pref_vec)
-    
-    # Save and upload the save data to the db.
+
+    # Save and upload the swipe data to the db.
     _record_swipe(req.user_id, req.item_id, req.liked)
+
+    # Update coordinates every 10 swipes only.
+    seen_count = len(_fetch_seen_item_ids(req.user_id))
+    if seen_count % 10 == 0:
+        try:
+            _save_user_coordinates(req.user_id, pref_vec)
+        except Exception:
+            pass
 
     # Return status to client.
     return {"status": "ok"}
