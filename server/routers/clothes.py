@@ -179,7 +179,7 @@ def swipe(req: SwipeData):
 
     # Update coordinates every 10 swipes only.
     seen_count = len(_fetch_seen_item_ids(req.user_id))
-    if seen_count % 10 == 0:
+    if seen_count % 1 == 0:
         try:
             _save_user_coordinates(req.user_id, pref_vec)
         except Exception:
