@@ -69,19 +69,16 @@ export default function TabLayout() {
       />
       <Tabs.Screen
         name="swiper"
-        options={({ focused }) => ({
+        options={{
           title: 'Swiper',
-          tabBarIcon: ({ color }) => (
+          tabBarIcon: ({ color, focused }) => (
             <Ionicons
               name={focused ? 'shirt' : 'shirt-outline'}
               color={color}
               size={24}
             />
           ),
-          tabBarLabelStyle: {
-            color: focused ? theme.text : theme.tabInactive,
-          },
-        })}
+        }}
       />
       <Tabs.Screen
         name="stylewraps"
