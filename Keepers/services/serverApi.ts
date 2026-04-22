@@ -1,7 +1,7 @@
 import { supabase } from '../utils/supabase';
 import { getClothing } from './dataServices';
 
-const SERVER_BASE_URL = '';
+const SERVER_BASE_URL = 'https://trial-exact-usable.ngrok-free.dev';
 
 export const getRecommendationsFromServer = async (n: number) => {
   const { data: userData, error: userError } = await supabase.auth.getUser();
@@ -36,9 +36,8 @@ export const getRecommendationsFromServer = async (n: number) => {
     }
 
     const result = await response.json();
-    console.log('Server result:', result);
-
-    // 🔑 FIX: make sure we return an array
+    //console.log('Server result:', result);
+    
     const data = Array.isArray(result)
       ? result
       : result.recommendations ?? [];
