@@ -7,6 +7,39 @@
  */
 import { supabase } from '../utils/supabase';
 
+type PreferenceVectorRow = {
+  pref_vec: number[] | string | null;
+};
+
+export const getUserPreferenceVector = async (userId: string): Promise<number[] | null> => {
+  const { data, error } = await supabase
+    .from('User_Preferences')
+    .select('pref_vec')
+    .eq('user_id', userId)
+    .maybeSingle<PreferenceVectorRow>();
+
+  if (error) {
+    console.error('Error fetching user preference vector:', error.message);
+    return null;
+  }
+
+  if (!data?.pref_vec) {
+    return null;
+  }
+
+  if (Array.isArray(data.pref_vec)) {
+    return data.pref_vec;
+  }
+
+  try {
+    const parsed = JSON.parse(data.pref_vec);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch (parseError) {
+    console.error('Failed to parse preference vector:', parseError);
+    return null;
+  }
+}
+
 
 export const getClothing = async () => {
   
