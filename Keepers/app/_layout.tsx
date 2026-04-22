@@ -12,6 +12,7 @@ import { View, ActivityIndicator } from 'react-native';
 import type { Session } from '@supabase/supabase-js';
 
 import { useFonts } from 'expo-font';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Auth from '../components/Auth';
 import { useAppTheme } from '../hooks/useAppTheme';
 import { supabase } from '../utils/supabase';
@@ -87,27 +88,29 @@ export default function RootLayout() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.background }}>
-      <Stack>
-        <Stack.Screen
-          name="(tabs)"
-          options={{
-            headerShown: true,
-            headerTransparent: true,
-            title: 'K E E P E R S',
-            headerTintColor: theme.headerText,
-            headerShadowVisible: true,
-            headerStyle: {
-              backgroundColor: theme.headerBg,
-            },
-            headerTitleStyle: {
-              fontFamily: 'GeorgiaProBlack', // Font is now global
-              fontSize: 24,            
-            },
-          }}
-        />
-      </Stack>
-      <StatusBar style="dark" />
-    </View>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <View style={{ flex: 1, backgroundColor: theme.background }}>
+        <Stack>
+          <Stack.Screen
+            name="(tabs)"
+            options={{
+              headerShown: true,
+              headerTransparent: true,
+              title: 'K E E P E R S',
+              headerTintColor: theme.headerText,
+              headerShadowVisible: true,
+              headerStyle: {
+                backgroundColor: theme.headerBg,
+              },
+              headerTitleStyle: {
+                fontFamily: 'GeorgiaProBlack', // Font is now global
+                fontSize: 24,
+              },
+            }}
+          />
+        </Stack>
+        <StatusBar style="dark" />
+      </View>
+    </GestureHandlerRootView>
   );
 }
