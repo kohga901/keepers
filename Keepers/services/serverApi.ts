@@ -1,3 +1,12 @@
+/**
+ * File: serverApi.ts
+ * Description: API functions for interacting with the server, including fetching recommendations and sending swipe data.
+ * Author: Kai Markley 
+ * Date: 2026-04-21
+ * 
+ * 
+ */
+
 import { supabase } from '../utils/supabase';
 import { getClothing } from './dataServices';
 

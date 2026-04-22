@@ -2,7 +2,7 @@
  * File: swiper.tsx
  * Description: Displays swipeable clothing cards for users to like or dislike.
  * Author: Kai Markley & Gabriel Min
- * Date: 2026-04-01
+ * Date: 2026-04-21
  */
 
 import React, { useRef, useState, useEffect } from "react";
@@ -14,12 +14,12 @@ import { Image } from 'expo-image';
 import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '../../utils/supabase';
 import { Item, ClothingRow } from '../../models/Items';
-import {  saveLikedItem } from '../../services/dataServices';
 
 const { height } = Dimensions.get("window");
 const CARD_HEIGHT_RATIO = 0.7;
 const CARD_VERTICAL_MARGIN = (height * (1 - CARD_HEIGHT_RATIO)) / 2;
 
+// This controls how many new items are fetched.
 const amountOfItemsToFetch = 10;
 
 const App: React.FC = () => {
