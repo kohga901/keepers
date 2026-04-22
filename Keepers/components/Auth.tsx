@@ -44,7 +44,7 @@ export default function Auth() {
     if (error) {
       Alert.alert('Sign up failed', error.message);
     } else {
-      Alert.alert('Check your inbox', 'Confirm your email to complete sign up.');
+      //Alert.alert('Check your inbox', 'Confirm your email to complete sign up.');
     }
     setLoading(false);
   }
