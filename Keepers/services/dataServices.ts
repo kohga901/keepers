@@ -11,6 +11,42 @@ type PreferenceVectorRow = {
   pref_vec: number[] | string | null;
 };
 
+type UserCoordinates = {
+  x: number;
+  y: number;
+};
+
+type CoordinatesRow = {
+  x: number | string | null;
+  y: number | string | null;
+};
+
+export const getUserCoordinates = async (userId: string): Promise<UserCoordinates | null> => {
+  const { data, error } = await supabase
+    .from('Coordinates')
+    .select('x, y')
+    .eq('user_id', userId)
+    .maybeSingle<CoordinatesRow>();
+
+  if (error) {
+    console.error('Error fetching user coordinates:', error.message);
+    return null;
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  const x = Number(data.x);
+  const y = Number(data.y);
+
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return null;
+  }
+
+  return { x, y };
+};
+
 export const getUserPreferenceVector = async (userId: string): Promise<number[] | null> => {
   const { data, error } = await supabase
     .from('User_Preferences')

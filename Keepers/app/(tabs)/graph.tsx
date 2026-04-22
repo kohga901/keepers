@@ -8,10 +8,12 @@ import {
 	View,
 } from 'react-native';
 import { Image } from 'expo-image';
+import { useIsFocused } from '@react-navigation/native';
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
 
 import { useAppTheme } from '../../hooks/useAppTheme';
-import { getClothingById } from '../../services/dataServices';
+import { getClothingById, getUserCoordinates } from '../../services/dataServices';
+import { supabase } from '../../utils/supabase';
 
 type NodePoint = {
 	clothesId: number;
@@ -41,6 +43,11 @@ type SelectedAnchor = {
 type PlotSize = {
 	width: number;
 	height: number;
+};
+
+type PreferencePoint = {
+	x: number;
+	y: number;
 };
 
 // Raw graph data loaded from the generated node dataset.
@@ -108,11 +115,13 @@ function buildPlotHtml(points: NodePoint[], bounds: Bounds, colors: {
 	axis: string;
 	point: string;
 	pointSelected: string;
+	pointPreference: string;
 	text: string;
-}) {
+}, preferencePoint: PreferencePoint | null) {
 	const pointsJson = JSON.stringify(points);
 	const boundsJson = JSON.stringify(bounds);
 	const colorsJson = JSON.stringify(colors);
+	const preferenceJson = preferencePoint ? JSON.stringify(preferencePoint) : 'null';
 
 	return `
 <!doctype html>
@@ -147,6 +156,7 @@ function buildPlotHtml(points: NodePoint[], bounds: Bounds, colors: {
 			const POINTS = ${pointsJson};
 			const BOUNDS = ${boundsJson};
 			const COLORS = ${colorsJson};
+			const PREFERENCE_POINT = ${preferenceJson};
 
 			const MIN_ZOOM_EXP = -120;
 			const MAX_ZOOM_EXP = 120;
@@ -352,12 +362,35 @@ function buildPlotHtml(points: NodePoint[], bounds: Bounds, colors: {
 				return selectedScreen;
 			}
 
+			function drawPreferencePoint() {
+				if (!PREFERENCE_POINT) {
+					return;
+				}
+
+				const screen = worldToScreen(PREFERENCE_POINT.x, PREFERENCE_POINT.y);
+				if (screen.x < -24 || screen.x > width + 24 || screen.y < -24 || screen.y > height + 24) {
+					return;
+				}
+
+				ctx.fillStyle = COLORS.pointPreference;
+				ctx.beginPath();
+				ctx.arc(screen.x, screen.y, 6.5, 0, Math.PI * 2);
+				ctx.fill();
+
+				ctx.strokeStyle = '#ffffff';
+				ctx.lineWidth = 1.8;
+				ctx.beginPath();
+				ctx.arc(screen.x, screen.y, 9, 0, Math.PI * 2);
+				ctx.stroke();
+			}
+
 			// Clear, redraw, and notify React when the selected anchor moves or disappears.
 			function draw() {
 				sanitizeCamera();
 				ctx.clearRect(0, 0, width, height);
 				drawGrid();
 				const selectedScreen = drawPoints();
+				drawPreferencePoint();
 
 				if (camera.selectedId !== null) {
 					if (selectedScreen) {
@@ -689,12 +722,14 @@ function buildPlotHtml(points: NodePoint[], bounds: Bounds, colors: {
 
 export default function GraphTab() {
 	const { theme } = useAppTheme();
+	const isFocused = useIsFocused();
 
 	// Local UI state for the selected point and the item details popup.
 	const [selectedPointId, setSelectedPointId] = useState<number | null>(null);
 	const [selectedAnchor, setSelectedAnchor] = useState<SelectedAnchor | null>(null);
 	const [plotSize, setPlotSize] = useState<PlotSize>({ width: 0, height: 0 });
 	const [selectedItem, setSelectedItem] = useState<SelectedItem | null>(null);
+	const [preferencePoint, setPreferencePoint] = useState<PreferencePoint | null>(null);
 	const [isLoadingItem, setIsLoadingItem] = useState(false);
 	const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -704,6 +739,42 @@ export default function GraphTab() {
 	// Normalize the dataset once and derive the graph bounds from it.
 	const points = useMemo(() => normalizeNodeData(RAW_NODE_DATA), []);
 	const bounds = useMemo(() => calculateBounds(points), [points]);
+
+	useEffect(() => {
+		if (!isFocused) {
+			return;
+		}
+
+		let cancelled = false;
+
+		const fetchPreferencePoint = async () => {
+			if (!bounds) {
+				if (!cancelled) {
+					setPreferencePoint(null);
+				}
+				return;
+			}
+
+			const { data: userData, error: userError } = await supabase.auth.getUser();
+			if (userError || !userData.user) {
+				if (!cancelled) {
+					setPreferencePoint(null);
+				}
+				return;
+			}
+
+			const coords = await getUserCoordinates(userData.user.id);
+			if (!cancelled) {
+				setPreferencePoint(coords);
+			}
+		};
+
+		fetchPreferencePoint();
+
+		return () => {
+			cancelled = true;
+		};
+	}, [bounds, isFocused]);
 
 	// Rebuild the WebView HTML whenever the theme colors or bounds change.
 	const webContent = useMemo(() => {
@@ -717,9 +788,10 @@ export default function GraphTab() {
 			axis: '#6f6154',
 			point: theme.primary,
 			pointSelected: '#cf3c2f',
+			pointPreference: '#24a7ff',
 			text: '#5d5146',
-		});
-	}, [bounds, points, theme.background, theme.primary]);
+		}, preferencePoint);
+	}, [bounds, points, preferencePoint, theme.background, theme.primary]);
 
 	// Load the selected item's metadata and cache it for repeat taps.
 	useEffect(() => {
@@ -992,7 +1064,7 @@ export default function GraphTab() {
 			{/* Small overlay explains how to use the graph. */}
 			<View style={[styles.overlayTop, { borderColor: theme.border }]}> 
 				<Text style={styles.overlayTitle}>Interactive Style Map</Text>
-				<Text style={styles.overlaySubtitle}>Pinch to zoom, drag to pan, tap a node for item details.</Text>
+				<Text style={styles.overlaySubtitle}>Pinch to zoom, drag to pan, tap a node for item details. Blue ring = your coordinates.</Text>
 			</View>
 
 		</View>
