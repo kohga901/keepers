@@ -12,9 +12,9 @@ from services.Startup import index, _item_ids, EMBEDDING_DIM
 
 def get_recommendations(
     pref_vec: np.ndarray,
-    seen_item_ids: list[str],
+    seen_item_ids: list[int],
     n: int = 20
-) -> list[str]:
+) -> list[int]:
     """
     Returns n unseen item_ids ranked by cosine similarity to pref_vec.
 
@@ -53,9 +53,9 @@ def get_recommendations(
 
 def get_recommendations_with_scores(
     pref_vec: np.ndarray,
-    seen_item_ids: list[str],
+    seen_item_ids: list[int],
     n: int = 20
-) -> list[tuple[str, float]]:
+) -> list[tuple[int, float]]:
     pref = np.array(pref_vec, dtype=np.float32).reshape(1, EMBEDDING_DIM)
     faiss.normalize_L2(pref)
 
