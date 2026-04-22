@@ -13,6 +13,9 @@ import umap
 import csv
 import os
 from logger import setup_logging
+import joblib
+
+MODEL_PATH = "../data/embedded_vectors/umap_model.pkl"
 
 EMBEDDINGS_PATH = "../data/embedded_vectors/catalog_embeddings.npy"
 IDS_PATH        = "../data/embedded_vectors/catalog_ids.npy"
@@ -32,6 +35,10 @@ def main():
     reducer = umap.UMAP(n_components=2, random_state=42)
     coords  = reducer.fit_transform(embeddings)
     logger.info("UMAP complete.")
+
+    # Save the fitted UMAP model
+    joblib.dump(reducer, MODEL_PATH)
+    logger.info(f"Saved UMAP model to {MODEL_PATH}")
 
     logger.info(f"Saving coordinates to {OUTPUT_PATH}...")
     os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)

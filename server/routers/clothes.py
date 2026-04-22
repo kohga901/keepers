@@ -16,6 +16,9 @@ from services.Startup import EMBEDDING_DIM, item_id_to_embedding, _item_ids
 import random
 from db import supabase
 from services.recommendation_service import get_recommendations
+from services.Startup import umap_reducer
+
+
 
 router = APIRouter(prefix="/clothes")
 
@@ -146,8 +149,15 @@ def _fetch_seen_item_ids(user_id: str) -> list[int]:
     return seen
 
 
-# --- Endpoints ---
+def _save_user_coordinates(user_id: str, pref_vec: np.ndarray) -> None:
+    coords = umap_reducer.transform(pref_vec.reshape(1, -1))[0]
+    supabase.table("Coordinates").upsert({
+        "user_id": user_id,
+        "x": float(coords[0]),
+        "y": float(coords[1])
+    }).execute()
 
+# --- Endpoints ---
 
 @router.post("/swipe")
 def swipe(req: SwipeData):
@@ -166,6 +176,9 @@ def swipe(req: SwipeData):
 
     # Save and upload the pref_vec to db.
     _save_pref_vec(req.user_id, pref_vec)
+
+    # Convert and save the user's pref vector as a x,y coordinate.
+    _save_user_coordinates(req.user_id, pref_vec)
     
     # Save and upload the save data to the db.
     _record_swipe(req.user_id, req.item_id, req.liked)

@@ -1,13 +1,3 @@
-import faiss
-import numpy as np
-from dotenv import load_dotenv
-from pathlib import Path
-from supabase import create_client
-import os
-import time
-
-load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
-
 """
 Startup.py
 
@@ -15,6 +5,20 @@ Builds the FAISS index on server boot by fetching embeddings from Supabase.
 Exposes `index`, `_item_ids`, `item_id_to_embedding`, and `EMBEDDING_DIM`
 for use by recommendation_service.py and clothes.py.
 """
+
+import faiss
+import numpy as np
+from dotenv import load_dotenv
+from pathlib import Path
+from supabase import create_client
+import os
+import time
+import joblib
+
+load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
+
+UMAP_MODEL_PATH = Path(__file__).resolve().parents[1] / "data" / "embedded_vectors" / "umap_model.pkl"
+umap_reducer = joblib.load(UMAP_MODEL_PATH)
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
@@ -42,7 +46,7 @@ else:
     raise RuntimeError("Failed to fetch embeddings from Supabase after 3 attempts. Server cannot start.")
 
 # Parse into aligned lists
-_item_ids   = [str(row["item_id"])      for row in response.data]
+_item_ids   = [int(row["item_id"])      for row in response.data]
 _embeddings = np.array([row["embedding"] for row in response.data], dtype=np.float32)
 
 # Normalize for cosine similarity via IndexFlatIP
