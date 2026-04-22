@@ -7,6 +7,75 @@
  */
 import { supabase } from '../utils/supabase';
 
+type PreferenceVectorRow = {
+  pref_vec: number[] | string | null;
+};
+
+type UserCoordinates = {
+  x: number;
+  y: number;
+};
+
+type CoordinatesRow = {
+  x: number | string | null;
+  y: number | string | null;
+};
+
+export const getUserCoordinates = async (userId: string): Promise<UserCoordinates | null> => {
+  const { data, error } = await supabase
+    .from('Coordinates')
+    .select('x, y')
+    .eq('user_id', userId)
+    .maybeSingle<CoordinatesRow>();
+
+  if (error) {
+    console.error('Error fetching user coordinates:', error.message);
+    return null;
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  const x = Number(data.x);
+  const y = Number(data.y);
+
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return null;
+  }
+
+  return { x, y };
+};
+
+export const getUserPreferenceVector = async (userId: string): Promise<number[] | null> => {
+  const { data, error } = await supabase
+    .from('User_Preferences')
+    .select('pref_vec')
+    .eq('user_id', userId)
+    .maybeSingle<PreferenceVectorRow>();
+
+  if (error) {
+    console.error('Error fetching user preference vector:', error.message);
+    return null;
+  }
+
+  if (!data?.pref_vec) {
+    return null;
+  }
+
+  if (Array.isArray(data.pref_vec)) {
+    return data.pref_vec;
+  }
+
+  try {
+    const parsed = JSON.parse(data.pref_vec);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch (parseError) {
+    console.error('Failed to parse preference vector:', parseError);
+    return null;
+  }
+}
+
 
 export const getClothing = async () => {
   
@@ -41,6 +110,28 @@ export const getClothing = async () => {
         return;
     }
     return (data.sort(() => Math.random() - 0.5)).slice(0,10);
+}
+
+export const getClothingById = async (itemId: string) => {
+  const numericId = Number(itemId);
+
+  const queries = Number.isFinite(numericId)
+    ? [
+        supabase.from('Clothing').select('*').eq('item_id', numericId).limit(1).maybeSingle(),
+        supabase.from('Clothing').select('*').eq('item_id', itemId).limit(1).maybeSingle(),
+      ]
+    : [supabase.from('Clothing').select('*').eq('item_id', itemId).limit(1).maybeSingle()];
+
+  for (const query of queries) {
+    const { data, error } = await query;
+    if (error || !data) {
+      continue;
+    }
+
+    return data;
+  }
+
+  return null;
 }
 
 export const saveLikedItem = async (clothesId: string) => {

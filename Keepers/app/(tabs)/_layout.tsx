@@ -55,20 +55,30 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="graph"
+        options={{
+          title: 'Graph',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? 'stats-chart' : 'stats-chart-outline'}
+              color={color}
+              size={24}
+            />
+          ),      
+        }}
+      />
+      <Tabs.Screen
         name="swiper"
-        options={({ focused }) => ({
+        options={{
           title: 'Swiper',
-          tabBarIcon: ({ color }) => (
+          tabBarIcon: ({ color, focused }) => (
             <Ionicons
               name={focused ? 'shirt' : 'shirt-outline'}
               color={color}
               size={24}
             />
           ),
-          tabBarLabelStyle: {
-            color: focused ? theme.text : theme.tabInactive,
-          },
-        })}
+        }}
       />
       <Tabs.Screen
         name="stylewraps"
@@ -83,7 +93,6 @@ export default function TabLayout() {
           ),
         }}
       />
-
       <Tabs.Screen
         name="settings"
         options={{

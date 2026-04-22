@@ -9,10 +9,10 @@ import { useEffect, useState } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { View, ActivityIndicator } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import type { Session } from '@supabase/supabase-js';
 
 import { useFonts } from 'expo-font';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Auth from '../components/Auth';
 import { useAppTheme } from '../hooks/useAppTheme';
 import { supabase } from '../utils/supabase';
@@ -65,25 +65,29 @@ export default function RootLayout() {
 
   if (!loaded || isSessionLoading) {
     return (
-      <View
-        style={{
-          flex: 1,
-          justifyContent: 'center',
-          alignItems: 'center',
-          backgroundColor: theme.background,
-        }}
-      >
-        <ActivityIndicator size="large" color={theme.primary} />
-      </View>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <View
+          style={{
+            flex: 1,
+            justifyContent: 'center',
+            alignItems: 'center',
+            backgroundColor: theme.background,
+          }}
+        >
+          <ActivityIndicator size="large" color={theme.primary} />
+        </View>
+      </GestureHandlerRootView>
     );
   }
 
   if (!session) {
     return (
-      <View style={{ flex: 1, backgroundColor: theme.background }}>
-        <Auth />
-        <StatusBar style="dark" />
-      </View>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <View style={{ flex: 1, backgroundColor: theme.background }}>
+          <Auth />
+          <StatusBar style="dark" />
+        </View>
+      </GestureHandlerRootView>
     );
   }
 
