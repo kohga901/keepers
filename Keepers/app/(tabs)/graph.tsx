@@ -14,6 +14,7 @@ import { WebView, WebViewMessageEvent } from 'react-native-webview';
 import { useAppTheme } from '../../hooks/useAppTheme';
 import { getClothingById, getUserCoordinates } from '../../services/dataServices';
 import { supabase } from '../../utils/supabase';
+import * as WebBrowser from 'expo-web-browser';
 
 type NodePoint = {
 	clothesId: number;
@@ -33,6 +34,7 @@ type SelectedItem = {
 	name: string;
 	price: string;
 	imageUrl: string;
+	itemUrl: string;
 };
 
 type SelectedAnchor = {
@@ -840,6 +842,7 @@ export default function GraphTab() {
 					name: String(data.item_name ?? 'Unnamed item'),
 					price: String(data.item_price ?? 'N/A'),
 					imageUrl: String(data.item_img ?? ''),
+					itemUrl: String(data.item_web_listing ?? ''),
 				};
 
 				itemCacheRef.current.set(selectedPointId, mapped);
@@ -1040,7 +1043,11 @@ export default function GraphTab() {
 									</View>
 									<View style={styles.itemInfo}>
 										<Text style={styles.itemName}>{selectedItem.name}</Text>
-										<Text style={styles.itemPrice}>{selectedItem.price}</Text>
+										<Pressable onPress={() => WebBrowser.openBrowserAsync(selectedItem.itemUrl)}>
+											<Text style={styles.itemPrice}>
+												{selectedItem.price}
+											</Text>
+										</Pressable>
 									</View>
 								</View>
 							) : (
@@ -1239,5 +1246,6 @@ const styles = StyleSheet.create({
 		color: '#8de4b7',
 		fontFamily: 'GeorgiaProBold',
 		fontSize: 15,
+		textDecorationLine: 'underline',
 	},
 });
