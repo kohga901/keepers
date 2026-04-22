@@ -5,16 +5,16 @@
  * Date: 2026-04-01
  */
 
-import React, { useCallback, useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import { View, Text, StyleSheet, Dimensions } from "react-native";
 import Swiper from "react-native-deck-swiper";
-import { useFocusEffect } from '@react-navigation/native';
+import {getRecommendationsFromServer} from '../../services/serverApi';
 
 import { Image } from 'expo-image';
 import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '../../utils/supabase';
-import { Item } from '../../models/Items';
-import { getClothing, saveLikedItem } from '../../services/dataServices';
+import { Item, ClothingRow } from '../../models/Items';
+import {  saveLikedItem } from '../../services/dataServices';
 
 const { height } = Dimensions.get("window");
 const CARD_HEIGHT_RATIO = 0.7;
@@ -48,10 +48,10 @@ const App: React.FC = () => {
     };
 
     const initialDataFeed = async () => {
-      const data = await getClothing()
+      const data = await getRecommendationsFromServer(23)
       if (!data) return
 
-      const parsedCards = data.map((row) => {
+      const parsedCards: Item[] = data.map((row: ClothingRow) => {
         return {
           id: String(row.item_id),
           name: row.item_name,
@@ -60,8 +60,8 @@ const App: React.FC = () => {
           liked: false,
           itemUrl: row.item_web_listing,
           gender: row.item_gender,
-        }
-      })
+        };
+      });
 
       setCards((prev) => [...prev, ...parsedCards])
     }
@@ -134,11 +134,11 @@ const App: React.FC = () => {
             return;
           }
 
-          if (index % 10 === 0) {
-            const data = await getClothing();
+          if ((index+1) % 20 === 0) {
+            const data = await getRecommendationsFromServer(20);
             if (!data) return;
 
-            const parsedCards = data.map((row) => {
+            const parsedCards: Item[] = data.map((row: ClothingRow) => {
               return {
                 id: String(row.item_id),
                 name: row.item_name,

@@ -1,26 +1,7 @@
-/**
- * File: serverApi.ts
- * Description: Handles requests to the recommendation server API.
- */
-
 import { supabase } from '../utils/supabase';
 import { getClothing } from './dataServices';
 
-
-const SERVER_BASE_URL = ''; 
-
-// const SERVER_BASE_URL = 'https://your-server-url.com';
-
-type SwipePayload = {
-  user_id: string;
-  item_id: string;
-  liked: boolean;
-};
-
-type RecommendationPayload = {
-  user_id: string;
-  n: number;
-}; 
+const SERVER_BASE_URL = '';
 
 export const getRecommendationsFromServer = async (n: number) => {
   const { data: userData, error: userError } = await supabase.auth.getUser();
@@ -35,9 +16,9 @@ export const getRecommendationsFromServer = async (n: number) => {
     n,
   };
 
-  //CASE 1: no server URL
+  // if server URL not set
   if (!SERVER_BASE_URL) {
-    console.log('No server URL → using fallback');
+    console.log('No server URL → fallback');
     return await getClothing();
   }
 
@@ -48,25 +29,29 @@ export const getRecommendationsFromServer = async (n: number) => {
       body: JSON.stringify(payload),
     });
 
-    //CASE 2: bad response
+    // bad response
     if (!response.ok) {
-      console.log('Server failed → using fallback');
+      console.log('Server failed → fallback');
       return await getClothing();
     }
 
-    const data = await response.json();
+    const result = await response.json();
+    console.log('Server result:', result);
 
-    //CASE 3: empty data
-    if (!data || data.length === 0) {
-      console.log('No recommendations → using fallback');
+    // 🔑 FIX: make sure we return an array
+    const data = Array.isArray(result)
+      ? result
+      : result.recommendations ?? [];
+
+    if (data.length === 0) {
+      console.log('Empty → fallback');
       return await getClothing();
     }
 
     return data;
 
   } catch (error) {
-    //CASE 4: crash / network error
-    console.log('Error → using fallback');
+    console.log('Error → fallback', error);
     return await getClothing();
   }
 };
