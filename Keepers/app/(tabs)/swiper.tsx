@@ -2,23 +2,25 @@
  * File: swiper.tsx
  * Description: Displays swipeable clothing cards for users to like or dislike.
  * Author: Kai Markley & Gabriel Min
- * Date: 2026-04-01
+ * Date: 2026-04-21
  */
 
-import React, { useCallback, useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import { View, Text, StyleSheet, Dimensions } from "react-native";
 import Swiper from "react-native-deck-swiper";
-import { useFocusEffect } from '@react-navigation/native';
+import {getRecommendationsFromServer, sendSwipeToServer} from '../../services/serverApi';
 
 import { Image } from 'expo-image';
 import * as WebBrowser from 'expo-web-browser';
 import { supabase } from '../../utils/supabase';
-import { Item } from '../../models/Items';
-import { getClothing, saveLikedItem } from '../../services/dataServices';
+import { Item, ClothingRow } from '../../models/Items';
 
 const { height } = Dimensions.get("window");
 const CARD_HEIGHT_RATIO = 0.7;
 const CARD_VERTICAL_MARGIN = (height * (1 - CARD_HEIGHT_RATIO)) / 2;
+
+// This controls how many new items are fetched.
+const amountOfItemsToFetch = 10;
 
 const App: React.FC = () => {
   const swiper = useRef<any>(null);
@@ -48,10 +50,10 @@ const App: React.FC = () => {
     };
 
     const initialDataFeed = async () => {
-      const data = await getClothing()
+      const data = await getRecommendationsFromServer(amountOfItemsToFetch);
       if (!data) return
 
-      const parsedCards = data.map((row) => {
+      const parsedCards: Item[] = data.map((row: ClothingRow) => {
         return {
           id: String(row.item_id),
           name: row.item_name,
@@ -60,8 +62,8 @@ const App: React.FC = () => {
           liked: false,
           itemUrl: row.item_web_listing,
           gender: row.item_gender,
-        }
-      })
+        };
+      });
 
       setCards((prev) => [...prev, ...parsedCards])
     }
@@ -134,11 +136,11 @@ const App: React.FC = () => {
             return;
           }
 
-          if (index % 10 === 0) {
-            const data = await getClothing();
+          if ((index+1) % amountOfItemsToFetch === 0) {
+            const data = await getRecommendationsFromServer(amountOfItemsToFetch);
             if (!data) return;
 
-            const parsedCards = data.map((row) => {
+            const parsedCards: Item[] = data.map((row: ClothingRow) => {
               return {
                 id: String(row.item_id),
                 name: row.item_name,
@@ -163,8 +165,11 @@ const App: React.FC = () => {
             WebBrowser.openBrowserAsync(item.itemUrl);
           }
         }}
+        onSwipedLeft={async (cardIndex: number) => {
+          await sendSwipeToServer(cards[cardIndex].id, false);
+        }}
         onSwipedRight ={async (cardIndex: number) => {
-          await saveLikedItem(cards[cardIndex].id);
+          await sendSwipeToServer(cards[cardIndex].id, true);
           
         }}
         disableBottomSwipe={true}
