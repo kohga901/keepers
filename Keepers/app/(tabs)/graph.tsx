@@ -771,7 +771,7 @@ export default function GraphTab() {
 
 			const coords = await getUserCoordinates(userData.user.id);
 			if (!cancelled) {
-				setPreferencePoint(coords);
+				setPreferencePoint(coords ?? { x: 0, y: 0 });
 			}
 		};
 
