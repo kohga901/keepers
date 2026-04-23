@@ -18,6 +18,7 @@ from db import supabase
 from services.recommendation_service import get_recommendations
 from services.Startup import umap_reducer
 import time
+from fastapi import BackgroundTasks
 
 
 def _supabase_execute(query, retries=3, delay=0.5):
@@ -33,8 +34,8 @@ def _supabase_execute(query, retries=3, delay=0.5):
 
 router = APIRouter(prefix="/clothes")
 
-ALPHA = 0.1
-BETA  = 0.05
+ALPHA = 0.3
+BETA  = 0.2
 
 # --- Request / Response models ---
 
@@ -179,9 +180,9 @@ def swipe(req: SwipeData):
 
     # Update coordinates every 10 swipes only.
     seen_count = len(_fetch_seen_item_ids(req.user_id))
-    if seen_count % 1 == 0:
+    if seen_count % 4 == 0:
         try:
-            _save_user_coordinates(req.user_id, pref_vec)
+            BackgroundTasks.add_task(_save_user_coordinates, req.user_id, pref_vec)
         except Exception:
             pass
 
