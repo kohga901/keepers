@@ -56,6 +56,9 @@ def get_recommendations_with_scores(
     seen_item_ids: list[int],
     n: int = 20
 ) -> list[tuple[int, float]]:
+    """
+    This function is for debugging, the scores show how close the fetched items are to the pref_vec.
+    """
     pref = np.array(pref_vec, dtype=np.float32).reshape(1, EMBEDDING_DIM)
     faiss.normalize_L2(pref)
 

@@ -63,7 +63,7 @@ class RecommendationResponse(BaseModel):
 # --- Helpers ---
 def _fetch_clothing_items(item_ids: list[int]) -> list[dict]:
     """
-    Fetch clothing items based on item_id's and then return a dictionary 
+    DB function. Fetch clothing items based on item_id's and then return a dictionary 
     """
     # SELECT * FROM "Clothing" WHERE item_id IN (list of item_id's)
     response = _supabase_execute(supabase.table("Clothing").select("*").in_("item_id", item_ids))
@@ -77,7 +77,7 @@ def _fetch_clothing_items(item_ids: list[int]) -> list[dict]:
 
 def _fetch_pref_vec(user_id: str) -> np.ndarray:
     """
-    Fetches a user's preference vector from the db.
+    DB function. Fetches a user's preference vector from the db.
     """
     # SQL query to db.
     response = _supabase_execute(supabase.table("User_Preferences").select("pref_vec").eq("user_id", user_id))
@@ -117,7 +117,7 @@ def _update_pref_vec(pref_vec: np.ndarray, item_id: int, liked: bool) -> np.ndar
 
 def _save_pref_vec(user_id: str, pref_vec: np.ndarray) -> None:
     """
-    Replace a user's pref_vec with a new pref_vec.
+    DB function. Replace a user's pref_vec with a new pref_vec.
     """
     # Make a SQL insert query.
     _supabase_execute(supabase.table("User_Preferences").upsert({
@@ -127,7 +127,7 @@ def _save_pref_vec(user_id: str, pref_vec: np.ndarray) -> None:
 
 def _record_swipe(user_id: str, item_id: int, liked: bool) -> None:
     """
-    Records a user's swipe and update the db.
+    DB function. Records a user's swipe and update the db.
     """
     # Set table to insert into.
     table = "Likes" if liked else "Dislikes"
@@ -140,7 +140,7 @@ def _record_swipe(user_id: str, item_id: int, liked: bool) -> None:
 
 def _fetch_seen_item_ids(user_id: str) -> list[int]:
     """
-    Fetch the item_id's of clothes that the user has already seen.
+    DB function. Fetch the item_id's of clothes that the user has already seen.
     """
     # Likes of the user.
     likes    = _supabase_execute(supabase.table("Likes").select("clothes_id").eq("user_id", user_id))
@@ -154,7 +154,10 @@ def _fetch_seen_item_ids(user_id: str) -> list[int]:
     return seen
 
 
-def _save_user_coordinates(user_id: str, pref_vec: np.ndarray) -> None:
+def _update_user_coordinates(user_id: str, pref_vec: np.ndarray) -> None:
+    """
+    DB function, takes a user's pref_vec and converts it to x, y coordinates and uploads it to db.
+    """
     coords = umap_reducer.transform(pref_vec.reshape(1, -1))[0]
     _supabase_execute(supabase.table("Coordinates").upsert({
         "user_id": user_id,
@@ -166,6 +169,11 @@ def _save_user_coordinates(user_id: str, pref_vec: np.ndarray) -> None:
 
 @router.post("/swipe")
 def swipe(req: SwipeData):
+    """
+    DB function. Takes a SwipeData object and updates the db with the relative information:
+        - User's pref_vec.
+        - User's Like/Dislike history.
+    """
     # Get pref_vec of the user.
     pref_vec = _fetch_pref_vec(req.user_id)
 
@@ -178,11 +186,11 @@ def swipe(req: SwipeData):
     # Save and upload the swipe data to the db.
     _record_swipe(req.user_id, req.item_id, req.liked)
 
-    # Update coordinates every 10 swipes only.
+    # Update coordinates every 4 swipes only.
     seen_count = len(_fetch_seen_item_ids(req.user_id))
     if seen_count % 4 == 0:
         try:
-            BackgroundTasks.add_task(_save_user_coordinates, req.user_id, pref_vec)
+            BackgroundTasks.add_task(_update_user_coordinates, req.user_id, pref_vec)
         except Exception:
             pass
 
