@@ -10,7 +10,10 @@ from io import BytesIO # new
 import logging as log
 import sys
 import numpy as np
-
+# Plan on doing this: pip install fashion-clip
+# from fashion_clip.fashion_clip import FashionCLIP
+# import pandas as pd
+# fclip = FashionCLIP('fashion-clip')
 
 """
 Clip is OpenAi's clip model from github, gets an embedding for 
