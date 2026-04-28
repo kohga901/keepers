@@ -136,7 +136,7 @@ const App: React.FC = () => {
             return;
           }
 
-          if ((index+1) % amountOfItemsToFetch === 0) {
+          if ((index+3) % amountOfItemsToFetch === 0) {
             const data = await getRecommendationsFromServer(amountOfItemsToFetch);
             if (!data) return;
 
