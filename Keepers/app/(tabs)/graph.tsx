@@ -1,3 +1,4 @@
+// Test to see if vpn connection is required to push
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
 	ActivityIndicator,
