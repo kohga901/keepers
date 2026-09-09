@@ -1103,7 +1103,7 @@ const styles = StyleSheet.create({
 		flex: 1,
 	},
 	popupLayer: {
-		...StyleSheet.absoluteFillObject,
+		...StyleSheet.absoluteFill,
 	},
 	popupCard: {
 		position: 'absolute',
