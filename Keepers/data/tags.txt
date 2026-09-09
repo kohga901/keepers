@@ -1,0 +1,14 @@
+Source of truth: https://docs.google.com/document/d/1nYlt2YZiwHHgSWn_bTWoVUrGCeEDPUR6Dpf-0QVz_R8/edit?usp=sharing
+
+Keepers
+9.9.26
+
+Styles:
+streetwear, athleisure, minimalist/basics, business/formal, preppy, boho, grunge/punk, goth/alt, vintage/retro, cottagecore, Y2K, techwear, workwear, Old money, Gorp core, Cowboy
+
+season/weather: 
+lightweight/summer, heavyweight/winter, transitional, waterproof. 
+
+
+Garment type: top, bottom, dress, outerwear, footwear, accessory, bag, then subtypes (t-shirt, hoodie, blazer, jeans, skirt)
+
