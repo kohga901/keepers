@@ -12,7 +12,9 @@ import {getRecommendationsFromServer, sendSwipeToServer} from '../../services/se
 
 import { Image } from 'expo-image';
 import * as WebBrowser from 'expo-web-browser';
+import { usePriceDisplay } from '../../contexts/PriceDisplayContext';
 import { supabase } from '../../utils/supabase';
+import { getPriceTierSymbol } from '../../utils/price';
 import { Item, ClothingRow } from '../../models/Items';
 
 const { height } = Dimensions.get("window");
@@ -27,6 +29,7 @@ const App: React.FC = () => {
   const [cards, setCards] = useState<Item[]>([]);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const { showPriceAsTier } = usePriceDisplay();
     useEffect(() => {
 
     const checkSessionAndLoad = async () => {
@@ -125,7 +128,9 @@ const App: React.FC = () => {
             </View>
             <View style={styles.cardInfo}>
               <Text style={styles.cardName}>{card.name}</Text>
-              <Text style={styles.cardPrice}>{card.price}</Text>
+              <Text style={styles.cardPrice}>
+                {showPriceAsTier ? getPriceTierSymbol(card.price) : card.price}
+              </Text>
             </View>
           </View>
           );

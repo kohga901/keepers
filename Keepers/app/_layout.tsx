@@ -14,6 +14,7 @@ import type { Session } from '@supabase/supabase-js';
 
 import { useFonts } from 'expo-font';
 import Auth from '../components/Auth';
+import { PriceDisplayProvider } from '../contexts/PriceDisplayContext';
 import { useAppTheme } from '../hooks/useAppTheme';
 import { supabase } from '../utils/supabase';
 
@@ -92,29 +93,31 @@ export default function RootLayout() {
   }
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <View style={{ flex: 1, backgroundColor: theme.background }}>
-        <Stack>
-          <Stack.Screen
-            name="(tabs)"
-            options={{
-              headerShown: true,
-              headerTransparent: true,
-              title: 'K E E P E R S',
-              headerTintColor: theme.headerText,
-              headerShadowVisible: true,
-              headerStyle: {
-                backgroundColor: theme.headerBg,
-              },
-              headerTitleStyle: {
-                fontFamily: 'GeorgiaProBlack', // Font is now global
-                fontSize: 24,
-              },
-            }}
-          />
-        </Stack>
-        <StatusBar style="dark" />
-      </View>
-    </GestureHandlerRootView>
+    <PriceDisplayProvider>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <View style={{ flex: 1, backgroundColor: theme.background }}>
+          <Stack>
+            <Stack.Screen
+              name="(tabs)"
+              options={{
+                headerShown: true,
+                headerTransparent: true,
+                title: 'K E E P E R S',
+                headerTintColor: theme.headerText,
+                headerShadowVisible: true,
+                headerStyle: {
+                  backgroundColor: theme.headerBg,
+                },
+                headerTitleStyle: {
+                  fontFamily: 'GeorgiaProBlack', // Font is now global
+                  fontSize: 24,
+                },
+              }}
+            />
+          </Stack>
+          <StatusBar style="dark" />
+        </View>
+      </GestureHandlerRootView>
+    </PriceDisplayProvider>
   );
 }

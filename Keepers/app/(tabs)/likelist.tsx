@@ -10,8 +10,10 @@ import { StyleSheet, Text, View, Pressable, FlatList, Modal } from 'react-native
 import { Image } from 'expo-image';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
+import { usePriceDisplay } from '../../contexts/PriceDisplayContext';
 import { useAppTheme } from '../../hooks/useAppTheme';
 import { Item } from '../../models/Items';
+import { getPriceTierSymbol } from '../../utils/price';
 import { deleteLikedItem, getLikedItems } from '@/services/dataServices';
 import { useFocusEffect } from '@react-navigation/native';
 import * as WebBrowser from 'expo-web-browser';
@@ -55,6 +57,7 @@ const App: React.FC = () => {
     }, [])
   );
   const { theme } = useAppTheme();
+  const { showPriceAsTier } = usePriceDisplay();
 
   const [activeTab, setActiveTab] = React.useState('liked');
 
@@ -120,7 +123,7 @@ const App: React.FC = () => {
                         </Text>
                         <View style={styles.priceGenderRow}>
                           <Text style={[styles.itemPrice, { color: 'blue' }, { fontFamily: 'GeorgiaProSemiBold' }]}>
-                            {item.price}
+                            {showPriceAsTier ? getPriceTierSymbol(item.price) : item.price}
                           </Text>
                           <Text style={[styles.itemGender, { color: 'black' }, { fontFamily: 'GeorgiaProSemiBold' }]}>
                             {item.gender.toUpperCase()}
@@ -153,7 +156,7 @@ const App: React.FC = () => {
                         <View style={{ height: 1, backgroundColor: theme.background, width: '100%', marginVertical: 10 }} />
 
                         <Text style={{ color: theme.headerBg, fontFamily: 'GeorgiaProSemiBold', alignSelf: 'flex-start' }}>
-                          {selectedItem.price}
+                          {showPriceAsTier ? getPriceTierSymbol(selectedItem.price) : selectedItem.price}
                         </Text>
                         <Text style={{ color: theme.headerBg, fontFamily: 'GeorgiaProSemiBold', alignSelf: 'flex-end' }}>
                           {selectedItem.gender.toUpperCase()}

@@ -10,7 +10,7 @@
 import { supabase } from '../utils/supabase';
 import { getClothing } from './dataServices';
 
-const SERVER_BASE_URL = 'https://trial-exact-usable.ngrok-free.dev';
+const SERVER_BASE_URL = process.env.EXPO_PUBLIC_SERVER_URL ?? 'https://trial-exact-usable.ngrok-free.dev';
 
 type SwipePayload = {
   user_id: string;
