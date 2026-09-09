@@ -9,7 +9,7 @@ import {
 	View,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { useIsFocused } from '@react-navigation/native';
+import { useIsFocused } from "expo-router/react-navigation";
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
 
 import { useAppTheme } from '../../hooks/useAppTheme';
