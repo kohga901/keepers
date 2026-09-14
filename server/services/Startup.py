@@ -13,12 +13,9 @@ from pathlib import Path
 from supabase import create_client
 import os
 import time
-import joblib
+import umap
 
 load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
-
-UMAP_MODEL_PATH = Path(__file__).resolve().parents[1] / "data" / "embedded_vectors" / "umap_model.pkl"
-umap_reducer = joblib.load(UMAP_MODEL_PATH)
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
@@ -30,7 +27,6 @@ RETRY_DELAY = 5  # seconds
 
 # Fetch all embeddings from Supabase
 client  = create_client(SUPABASE_URL, SUPABASE_KEY)
-
 
 for attempt in range(MAX_RETRIES):
     try:
@@ -51,6 +47,12 @@ _embeddings = np.array([row["embedding"] for row in response.data], dtype=np.flo
 
 # Normalize for cosine similarity via IndexFlatIP
 faiss.normalize_L2(_embeddings)
+
+# The umap model is spawned as a model without any training, so we need to train it on the normalized 
+# embeddings. This is done here on server boot, and the model is then used in recommendation_service.py 
+# to reduce the dimensionality of the preference vector.
+umap_reducer = umap.UMAP(n_components=2, random_state=42)
+umap_reducer.fit(_embeddings)
 
 # Build index
 index = faiss.IndexFlatIP(EMBEDDING_DIM)
