@@ -167,11 +167,14 @@ def _update_user_coordinates(user_id: str, pref_vec: np.ndarray) -> None:
 
 # --- Endpoints ---
 
-if not Startup.ready:
-    raise HTTPException(status_code=503, detail="Server still warming up, try again shortly")
 
 @router.post("/swipe")
 def swipe(req: SwipeData):
+
+    # If the server is still warming up, return a 503 Service Unavailable error.
+    if not Startup.ready:
+        raise HTTPException(status_code=503, detail="Server still warming up, try again shortly")
+    
     """
     DB function. Takes a SwipeData object and updates the db with the relative information:
         - User's pref_vec.
@@ -202,6 +205,12 @@ def swipe(req: SwipeData):
 
 @router.post("/recommendations")
 def recommendations(req: RecommendationRequest) -> RecommendationResponse:
+
+    # If the server is still warming up, return a 503 Service Unavailable error.
+    if not Startup.ready:
+        raise HTTPException(status_code=503, detail="Server still warming up, try again shortly")
+    
+
     # Get pref_vec of the user.
     pref_vec = _fetch_pref_vec(req.user_id)
 
@@ -225,6 +234,11 @@ def recommendations(req: RecommendationRequest) -> RecommendationResponse:
 
 @router.post("/recommendations/debug")
 def recommendations_debug(req: RecommendationRequest):
+
+    # If the server is still warming up, return a 503 Service Unavailable error.
+    if not Startup.ready:
+        raise HTTPException(status_code=503, detail="Server still warming up, try again shortly")
+    
     from services.recommendation_service import get_recommendations_with_scores
     pref_vec = _fetch_pref_vec(req.user_id)
     seen_item_ids = _fetch_seen_item_ids(req.user_id)
