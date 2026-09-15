@@ -172,7 +172,7 @@ def _update_user_coordinates(user_id: str, pref_vec: np.ndarray) -> None:
 
 
 @router.post("/swipe")
-def swipe(req: SwipeData):
+def swipe(req: SwipeData, background_tasks: BackgroundTasks):
 
     # If the server is still warming up, return a 503 Service Unavailable error.
     if not Startup.ready:
@@ -197,11 +197,10 @@ def swipe(req: SwipeData):
 
     # Update coordinates every 4 swipes only.
     seen_count = len(_fetch_seen_item_ids(req.user_id))
+
     if seen_count % 4 == 0:
-        try:
-            BackgroundTasks.add_task(_update_user_coordinates, req.user_id, pref_vec)
-        except Exception:
-            pass
+        background_tasks.add_task(_update_user_coordinates, req.user_id, pref_vec)
+        
 
     # Return status to client.
     return {"status": "ok"}
