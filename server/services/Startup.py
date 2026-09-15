@@ -17,7 +17,6 @@ from pathlib import Path
 from supabase import create_client, ClientOptions
 import os
 import time
-import umap
 
 print(f"[{time.time()}] Startup.py: imports done, about to load env vars")
 
@@ -37,8 +36,11 @@ item_id_to_embedding = None
 umap_reducer = None
 ready = False
 
-
 def initialize():
+    print(f"[{time.time()}] Startup.initialize(): importing umap")
+    import umap
+    print(f"[{time.time()}] Startup.initialize(): imported umap finsihed")
+
     global index, _item_ids, item_id_to_embedding, umap_reducer, ready
 
     # Fetch all embeddings from Supabase
