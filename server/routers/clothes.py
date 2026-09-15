@@ -8,6 +8,8 @@ Endpoints:
     - POST /clothes/recommendations — return personalised recommendations based on the user's preference vector
 """
 
+print("clothes.py: starting to import")
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import numpy as np
@@ -20,6 +22,7 @@ from services import Startup
 import time
 from fastapi import BackgroundTasks
 
+print("clothes.py: imports done")
 
 def _supabase_execute(query, retries=3, delay=0.5):
     for attempt in range(retries):
@@ -209,7 +212,6 @@ def recommendations(req: RecommendationRequest) -> RecommendationResponse:
     # If the server is still warming up, return a 503 Service Unavailable error.
     if not Startup.ready:
         raise HTTPException(status_code=503, detail="Server still warming up, try again shortly")
-    
 
     # Get pref_vec of the user.
     pref_vec = _fetch_pref_vec(req.user_id)
