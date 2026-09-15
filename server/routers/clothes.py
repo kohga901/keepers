@@ -12,11 +12,11 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import numpy as np
 import json
-from services.Startup import EMBEDDING_DIM, item_id_to_embedding, _item_ids
+from services.Startup import EMBEDDING_DIM
 import random
 from db import supabase
 from services.recommendation_service import get_recommendations
-from services.Startup import umap_reducer
+from services import Startup
 import time
 from fastapi import BackgroundTasks
 
@@ -99,7 +99,7 @@ def _update_pref_vec(pref_vec: np.ndarray, item_id: int, liked: bool) -> np.ndar
         New preference vector.
     """
     # Get item's embedding.
-    item_embedding = item_id_to_embedding.get(item_id)
+    item_embedding = Startup.item_id_to_embedding.get(item_id)
 
     # If item's embedding is 0 or non existent.
     if item_embedding is None:
@@ -158,7 +158,7 @@ def _update_user_coordinates(user_id: str, pref_vec: np.ndarray) -> None:
     """
     DB function, takes a user's pref_vec and converts it to x, y coordinates and uploads it to db.
     """
-    coords = umap_reducer.transform(pref_vec.reshape(1, -1))[0]
+    coords = Startup.umap_reducer.transform(pref_vec.reshape(1, -1))[0]
     _supabase_execute(supabase.table("Coordinates").upsert({
         "user_id": user_id,
         "x": float(coords[0]),
@@ -166,6 +166,9 @@ def _update_user_coordinates(user_id: str, pref_vec: np.ndarray) -> None:
     }))
 
 # --- Endpoints ---
+
+if not Startup.ready:
+    raise HTTPException(status_code=503, detail="Server still warming up, try again shortly")
 
 @router.post("/swipe")
 def swipe(req: SwipeData):
@@ -207,7 +210,7 @@ def recommendations(req: RecommendationRequest) -> RecommendationResponse:
 
     # If the pref_vec of a user is 0, get n random items from the db.
     if np.all(pref_vec == 0.0):
-        random_ids = random.sample(_item_ids, k=min(req.n, len(_item_ids)))
+        random_ids = random.sample(Startup._item_ids, k=min(req.n, len(Startup._item_ids)))
         items = _fetch_clothing_items(random_ids)
         return RecommendationResponse(recommendations=items)
 

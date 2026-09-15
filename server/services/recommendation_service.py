@@ -8,7 +8,8 @@ Gets the recommended K clothing items for a user.
 import faiss
 import numpy as np
 
-from services.Startup import index, _item_ids, EMBEDDING_DIM
+from services.Startup import EMBEDDING_DIM
+from services import Startup
 
 def get_recommendations(
     pref_vec: np.ndarray,
@@ -34,19 +35,19 @@ def get_recommendations(
     faiss.normalize_L2(pref)
 
     # Get number of clothes to search which is n + number of seen items. 
-    k = min(n + len(seen_item_ids), index.ntotal)       # index.ntotal is number total items.
+    k = min(n + len(seen_item_ids), Startup.index.ntotal)       # index.ntotal is number total items.
 
     # Getting unseen items with their respective faiss index.
-    _, indices = index.search(pref, k=k)
+    _, indices = Startup.index.search(pref, k=k)
 
     # Seen set of items.
     seen_set = set(seen_item_ids)
 
     # Filtering out the seen items from the fetched items.
     results = [
-        _item_ids[idx]
+        Startup._item_ids[idx]
         for idx in indices[0]
-        if _item_ids[idx] not in seen_set
+        if Startup._item_ids[idx] not in seen_set
     ]
 
     return results[:n]
@@ -62,15 +63,14 @@ def get_recommendations_with_scores(
     pref = np.array(pref_vec, dtype=np.float32).reshape(1, EMBEDDING_DIM)
     faiss.normalize_L2(pref)
 
-    k = min(n + len(seen_item_ids), index.ntotal)
-    scores, indices = index.search(pref, k=k)
+    k = min(n + len(seen_item_ids), Startup.index.ntotal)
+    scores, indices = Startup.index.search(pref, k=k)
 
     seen_set = set(seen_item_ids)
     results = [
-        (_item_ids[idx], float(scores[0][i]))
+        (Startup._item_ids[idx], float(scores[0][i]))
         for i, idx in enumerate(indices[0])
-        if _item_ids[idx] not in seen_set
+        if Startup._item_ids[idx] not in seen_set
     ]
 
     return results[:n]
-    
