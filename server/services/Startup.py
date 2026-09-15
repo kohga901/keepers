@@ -11,6 +11,7 @@ Render's port-scan timeout killed the deploy.
 """
 
 import faiss
+import joblib
 import numpy as np
 from dotenv import load_dotenv
 from pathlib import Path
@@ -74,13 +75,11 @@ def initialize():
     print(f"[{time.time()}] Startup.initialize(): normalized embeddings")
 
 
-    print(f"[{time.time()}] Startup.initialize(): training UMAP reducer")
-    # The umap model is spawned as a model without any training, so we need to train it on the normalized
-    # embeddings. This is done here on server boot, and the model is then used in recommendation_service.py
-    # to reduce the dimensionality of the preference vector.
-    reducer = umap.UMAP(n_components=2, random_state=42)
-    reducer.fit(embeddings)
-    print(f"[{time.time()}] Startup.initialize(): trained UMAP reducer")
+    print(f"[{time.time()}] Startup.initialize(): loading pretrained UMAP reducer from Supabase")
+    import io
+    umap_bytes = client.storage.from_("ml-models").download("umap_model.pkl")
+    reducer = joblib.load(io.BytesIO(umap_bytes))
+    print(f"[{time.time()}] Startup.initialize(): loaded UMAP reducer")
 
     print(f"[{time.time()}] Startup.initialize(): building FAISS index")
     # Build index
