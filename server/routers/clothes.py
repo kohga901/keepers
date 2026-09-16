@@ -209,6 +209,10 @@ def swipe(req: SwipeData, background_tasks: BackgroundTasks):
 
     # Update coordinates every 4 swipes only.
     seen_count = len(_fetch_seen_item_ids(req.user_id))
+    print(f"[swipe] seen_count={seen_count} mod4={seen_count % 4}")
+
+    if seen_count % 4 == 0:
+        background_tasks.add_task(_update_user_coordinates, req.user_id, pref_vec)
 
     if seen_count % 4 == 0:
         background_tasks.add_task(_update_user_coordinates, req.user_id, pref_vec)
