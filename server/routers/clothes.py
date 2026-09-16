@@ -212,10 +212,9 @@ def swipe(req: SwipeData, background_tasks: BackgroundTasks):
     print(f"[swipe] seen_count={seen_count} mod4={seen_count % 4}")
 
     if seen_count % 4 == 0:
+        print(f"[swipe] scheduling coordinate update for user={req.user_id}")
         background_tasks.add_task(_update_user_coordinates, req.user_id, pref_vec)
-
-    if seen_count % 4 == 0:
-        background_tasks.add_task(_update_user_coordinates, req.user_id, pref_vec)
+        print(f"[swipe] scheduled ok")
 
 
     # Return status to client.
