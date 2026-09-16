@@ -37,8 +37,8 @@ def _supabase_execute(query, retries=3, delay=0.5):
 
 router = APIRouter(prefix="/clothes")
 
-ALPHA = 0.3
-BETA  = 0.2
+ALPHA = 0.5
+BETA  = 0.35
 
 # --- Request / Response models ---
 
@@ -124,6 +124,15 @@ def _update_pref_vec(pref_vec: np.ndarray, item_id: int, liked: bool) -> np.ndar
          # Deduct the item's embedding from the pref_vec.
         pref_vec = pref_vec - BETA * item_embedding
 
+    # Normalize so magnitude doesn't grow unbounded over many swipes,
+    # which would shrink each new swipe's relative influence on direction.
+    norm = np.linalg.norm(pref_vec)
+
+    if norm > 0:
+        pref_vec = pref_vec / norm
+
+    print(f"[_update_pref_vec] item={item_id} liked={liked} pref_vec[:5]={pref_vec[:5]}")
+    
     return pref_vec
 
 def _save_pref_vec(user_id: str, pref_vec: np.ndarray) -> None:
@@ -170,6 +179,8 @@ def _update_user_coordinates(user_id: str, pref_vec: np.ndarray) -> None:
     DB function, takes a user's pref_vec and converts it to x, y coordinates and uploads it to db.
     """
     coords = Startup.umap_reducer.transform(pref_vec.reshape(1, -1))[0]
+    print(f"[_update_user_coordinates] user={user_id} coords={coords}")
+    
     _supabase_execute(supabase.table("Coordinates").upsert({
         "user_id": user_id,
         "x": float(coords[0]),
@@ -206,9 +217,12 @@ def swipe(req: SwipeData, background_tasks: BackgroundTasks):
 
     # Update coordinates every 4 swipes only.
     seen_count = len(_fetch_seen_item_ids(req.user_id))
+    print(f"[swipe] seen_count={seen_count} mod4={seen_count % 4}")
 
     if seen_count % 4 == 0:
+        print(f"[swipe] scheduling coordinate update for user={req.user_id}")
         background_tasks.add_task(_update_user_coordinates, req.user_id, pref_vec)
+        print(f"[swipe] scheduled ok")
 
 
     # Return status to client.
