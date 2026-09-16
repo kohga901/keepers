@@ -26,6 +26,7 @@ const amountOfItemsToFetch = 10;
 
 const App: React.FC = () => {
   const swiper = useRef<any>(null);
+  const loadedUserId = useRef<string | null>(null);
   const [cards, setCards] = useState<Item[]>([]);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -44,7 +45,7 @@ const App: React.FC = () => {
       setIsAuthenticated(hasSession);
 
       if (hasSession) {
-        await initialDataFeed();
+        await initialDataFeed(data.session.user.id);
       } else {
         setCards([]);
       }
@@ -52,7 +53,10 @@ const App: React.FC = () => {
       setIsAuthReady(true);
     };
 
-    const initialDataFeed = async () => {
+    const initialDataFeed = async (userId: string) => {
+      if (loadedUserId.current === userId) return;
+      loadedUserId.current = userId;
+
       const data = await getRecommendationsFromServer(amountOfItemsToFetch);
       if (!data) return
 
@@ -78,10 +82,11 @@ const App: React.FC = () => {
       setIsAuthenticated(hasSession);
 
       if (!hasSession) {
+        loadedUserId.current = null;
         setCards([]);
       } else {
         setCards([]);
-        await initialDataFeed();
+        await initialDataFeed(session.user.id);
       }
 
       setIsAuthReady(true);
