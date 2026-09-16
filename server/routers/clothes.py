@@ -37,8 +37,8 @@ def _supabase_execute(query, retries=3, delay=0.5):
 
 router = APIRouter(prefix="/clothes")
 
-ALPHA = 0.3
-BETA  = 0.2
+ALPHA = 0.5
+BETA  = 0.35
 
 # --- Request / Response models ---
 
