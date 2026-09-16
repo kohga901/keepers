@@ -7,7 +7,7 @@ Endpoints:
     - POST /clothes/swipe           — record a like or dislike swipe for a clothing item
     - POST /clothes/recommendations — return personalised recommendations based on the user's preference vector
 """
-
+from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 import numpy as np
@@ -57,16 +57,22 @@ class ClothingItem(BaseModel):
     item_gender: str | None
     item_img: str | None
     item_web_listing: str | None
+    item_tags: list[str] | None = None
 
 class RecommendationResponse(BaseModel):
     recommendations: list[ClothingItem]
 
+class History(BaseModel):
+    user_id: str
+    items: list[dict[Any,Any]]
+
 
 # --- Helpers ---
-def _matches_filters(item: dict, req:RecommendationRequest)-> bool:
+def _matches_filters(item: dict, req: RecommendationRequest) -> bool:
     if req.categories == []:
         return True
-    return item.get("item_category") in req.categories
+    item_tags = item.get("item_tags") or []
+    return any(tag in req.categories for tag in item_tags)
 
 
 def _fetch_clothing_items(item_ids: list[int]) -> list[dict]:
@@ -173,6 +179,14 @@ def _update_user_coordinates(user_id: str, pref_vec: np.ndarray) -> None:
         "y": float(coords[1])
     }))
 
+def _fetch_liked_item_ids(user_id: str):
+    response = _supabase_execute(supabase.table("Likes").select("clothes_id").eq("user_id",user_id))
+    return [row["clothes_id"] for row in response.data]
+
+def _fetch_disliked_item_ids(user_id: str):
+    response = _supabase_execute(supabase.table("Dislikes").select("clothes_id").eq("user_id",user_id))
+    return [row["clothes_id"] for row in response.data]
+
 # --- Endpoints ---
 
 if not Startup.ready:
@@ -243,3 +257,15 @@ def recommendations_debug(req: RecommendationRequest):
     seen_item_ids = _fetch_seen_item_ids(req.user_id)
     results = get_recommendations_with_scores(pref_vec, seen_item_ids, n=req.n)
     return {"recommendations": [{"item_id": r[0], "score": r[1]} for r in results]}
+
+@router.get("/liked/{user_id}")
+def get_liked_items(user_id: str) -> History:
+    item_ids = _fetch_liked_item_ids(user_id)
+    items = _fetch_clothing_items(item_ids)
+    return History(items=items,user_id=user_id)
+
+@router.get("/disliked/{user_id}")
+def get_disliked_items(user_id: str) -> History:
+    item_ids = _fetch_disliked_item_ids(user_id)
+    items = _fetch_clothing_items(item_ids)
+    return History(items=items,user_id=user_id)
