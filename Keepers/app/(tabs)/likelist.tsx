@@ -18,15 +18,41 @@ import { deleteLikedItem, getLikedItems } from '@/services/dataServices';
 import { useFocusEffect } from "expo-router/react-navigation";
 import * as WebBrowser from 'expo-web-browser';
 
+// Front-end-only mock data until a Dislikes table/service exists on the backend.
+const MOCK_DISLIKED_ITEMS: Item[] = [
+  {
+    id: 'mock-d1',
+    name: 'Oversized Hoodie',
+    price: '59.99',
+    imageUrl: 'https://picsum.photos/seed/oversized-hoodie/300/300',
+    liked: false,
+    itemUrl: '',
+    gender: 'unisex',
+  },
+  {
+    id: 'mock-d2',
+    name: 'Striped Button-Up Shirt',
+    price: '42.00',
+    imageUrl: 'https://picsum.photos/seed/striped-shirt/300/300',
+    liked: false,
+    itemUrl: '',
+    gender: 'mens',
+  },
+];
 
 const App: React.FC = () => {
   const [allLikedItems, setAllLikedItems] = useState<Item[]>([]);
+  const [allDislikedItems, setAllDislikedItems] = useState<Item[]>(MOCK_DISLIKED_ITEMS);
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
 
   const deleteItem = (id: string) => {
     setAllLikedItems(prev => prev.filter(item => item.id !== id));
     deleteLikedItem(id);
+  };
+
+  const deleteDislikedItem = (id: string) => {
+    setAllDislikedItems(prev => prev.filter(item => item.id !== id));
   };
 
 
@@ -88,100 +114,92 @@ const App: React.FC = () => {
       </View>
 
       <View style={styles.content}>
-        {activeTab === 'liked' ? (
-          <>
-            <FlatList
-              data={allLikedItems}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={styles.list}
-              renderItem={({ item }) => (
-                <Swipeable
-                  renderRightActions={() => (
-                    <View style={styles.deleteAction}>
-                      <Ionicons name="trash" size={24} color="white" />
-                    </View>
-                  )}
-                  onSwipeableOpen={() => deleteItem(item.id)}
-                >
-                  <Pressable
-                    style={styles.card}
-                    onPress={() => {
-                      setSelectedItem(item);
-                      setModalVisible(true);
-                    }}
-                  >
-                    <View style={styles.imageContainer}>
-                      <Image
-                        style={styles.image}
-                        source={{ uri: item.imageUrl }}
-                        contentFit="cover"
-                        transition={1000}
-                      />
-                      <View style={styles.itemInfo}>
-                        <Text style={[styles.itemName, { color: 'black' }, { fontFamily: 'GeorgiaProSemiBold', fontSize: 18 }]}>
-                          {item.name}
-                        </Text>
-                        <View style={styles.priceGenderRow}>
-                          <Text style={[styles.itemPrice, { color: 'blue' }, { fontFamily: 'GeorgiaProSemiBold' }]}>
-                            {showPriceAsTier ? getPriceTierSymbol(item.price) : item.price}
-                          </Text>
-                          <Text style={[styles.itemGender, { color: 'black' }, { fontFamily: 'GeorgiaProSemiBold' }]}>
-                            {item.gender.toUpperCase()}
-                          </Text>
-                        </View>
-                      </View>
-                    </View>
-                  </Pressable>
-                </Swipeable>
+        <FlatList
+          data={activeTab === 'liked' ? allLikedItems : allDislikedItems}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.list}
+          renderItem={({ item }) => (
+            <Swipeable
+              renderRightActions={() => (
+                <View style={styles.deleteAction}>
+                  <Ionicons name="trash" size={24} color="white" />
+                </View>
               )}
-            />
-
-            <Modal
-              visible={modalVisible}
-              transparent={true}
-              animationType="slide"
+              onSwipeableOpen={() => (activeTab === 'liked' ? deleteItem(item.id) : deleteDislikedItem(item.id))}
             >
-              <Pressable style={styles.modalBackground} onPress={() => setModalVisible(false)}>
-                <View style={styles.modalContainer}>
-                  {selectedItem && (
-                    <>
-                      <Image
-                        style={styles.modalImage}
-                        source={{ uri: selectedItem.imageUrl }}
-                      />
-                      <View style={styles.textAndButtonContainer}>
-                        <Text style={{ color: theme.headerBg, fontSize: 18, fontWeight: '600', fontFamily: 'GeorgiaProSemiBold' }}>
-                          {selectedItem.name}
-                        </Text>
-                        <View style={{ height: 1, backgroundColor: theme.background, width: '100%', marginVertical: 10 }} />
-
-                        <Text style={{ color: theme.headerBg, fontFamily: 'GeorgiaProSemiBold', alignSelf: 'flex-start' }}>
-                          {showPriceAsTier ? getPriceTierSymbol(selectedItem.price) : selectedItem.price}
-                        </Text>
-                        <Text style={{ color: theme.headerBg, fontFamily: 'GeorgiaProSemiBold', alignSelf: 'flex-end' }}>
-                          {selectedItem.gender.toUpperCase()}
-                        </Text>
-
-                        <Pressable style={styles.closeButton} onPress={() => {
-                          if (selectedItem.itemUrl) {
-                            WebBrowser.openBrowserAsync(selectedItem.itemUrl);
-                          }
-                          
-                        }}>
-                          <Text style={styles.closeButtonText}>Go to Store Page</Text>
-                        </Pressable>
-                      </View>
-                    </>
-                  )}
+              <Pressable
+                style={styles.card}
+                onPress={() => {
+                  setSelectedItem(item);
+                  setModalVisible(true);
+                }}
+              >
+                <View style={styles.imageContainer}>
+                  <Image
+                    style={styles.image}
+                    source={{ uri: item.imageUrl }}
+                    contentFit="cover"
+                    transition={1000}
+                  />
+                  <View style={styles.itemInfo}>
+                    <Text style={[styles.itemName, { color: 'black' }, { fontFamily: 'GeorgiaProSemiBold', fontSize: 18 }]}>
+                      {item.name}
+                    </Text>
+                    <View style={styles.priceGenderRow}>
+                      <Text style={[styles.itemPrice, { color: 'blue' }, { fontFamily: 'GeorgiaProSemiBold' }]}>
+                        {showPriceAsTier ? getPriceTierSymbol(item.price) : item.price}
+                      </Text>
+                      <Text style={[styles.itemGender, { color: 'black' }, { fontFamily: 'GeorgiaProSemiBold' }]}>
+                        {item.gender.toUpperCase()}
+                      </Text>
+                    </View>
+                  </View>
                 </View>
               </Pressable>
-            </Modal>
-          </>
-        ) : (
-          <Text style={[styles.text, { color: theme.text }]}>
-            Disliked items go here
-          </Text>
-        )}
+            </Swipeable>
+          )}
+        />
+
+        <Modal
+          visible={modalVisible}
+          transparent={true}
+          animationType="slide"
+        >
+          <Pressable style={styles.modalBackground} onPress={() => setModalVisible(false)}>
+            <View style={styles.modalContainer}>
+              {selectedItem && (
+                <>
+                  <Image
+                    style={styles.modalImage}
+                    source={{ uri: selectedItem.imageUrl }}
+                  />
+                  <View style={styles.textAndButtonContainer}>
+                    <Text style={{ color: theme.headerBg, fontSize: 18, fontWeight: '600', fontFamily: 'GeorgiaProSemiBold' }}>
+                      {selectedItem.name}
+                    </Text>
+                    <View style={{ height: 1, backgroundColor: theme.background, width: '100%', marginVertical: 10 }} />
+
+                    <Text style={{ color: theme.headerBg, fontFamily: 'GeorgiaProSemiBold', alignSelf: 'flex-start' }}>
+                      {showPriceAsTier ? getPriceTierSymbol(selectedItem.price) : selectedItem.price}
+                    </Text>
+                    <Text style={{ color: theme.headerBg, fontFamily: 'GeorgiaProSemiBold', alignSelf: 'flex-end' }}>
+                      {selectedItem.gender.toUpperCase()}
+                    </Text>
+
+                    <Pressable style={styles.closeButton} onPress={() => {
+                      if (selectedItem.itemUrl) {
+                        WebBrowser.openBrowserAsync(selectedItem.itemUrl);
+                      }
+
+                    }}>
+                      <Text style={styles.closeButtonText}>Go to Store Page</Text>
+                    </Pressable>
+                  </View>
+                </>
+              )}
+            </View>
+          </Pressable>
+        </Modal>
       </View>
     </View>
   );
