@@ -8,6 +8,8 @@ Endpoints:
     - POST /clothes/recommendations — return personalised recommendations based on the user's preference vector
 """
 
+print("clothes.py: starting to import")
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import numpy as np
@@ -20,6 +22,7 @@ from services import Startup
 import time
 from fastapi import BackgroundTasks
 
+print("clothes.py: imports done")
 
 def _supabase_execute(query, retries=3, delay=0.5):
     for attempt in range(retries):
@@ -167,16 +170,20 @@ def _update_user_coordinates(user_id: str, pref_vec: np.ndarray) -> None:
 
 # --- Endpoints ---
 
-if not Startup.ready:
-    raise HTTPException(status_code=503, detail="Server still warming up, try again shortly")
 
 @router.post("/swipe")
-def swipe(req: SwipeData):
+def swipe(req: SwipeData, background_tasks: BackgroundTasks):
+
+    # If the server is still warming up, return a 503 Service Unavailable error.
+    if not Startup.ready:
+        raise HTTPException(status_code=503, detail="Server still warming up, try again shortly")
+    
     """
     DB function. Takes a SwipeData object and updates the db with the relative information:
         - User's pref_vec.
         - User's Like/Dislike history.
     """
+    
     # Get pref_vec of the user.
     pref_vec = _fetch_pref_vec(req.user_id)
 
@@ -191,17 +198,21 @@ def swipe(req: SwipeData):
 
     # Update coordinates every 4 swipes only.
     seen_count = len(_fetch_seen_item_ids(req.user_id))
+
     if seen_count % 4 == 0:
-        try:
-            BackgroundTasks.add_task(_update_user_coordinates, req.user_id, pref_vec)
-        except Exception:
-            pass
+        background_tasks.add_task(_update_user_coordinates, req.user_id, pref_vec)
+
 
     # Return status to client.
     return {"status": "ok"}
 
 @router.post("/recommendations")
 def recommendations(req: RecommendationRequest) -> RecommendationResponse:
+
+    # If the server is still warming up, return a 503 Service Unavailable error.
+    if not Startup.ready:
+        raise HTTPException(status_code=503, detail="Server still warming up, try again shortly")
+
     # Get pref_vec of the user.
     pref_vec = _fetch_pref_vec(req.user_id)
 
@@ -225,6 +236,11 @@ def recommendations(req: RecommendationRequest) -> RecommendationResponse:
 
 @router.post("/recommendations/debug")
 def recommendations_debug(req: RecommendationRequest):
+
+    # If the server is still warming up, return a 503 Service Unavailable error.
+    if not Startup.ready:
+        raise HTTPException(status_code=503, detail="Server still warming up, try again shortly")
+    
     from services.recommendation_service import get_recommendations_with_scores
     pref_vec = _fetch_pref_vec(req.user_id)
     seen_item_ids = _fetch_seen_item_ids(req.user_id)

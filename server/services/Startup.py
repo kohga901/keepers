@@ -11,13 +11,15 @@ Render's port-scan timeout killed the deploy.
 """
 
 import faiss
+import joblib
 import numpy as np
 from dotenv import load_dotenv
 from pathlib import Path
 from supabase import create_client, ClientOptions
 import os
 import time
-import umap
+
+print(f"[{time.time()}] Startup.py: imports done, about to load env vars")
 
 load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
 
@@ -35,12 +37,17 @@ item_id_to_embedding = None
 umap_reducer = None
 ready = False
 
-
 def initialize():
+    print(f"[{time.time()}] Startup.initialize(): importing umap")
+    import umap
+    print(f"[{time.time()}] Startup.initialize(): imported umap finsihed")
+
     global index, _item_ids, item_id_to_embedding, umap_reducer, ready
 
     # Fetch all embeddings from Supabase
     client = create_client(SUPABASE_URL, SUPABASE_KEY, options=ClientOptions(postgrest_client_timeout=10))
+
+    print(f"[{time.time()}] Startup.initialize(): fetching embeddings from Supabase")
 
     for attempt in range(MAX_RETRIES):
         try:
@@ -55,23 +62,32 @@ def initialize():
     else:
         raise RuntimeError("Failed to fetch embeddings from Supabase after 3 attempts. Server cannot start.")
 
+    print(f"[{time.time()}] Startup.initialize(): fetched {len(response.data)} embeddings")
+    print(f"[{time.time()}] Startup.initialize(): building FAISS index")
+    
     # Parse into aligned lists
     item_ids_local = [int(row["item_id"]) for row in response.data]
     embeddings = np.array([row["embedding"] for row in response.data], dtype=np.float32)
 
+    print(f"[{time.time()}] Startup.initialize(): parsed embeddings into numpy array of shape {embeddings.shape}")
     # Normalize for cosine similarity via IndexFlatIP
     faiss.normalize_L2(embeddings)
+    print(f"[{time.time()}] Startup.initialize(): normalized embeddings")
 
-    # The umap model is spawned as a model without any training, so we need to train it on the normalized
-    # embeddings. This is done here on server boot, and the model is then used in recommendation_service.py
-    # to reduce the dimensionality of the preference vector.
-    reducer = umap.UMAP(n_components=2, random_state=42)
-    reducer.fit(embeddings)
 
+    print(f"[{time.time()}] Startup.initialize(): loading pretrained UMAP reducer from Supabase")
+    import io
+    umap_bytes = client.storage.from_("ml-models").download("umap_model.pkl")
+    reducer = joblib.load(io.BytesIO(umap_bytes))
+    print(f"[{time.time()}] Startup.initialize(): loaded UMAP reducer")
+
+    print(f"[{time.time()}] Startup.initialize(): building FAISS index")
     # Build index
     idx = faiss.IndexFlatIP(EMBEDDING_DIM)
     idx.add(embeddings)
+    print(f"[{time.time()}] Startup.initialize(): built FAISS index with {idx.ntotal} items")
 
+    print(f"[{time.time()}] Startup.initialize(): setting global variables for index, item_ids, and item_id_to_embedding")
     # item_id → embedding lookup for pref vec updates
     mapping = {item_id: embeddings[i] for i, item_id in enumerate(item_ids_local)}
 
