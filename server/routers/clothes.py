@@ -183,6 +183,7 @@ def swipe(req: SwipeData, background_tasks: BackgroundTasks):
         - User's pref_vec.
         - User's Like/Dislike history.
     """
+    
     # Get pref_vec of the user.
     pref_vec = _fetch_pref_vec(req.user_id)
 
@@ -200,7 +201,7 @@ def swipe(req: SwipeData, background_tasks: BackgroundTasks):
 
     if seen_count % 4 == 0:
         background_tasks.add_task(_update_user_coordinates, req.user_id, pref_vec)
-        
+
 
     # Return status to client.
     return {"status": "ok"}
