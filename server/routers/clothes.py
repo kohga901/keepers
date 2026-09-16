@@ -9,7 +9,7 @@ Endpoints:
 """
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import numpy as np
 import json
 from services.Startup import EMBEDDING_DIM
@@ -47,6 +47,8 @@ class SwipeData(BaseModel):
 class RecommendationRequest(BaseModel):
     user_id: str
     n: int = 10
+    categories: list[str] = Field(default_factory=list)
+
 
 class ClothingItem(BaseModel):
     item_id: int
@@ -61,6 +63,12 @@ class RecommendationResponse(BaseModel):
 
 
 # --- Helpers ---
+def _matches_filters(item: dict, req:RecommendationRequest)-> bool:
+    if req.categories == []:
+        return True
+    return item.get("item_category") in req.categories
+
+
 def _fetch_clothing_items(item_ids: list[int]) -> list[dict]:
     """
     DB function. Fetch clothing items based on item_id's and then return a dictionary 
@@ -210,16 +218,21 @@ def recommendations(req: RecommendationRequest) -> RecommendationResponse:
 
     # If the pref_vec of a user is 0, get n random items from the db.
     if np.all(pref_vec == 0.0):
-        random_ids = random.sample(Startup._item_ids, k=min(req.n, len(Startup._item_ids)))
+        random_ids = random.sample(Startup._item_ids, k=min(req.n * 5, len(Startup._item_ids)))
         items = _fetch_clothing_items(random_ids)
+        items = [i for i in items if _matches_filters(i, req)]
+        items = items[:req.n]
         return RecommendationResponse(recommendations=items)
 
     # If user already has an existing pref_vec fetch n items and return it to client.
-    results = get_recommendations(pref_vec, seen_item_ids, n=req.n)
+    results = get_recommendations(pref_vec, seen_item_ids, n=req.n*5)
 
     # Fetch the recommended items from the db.
     items = _fetch_clothing_items(results)
-
+    items = [i for i in items if _matches_filters(i, req)]
+    items = items[:req.n]
+    if len(items) < req.n :
+        print(f"Only {len(items)}/{req.n} items matched filters for user {req.user_id}")
     # Send HTTP POST response to client.
     return RecommendationResponse(recommendations=items)
 
