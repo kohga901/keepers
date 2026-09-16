@@ -116,6 +116,12 @@ def _update_pref_vec(pref_vec: np.ndarray, item_id: int, liked: bool) -> np.ndar
          # Deduct the item's embedding from the pref_vec.
         pref_vec = pref_vec - BETA * item_embedding
 
+    # Normalize so magnitude doesn't grow unbounded over many swipes,
+    # which would shrink each new swipe's relative influence on direction.
+    norm = np.linalg.norm(pref_vec)
+    if norm > 0:
+        pref_vec = pref_vec / norm
+
     return pref_vec
 
 def _save_pref_vec(user_id: str, pref_vec: np.ndarray) -> None:
