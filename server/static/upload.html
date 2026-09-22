@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Keepers — Easy Upload</title>
+<style>
+  :root {
+    --bg: #f5f5f7;
+    --card: #ffffff;
+    --border: #e0e0e6;
+    --text: #1c1c1e;
+    --muted: #6e6e73;
+    --accent: #0a84ff;
+    --accent-hover: #0071e3;
+    --danger: #d92d20;
+    --ok: #12885b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 32px 16px 80px;
+  }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  p.subtitle { color: var(--muted); margin: 0 0 28px; font-size: 14px; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+
+  .item-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+    position: relative;
+  }
+  .item-card h2 {
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    margin: 0 0 14px;
+  }
+  .field { margin-bottom: 12px; }
+  .field label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .field .hint { font-weight: 400; color: var(--muted); }
+  .field input, .field select {
+    width: 100%;
+    padding: 9px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 14px;
+    background: #fff;
+    color: var(--text);
+  }
+  .field input:focus, .field select:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  .remove-btn {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .remove-btn:hover { color: var(--danger); }
+
+  .actions { display: flex; gap: 10px; margin: 20px 0; }
+  button {
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: 8px;
+    padding: 11px 18px;
+    cursor: pointer;
+    border: 1px solid transparent;
+  }
+  #add-item-btn {
+    background: #fff;
+    border-color: var(--border);
+    color: var(--text);
+  }
+  #add-item-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  #submit-btn {
+    background: var(--accent);
+    color: #fff;
+    flex: 1;
+  }
+  #submit-btn:hover { background: var(--accent-hover); }
+  #submit-btn:disabled { background: #a9c9f5; cursor: not-allowed; }
+
+  #results { margin-top: 24px; }
+  .result-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 14px;
+    margin-bottom: 8px;
+    border: 1px solid var(--border);
+    background: #fff;
+  }
+  .result-row.ok { border-color: #b7e4cf; background: #f0fbf6; }
+  .result-row.error { border-color: #f3c4bd; background: #fdf3f1; }
+  .result-status { font-weight: 600; }
+  .result-row.ok .result-status { color: var(--ok); }
+  .result-row.error .result-status { color: var(--danger); }
+  .result-detail { color: var(--muted); font-size: 12px; margin-top: 2px; }
+
+  #status-line { font-size: 13px; color: var(--muted); margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Easy Upload</h1>
+  <p class="subtitle">Paste in a clothing item's image link (and price, gender, etc). Add more rows for a batch. Each item gets a CLIP embedding and goes straight into the catalog.</p>
+
+  <form id="upload-form">
+    <div id="items-container"></div>
+
+    <div class="actions">
+      <button type="button" id="add-item-btn">+ Add another item</button>
+      <button type="submit" id="submit-btn">Upload</button>
+    </div>
+    <div id="status-line"></div>
+  </form>
+
+  <div id="results"></div>
+</div>
+
+<template id="item-template">
+  <div class="item-card">
+    <button type="button" class="remove-btn">Remove</button>
+    <h2>Item</h2>
+
+    <div class="field">
+      <label>Image link <span class="hint">(required — https URL to the product photo, this is what gets embedded)</span></label>
+      <input type="url" name="item_img" placeholder="https://…/photo.jpg" required>
+    </div>
+
+    <div class="field">
+      <label>Name <span class="hint">(required)</span></label>
+      <input type="text" name="item_name" placeholder="e.g. Nike Air Force 1" required>
+    </div>
+
+    <div class="row-2">
+      <div class="field">
+        <label>Price</label>
+        <input type="text" name="item_price" placeholder="$110.00">
+      </div>
+      <div class="field">
+        <label>Gender</label>
+        <select name="item_gender">
+          <option value="">—</option>
+          <option value="men">Men</option>
+          <option value="women">Women</option>
+          <option value="unisex">Unisex</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Listing link <span class="hint">(optional — where to buy it, if different from the image link)</span></label>
+      <input type="url" name="item_web_listing" placeholder="https://…/product-page">
+    </div>
+
+    <div class="field">
+      <label>Tags <span class="hint">(optional, comma separated)</span></label>
+      <input type="text" name="item_tags" placeholder="shoes, sneakers, casual">
+    </div>
+  </div>
+</template>
+
+<script>
+  const container = document.getElementById('items-container');
+  const template = document.getElementById('item-template');
+  const form = document.getElementById('upload-form');
+  const submitBtn = document.getElementById('submit-btn');
+  const statusLine = document.getElementById('status-line');
+  const resultsEl = document.getElementById('results');
+
+  function addItemRow() {
+    const node = template.content.cloneNode(true);
+    const card = node.querySelector('.item-card');
+    node.querySelector('.remove-btn').addEventListener('click', () => {
+      // Always keep at least one row on the page.
+      if (container.children.length > 1) {
+        card.remove();
+      }
+    });
+    container.appendChild(node);
+  }
+
+  document.getElementById('add-item-btn').addEventListener('click', addItemRow);
+
+  // Start with a single item row.
+  addItemRow();
+
+  function readItems() {
+    return Array.from(container.querySelectorAll('.item-card')).map(card => {
+      const get = name => card.querySelector(`[name="${name}"]`).value.trim();
+      const tags = get('item_tags');
+      return {
+        item_img: get('item_img'),
+        item_name: get('item_name'),
+        item_price: get('item_price') || null,
+        item_gender: get('item_gender') || null,
+        item_web_listing: get('item_web_listing') || null,
+        item_tags: tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : [],
+      };
+    });
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const items = readItems();
+
+    submitBtn.disabled = true;
+    resultsEl.innerHTML = '';
+    statusLine.textContent = `Uploading ${items.length} item${items.length === 1 ? '' : 's'}… this can take a moment per image.`;
+
+    try {
+      const response = await fetch('/admin/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items }),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Server responded ${response.status}: ${text}`);
+      }
+
+      const data = await response.json();
+      renderResults(data.results);
+
+      const okCount = data.results.filter(r => r.status === 'ok').length;
+      statusLine.textContent = `Done — ${okCount}/${data.results.length} uploaded successfully.`;
+
+      // Clear out any rows that succeeded, so a partial failure is easy to retry.
+      const cards = Array.from(container.querySelectorAll('.item-card'));
+      data.results.forEach((r, i) => {
+        if (r.status === 'ok' && cards[i]) cards[i].remove();
+      });
+      if (container.children.length === 0) addItemRow();
+
+    } catch (err) {
+      statusLine.textContent = `Upload failed: ${err.message}`;
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+
+  function renderResults(results) {
+    resultsEl.innerHTML = '';
+    results.forEach(r => {
+      const row = document.createElement('div');
+      row.className = `result-row ${r.status}`;
+      row.innerHTML = `
+        <div>
+          <div>${escapeHtml(r.item_name || '(unnamed)')}</div>
+          ${r.status === 'error' ? `<div class="result-detail">${escapeHtml(r.error || 'Unknown error')}</div>` : `<div class="result-detail">item_id ${r.item_id}</div>`}
+        </div>
+        <div class="result-status">${r.status === 'ok' ? '✓ Uploaded' : '✗ Failed'}</div>
+      `;
+      resultsEl.appendChild(row);
+    });
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+</script>
+</body>
+</html>

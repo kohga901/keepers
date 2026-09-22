@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 from pathlib import Path
 from supabase import create_client, ClientOptions
 import os
+import threading
 import time
 import umap
 
@@ -34,6 +35,11 @@ _item_ids = None
 item_id_to_embedding = None
 umap_reducer = None
 ready = False
+
+# Guards mutation of index / _item_ids / item_id_to_embedding so a newly
+# uploaded item (see routers/admin.py) can't race with a concurrent
+# recommendations lookup that reads them mid-update.
+_index_lock = threading.Lock()
 
 
 def initialize():
@@ -81,3 +87,28 @@ def initialize():
     index = idx
     ready = True
     print("Startup.initialize() complete — index and UMAP model ready.")
+
+
+def add_item_embedding(item_id: int, raw_embedding: np.ndarray) -> None:
+    """
+    Adds a freshly-uploaded item's embedding to the in-memory FAISS index so it
+    is immediately eligible for recommendations, without waiting for a server
+    restart. Mirrors the normalization done in initialize().
+
+    Args:
+        item_id:       The item's id, already inserted into the Clothing/Embeddings tables.
+        raw_embedding: The item's raw (un-normalized) 512-dim CLIP embedding.
+    """
+    if not ready:
+        # Nothing to update yet — the next full initialize() will pick this
+        # item up from Supabase anyway.
+        return
+
+    vec = np.array(raw_embedding, dtype=np.float32).reshape(1, EMBEDDING_DIM)
+    normalized = vec.copy()
+    faiss.normalize_L2(normalized)
+
+    with _index_lock:
+        index.add(normalized)
+        _item_ids.append(item_id)
+        item_id_to_embedding[item_id] = normalized[0]
