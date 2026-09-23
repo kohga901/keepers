@@ -5,19 +5,28 @@
  * Date: 2026-04-21
  */
 
-import React, { useRef, useState, useEffect } from "react";
-import { View, Text, StyleSheet, Dimensions } from "react-native";
-import Swiper from "react-native-deck-swiper";
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useRef, useState } from 'react';
+import { Alert, Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
+import Swiper from 'react-native-deck-swiper';
 import {getRecommendationsFromServer, sendSwipeToServer} from '../../services/serverApi';
 
 import { Image } from 'expo-image';
 import * as WebBrowser from 'expo-web-browser';
+import { ImageLookupModal } from '../../components/ai/ImageLookupModal';
 import { usePriceDisplay } from '../../contexts/PriceDisplayContext';
 import { supabase } from '../../utils/supabase';
 import { getPriceTierSymbol } from '../../utils/price';
 import { Item, ClothingRow } from '../../models/Items';
+import {
+  lookupPurchasableItem,
+  toAiLookupError,
+  type AiLookupErrorCode,
+  type ImageLookupResult,
+} from '../../services/ai';
 
-const { height } = Dimensions.get("window");
+const { height } = Dimensions.get('window');
 const CARD_HEIGHT_RATIO = 0.7;
 const CARD_VERTICAL_MARGIN = (height * (1 - CARD_HEIGHT_RATIO)) / 2;
 
@@ -25,13 +34,24 @@ const CARD_VERTICAL_MARGIN = (height * (1 - CARD_HEIGHT_RATIO)) / 2;
 const amountOfItemsToFetch = 10;
 
 const App: React.FC = () => {
+  const router = useRouter();
   const swiper = useRef<any>(null);
   const loadedUserId = useRef<string | null>(null);
+  const lookupAbortController = useRef<AbortController | null>(null);
+  const lookupRequestId = useRef(0);
   const [cards, setCards] = useState<Item[]>([]);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [lookupItem, setLookupItem] = useState<Item | null>(null);
+  const [lookupResult, setLookupResult] = useState<ImageLookupResult | null>(null);
+  const [lookupError, setLookupError] = useState<{
+    code: AiLookupErrorCode;
+    message: string;
+  } | null>(null);
+  const [lookupLoading, setLookupLoading] = useState(false);
   const { showPriceAsTier } = usePriceDisplay();
-    useEffect(() => {
+
+  useEffect(() => {
 
     const checkSessionAndLoad = async () => {
       const { data, error } = await supabase.auth.getSession();
@@ -95,7 +115,64 @@ const App: React.FC = () => {
     return () => {
       listener.subscription.unsubscribe();
     };
-  }, [])
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      lookupAbortController.current?.abort();
+    };
+  }, []);
+
+  const startLookup = async (item: Item) => {
+    lookupAbortController.current?.abort();
+    const controller = new AbortController();
+    const requestId = lookupRequestId.current + 1;
+    lookupAbortController.current = controller;
+    lookupRequestId.current = requestId;
+
+    setLookupItem(item);
+    setLookupResult(null);
+    setLookupError(null);
+    setLookupLoading(true);
+
+    try {
+      const result = await lookupPurchasableItem({
+        imageUrl: item.imageUrl,
+        itemHint: item.name,
+        maxResults: 5,
+        signal: controller.signal,
+      });
+
+      if (!controller.signal.aborted && lookupRequestId.current === requestId) {
+        setLookupResult(result);
+      }
+    } catch (error) {
+      const safeError = toAiLookupError(error);
+      if (safeError.code !== 'cancelled' && lookupRequestId.current === requestId) {
+        setLookupError({ code: safeError.code, message: safeError.message });
+      }
+    } finally {
+      if (lookupRequestId.current === requestId) {
+        setLookupLoading(false);
+        lookupAbortController.current = null;
+      }
+    }
+  };
+
+  const closeLookup = () => {
+    lookupRequestId.current += 1;
+    lookupAbortController.current?.abort();
+    lookupAbortController.current = null;
+    setLookupItem(null);
+    setLookupLoading(false);
+    setLookupResult(null);
+    setLookupError(null);
+  };
+
+  const openSettings = () => {
+    closeLookup();
+    router.push('/settings');
+  };
 
   if (!isAuthReady) {
     return (
@@ -132,10 +209,22 @@ const App: React.FC = () => {
               />
             </View>
             <View style={styles.cardInfo}>
-              <Text style={styles.cardName}>{card.name}</Text>
-              <Text style={styles.cardPrice}>
-                {showPriceAsTier ? getPriceTierSymbol(card.price) : card.price}
-              </Text>
+              <View style={styles.cardDetails}>
+                <Text numberOfLines={2} style={styles.cardName}>{card.name}</Text>
+                <Text style={styles.cardPrice}>
+                  {showPriceAsTier ? getPriceTierSymbol(card.price) : card.price}
+                </Text>
+              </View>
+              <Pressable
+                accessibilityHint="Uses your selected AI provider to search for purchase listings"
+                accessibilityLabel={`Find ${card.name} with AI`}
+                accessibilityRole="button"
+                onPress={() => void startLookup(card)}
+                style={({ pressed }) => [styles.lookupButton, pressed && styles.lookupButtonPressed]}
+              >
+                <Ionicons name="search" color="#FFFFFF" size={17} />
+                <Text style={styles.lookupButtonText}>Find it</Text>
+              </Pressable>
             </View>
           </View>
           );
@@ -171,8 +260,17 @@ const App: React.FC = () => {
             swiper.current?.jumpToCardIndex(cardIndex);
           }, 0);
           const item = cards[cardIndex];
-          if (item.itemUrl) {
-            WebBrowser.openBrowserAsync(item.itemUrl);
+          if (item?.itemUrl) {
+            try {
+              const parsedUrl = new URL(item.itemUrl);
+              if (parsedUrl.protocol === 'https:') {
+                void WebBrowser.openBrowserAsync(parsedUrl.toString());
+              } else {
+                Alert.alert('Link unavailable', 'Keepers blocked an insecure listing link.');
+              }
+            } catch {
+              Alert.alert('Link unavailable', 'This item does not have a valid listing link.');
+            }
           }
         }}
         onSwipedLeft={async (cardIndex: number) => {
@@ -189,7 +287,19 @@ const App: React.FC = () => {
         cardVerticalMargin={CARD_VERTICAL_MARGIN}
         backgroundColor="transparent"
       />
-      
+
+      <ImageLookupModal
+        errorCode={lookupError?.code ?? null}
+        errorMessage={lookupError?.message ?? null}
+        item={lookupItem}
+        loading={lookupLoading}
+        onClose={closeLookup}
+        onOpenSettings={openSettings}
+        onRetry={() => {
+          if (lookupItem) void startLookup(lookupItem);
+        }}
+        result={lookupResult}
+      />
     </View>
   );
 };
@@ -283,8 +393,14 @@ const styles = StyleSheet.create({
     fontSize: 80,
   },
   cardInfo: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 12,
     padding: 16,
     marginBottom: 20,
+  },
+  cardDetails: {
+    flex: 1,
     gap: 6,
   },
   cardName: {
@@ -296,5 +412,22 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "500",
     color: "#007AFF",
+  },
+  lookupButton: {
+    alignItems: 'center',
+    backgroundColor: '#1A6F55',
+    borderRadius: 12,
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  lookupButtonPressed: {
+    opacity: 0.72,
+  },
+  lookupButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
   },
 });
