@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const aiProviderSchema = z.enum(['google', 'openai']);
+export const aiProviderSchema = z.enum(['google', 'openai', 'anthropic']);
 
 export type AiProvider = z.infer<typeof aiProviderSchema>;
 
@@ -17,6 +17,11 @@ export const PROVIDER_DETAILS: Record<
     label: 'OpenAI',
     model: 'gpt-5-mini',
     keyLabel: 'OpenAI API key',
+  },
+  anthropic: {
+    label: 'Anthropic Claude',
+    model: 'claude-sonnet-5',
+    keyLabel: 'Anthropic API key',
   },
 };
 

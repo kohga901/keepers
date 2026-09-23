@@ -32,6 +32,7 @@ export function AiKeySettings() {
   const [storedKeys, setStoredKeys] = useState<Record<AiProvider, boolean>>({
     google: false,
     openai: false,
+    anthropic: false,
   });
   const [busyAction, setBusyAction] = useState<BusyAction>(null);
 
@@ -195,6 +196,12 @@ export function AiKeySettings() {
           );
         })}
       </View>
+      <Text style={[styles.modelHint, { color: theme.mutedText }]}>
+        Model: {PROVIDER_DETAILS[provider].model}
+        {provider === 'anthropic'
+          ? ' · Web search must be enabled in your Anthropic Console settings.'
+          : ''}
+      </Text>
 
       <View style={styles.statusRow}>
         <Ionicons
@@ -316,17 +323,23 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     flex: 1,
+    justifyContent: 'center',
     paddingHorizontal: 10,
     paddingVertical: 11,
   },
   providerText: {
     fontSize: 14,
     fontWeight: '700',
+    textAlign: 'center',
   },
   statusRow: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: 7,
+  },
+  modelHint: {
+    fontSize: 11,
+    lineHeight: 16,
   },
   statusText: {
     fontSize: 12,

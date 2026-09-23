@@ -12,6 +12,7 @@
     "lint": "expo lint"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.61",
     "@ai-sdk/google": "^4.0.78",
     "@ai-sdk/openai": "^4.0.73",
     "@expo/vector-icons": "^15.0.3",

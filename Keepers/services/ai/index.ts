@@ -2,19 +2,30 @@ import { Platform } from 'react-native';
 
 import { getProviderApiKeyForRequest, getSelectedAiProvider } from './credentials';
 import { AiLookupError, toAiLookupError } from './errors';
+import { createAnthropicLookupProvider } from './providers/anthropic';
 import { createGoogleLookupProvider } from './providers/google';
 import { createOpenAiLookupProvider } from './providers/openai';
-import type { ImageLookupInput, ImageLookupProvider, ImageLookupResult } from './types';
+import type {
+  AiProvider,
+  ImageLookupInput,
+  ImageLookupProvider,
+  ImageLookupResult,
+} from './types';
 
 export * from './connection';
 export * from './credentials';
 export * from './errors';
 export * from './types';
 
-function createProvider(provider: 'google' | 'openai', apiKey: string): ImageLookupProvider {
-  return provider === 'google'
-    ? createGoogleLookupProvider(apiKey)
-    : createOpenAiLookupProvider(apiKey);
+function createProvider(provider: AiProvider, apiKey: string): ImageLookupProvider {
+  switch (provider) {
+    case 'google':
+      return createGoogleLookupProvider(apiKey);
+    case 'openai':
+      return createOpenAiLookupProvider(apiKey);
+    case 'anthropic':
+      return createAnthropicLookupProvider(apiKey);
+  }
 }
 
 function validateImageUrl(value: string): void {

@@ -9,6 +9,7 @@ const PROVIDER_STORAGE_KEY = 'keepers.ai.provider.v1';
 const API_KEY_STORAGE_KEYS: Record<AiProvider, string> = {
   google: 'keepers.ai.google.api-key.v1',
   openai: 'keepers.ai.openai.api-key.v1',
+  anthropic: 'keepers.ai.anthropic.api-key.v1',
 };
 
 const STORAGE_OPTIONS: SecureStore.SecureStoreOptions = {
@@ -63,13 +64,15 @@ export async function getProviderApiKeyForRequest(provider: AiProvider): Promise
 
 export async function getCredentialStatus(): Promise<Record<AiProvider, boolean>> {
   await ensureSecureStorage();
-  const [googleKey, openAiKey] = await Promise.all([
+  const [googleKey, openAiKey, anthropicKey] = await Promise.all([
     SecureStore.getItemAsync(API_KEY_STORAGE_KEYS.google, STORAGE_OPTIONS),
     SecureStore.getItemAsync(API_KEY_STORAGE_KEYS.openai, STORAGE_OPTIONS),
+    SecureStore.getItemAsync(API_KEY_STORAGE_KEYS.anthropic, STORAGE_OPTIONS),
   ]);
 
   return {
     google: Boolean(googleKey),
     openai: Boolean(openAiKey),
+    anthropic: Boolean(anthropicKey),
   };
 }
