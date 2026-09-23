@@ -14,7 +14,6 @@ faiss_index/
 models/
 checkpoints/
 
-
 # Torch / HuggingFace model cache
 .cache/
 
@@ -40,3 +39,6 @@ Thumbs.db
 # IDEs
 .idea/
 .vscode/
+
+# Agents
+.claude
