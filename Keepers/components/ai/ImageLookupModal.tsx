@@ -105,10 +105,10 @@ export function ImageLookupModal({
           {loading && (
             <View accessibilityLiveRegion="polite" style={styles.stateBlock}>
               <ActivityIndicator color={theme.primary} size="large" />
-              <Text style={[styles.stateTitle, { color: theme.text }]}>Searching the web…</Text>
+              <Text style={[styles.stateTitle, { color: theme.text }]}>Identifying this item…</Text>
               <Text style={[styles.stateBody, { color: theme.mutedText }]}>
-                The AI is identifying the item and checking current purchase listings. This can take
-                up to a minute.
+                The AI is identifying the item and preparing shopping options. This can take up to a
+                minute.
               </Text>
             </View>
           )}
@@ -163,65 +163,102 @@ export function ImageLookupModal({
               </View>
 
               <View style={styles.sectionHeader}>
-                <Text style={[styles.sectionTitle, { color: theme.text }]}>Purchase options</Text>
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>
+                  {result.searchLinks.length > 0 ? 'Marketplace searches' : 'Purchase options'}
+                </Text>
                 <Text style={[styles.sectionCount, { color: theme.mutedText }]}>
-                  {result.listings.length}
+                  {result.listings.length + result.searchLinks.length}
                 </Text>
               </View>
 
-              {result.listings.length === 0 ? (
+              {result.listings.length === 0 && result.searchLinks.length === 0 && (
                 <View style={[styles.emptyCard, { borderColor: theme.border }]}>
                   <Text style={[styles.stateBody, { color: theme.mutedText }]}>
                     No trustworthy purchase links were returned for this image. Try another photo or
                     provider.
                   </Text>
                 </View>
-              ) : (
-                result.listings.map((listing) => (
-                  <View
-                    key={listing.url}
-                    style={[
-                      styles.listingCard,
-                      { backgroundColor: theme.surface, borderColor: theme.border },
-                    ]}
-                  >
-                    <View style={styles.badgeRow}>
-                      <View style={[styles.matchBadge, { borderColor: theme.primary }]}>
-                        <Text style={[styles.badgeText, { color: theme.primary }]}>
-                          {listing.matchType === 'exact' ? 'POSSIBLE EXACT MATCH' : 'SIMILAR ITEM'}
-                        </Text>
-                      </View>
-                      <Text style={[styles.confidence, { color: theme.mutedText }]}>
-                        {Math.round(listing.confidence * 100)}% AI confidence
+              )}
+
+              {result.listings.map((listing) => (
+                <View
+                  key={listing.url}
+                  style={[
+                    styles.listingCard,
+                    { backgroundColor: theme.surface, borderColor: theme.border },
+                  ]}
+                >
+                  <View style={styles.badgeRow}>
+                    <View style={[styles.matchBadge, { borderColor: theme.primary }]}>
+                      <Text style={[styles.badgeText, { color: theme.primary }]}>
+                        {listing.matchType === 'exact' ? 'POSSIBLE EXACT MATCH' : 'SIMILAR ITEM'}
                       </Text>
                     </View>
-                    <Text style={[styles.listingTitle, { color: theme.text }]}>{listing.title}</Text>
-                    <Text style={[styles.listingMeta, { color: theme.mutedText }]}>
-                      {listing.seller} · {listing.displayedPrice} · {listing.condition}
+                    <Text style={[styles.confidence, { color: theme.mutedText }]}>
+                      {Math.round(listing.confidence * 100)}% AI confidence
                     </Text>
-                    <Text style={[styles.evidence, { color: theme.mutedText }]}>
-                      {listing.evidence}
-                    </Text>
-                    {!listing.sourceBacked && (
-                      <Text style={styles.unverifiedText}>
-                        No matching citation was returned for this link. Verify it carefully.
-                      </Text>
-                    )}
-                    <Pressable
-                      accessibilityHint="Opens this seller link in an in-app browser"
-                      accessibilityRole="link"
-                      onPress={() => void openExternalUrl(listing.url)}
-                      style={({ pressed }) => [
-                        styles.openButton,
-                        { backgroundColor: theme.primary, opacity: pressed ? 0.72 : 1 },
-                      ]}
-                    >
-                      <Text style={styles.primaryButtonText}>View listing</Text>
-                      <Ionicons name="open-outline" size={16} color="#0F1418" />
-                    </Pressable>
                   </View>
-                ))
-              )}
+                  <Text style={[styles.listingTitle, { color: theme.text }]}>{listing.title}</Text>
+                  <Text style={[styles.listingMeta, { color: theme.mutedText }]}>
+                    {listing.seller} · {listing.displayedPrice} · {listing.condition}
+                  </Text>
+                  <Text style={[styles.evidence, { color: theme.mutedText }]}>
+                    {listing.evidence}
+                  </Text>
+                  {!listing.sourceBacked && (
+                    <Text style={styles.unverifiedText}>
+                      No matching citation was returned for this link. Verify it carefully.
+                    </Text>
+                  )}
+                  <Pressable
+                    accessibilityHint="Opens this seller link in an in-app browser"
+                    accessibilityRole="link"
+                    onPress={() => void openExternalUrl(listing.url)}
+                    style={({ pressed }) => [
+                      styles.openButton,
+                      { backgroundColor: theme.primary, opacity: pressed ? 0.72 : 1 },
+                    ]}
+                  >
+                    <Text style={styles.primaryButtonText}>View listing</Text>
+                    <Ionicons name="open-outline" size={16} color="#0F1418" />
+                  </Pressable>
+                </View>
+              ))}
+
+              {result.searchLinks.map((searchLink) => (
+                <View
+                  key={searchLink.url}
+                  style={[
+                    styles.listingCard,
+                    { backgroundColor: theme.surface, borderColor: theme.border },
+                  ]}
+                >
+                  <View style={styles.badgeRow}>
+                    <View style={[styles.matchBadge, { borderColor: theme.primary }]}>
+                      <Text style={[styles.badgeText, { color: theme.primary }]}>SEARCH LINK</Text>
+                    </View>
+                    <Text style={[styles.confidence, { color: theme.mutedText }]}>
+                      {searchLink.marketplace}
+                    </Text>
+                  </View>
+                  <Text style={[styles.listingTitle, { color: theme.text }]}>{searchLink.title}</Text>
+                  <Text style={[styles.evidence, { color: theme.mutedText }]}>
+                    Search terms: {searchLink.query}
+                  </Text>
+                  <Pressable
+                    accessibilityHint={`Searches ${searchLink.marketplace} in an in-app browser`}
+                    accessibilityRole="link"
+                    onPress={() => void openExternalUrl(searchLink.url)}
+                    style={({ pressed }) => [
+                      styles.openButton,
+                      { backgroundColor: theme.primary, opacity: pressed ? 0.72 : 1 },
+                    ]}
+                  >
+                    <Text style={styles.primaryButtonText}>Search {searchLink.marketplace}</Text>
+                    <Ionicons name="search-outline" size={16} color="#0F1418" />
+                  </Pressable>
+                </View>
+              ))}
 
               {result.sources.length > 0 && (
                 <View style={styles.sourcesSection}>
@@ -246,8 +283,9 @@ export function ImageLookupModal({
               )}
 
               <Text style={[styles.disclaimer, { color: theme.mutedText }]}>
-                AI can misidentify products and sellers can change prices or availability. Verify the
-                photo, seller, condition, price, and return policy before purchasing.
+                {result.searchLinks.length > 0
+                  ? 'Gemini identified the item, and Keepers generated these marketplace searches locally. They are not verified listings. Check the product, seller, price, condition, and return policy before purchasing.'
+                  : 'AI can misidentify products and sellers can change prices or availability. Verify the photo, seller, condition, price, and return policy before purchasing.'}
               </Text>
             </View>
           )}

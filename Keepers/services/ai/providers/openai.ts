@@ -41,7 +41,7 @@ export function createOpenAiLookupProvider(apiKey: string): ImageLookupProvider 
             {
               role: 'user',
               content: [
-                { type: 'image', image: input.imageUrl },
+                { type: 'file', mediaType: 'image', data: input.imageUrl },
                 { type: 'text', text: buildImageLookupPrompt(input, maxResults) },
               ],
             },
@@ -52,14 +52,20 @@ export function createOpenAiLookupProvider(apiKey: string): ImageLookupProvider 
               searchContextSize: 'medium',
             }),
           },
-          toolChoice: { type: 'tool', toolName: 'web_search' },
+          toolChoice: 'auto',
+          prepareStep: ({ stepNumber }) =>
+            stepNumber === 0
+              ? { toolChoice: { type: 'tool', toolName: 'web_search' } }
+              : undefined,
           providerOptions: {
             openai: {
+              reasoningEffort: 'low',
+              reasoningSummary: null,
               store: false,
             } satisfies OpenAILanguageModelResponsesOptions,
           },
           stopWhen: stepCountIs(5),
-          maxOutputTokens: 1_600,
+          maxOutputTokens: 4_000,
           maxRetries: 0,
           abortSignal: abort.signal,
           experimental_telemetry: {

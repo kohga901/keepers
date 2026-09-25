@@ -15,7 +15,7 @@ function getConnectionRequest(provider: AiProvider, apiKey: string): {
   switch (provider) {
     case 'google':
       return {
-        url: 'https://generativelanguage.googleapis.com/v1beta/models?pageSize=1',
+        url: `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(PROVIDER_DETAILS.google.model)}`,
         headers: { 'x-goog-api-key': apiKey },
       };
     case 'openai':

@@ -10,7 +10,7 @@ export const PROVIDER_DETAILS: Record<
 > = {
   google: {
     label: 'Google Gemini',
-    model: 'gemini-2.5-flash',
+    model: 'gemini-3.5-flash-lite',
     keyLabel: 'Gemini API key',
   },
   openai: {
@@ -27,7 +27,11 @@ export const PROVIDER_DETAILS: Record<
 
 const modelListingSchema = z.object({
   title: z.string().min(1).max(240).describe('The listing title shown by the seller'),
-  url: z.url().max(2_048).describe('A direct product or marketplace listing URL'),
+  url: z
+    .string()
+    .min(1)
+    .max(2_048)
+    .describe('A direct HTTPS product or marketplace listing URL'),
   seller: z.string().min(1).max(120).describe('The retailer, marketplace, or seller name, or unknown'),
   displayedPrice: z.string().min(1).max(80).describe('Price exactly as displayed with currency, or unknown'),
   condition: z.enum(['new', 'used', 'refurbished', 'unknown']),
@@ -62,10 +66,18 @@ export type PurchaseListing = z.infer<typeof modelListingSchema> & {
   sourceBacked: boolean;
 };
 
+export type ShoppingSearchLink = {
+  marketplace: string;
+  query: string;
+  title: string;
+  url: string;
+};
+
 export type ImageLookupResult = Omit<ModelLookup, 'listings'> & {
   provider: AiProvider;
   model: string;
   listings: PurchaseListing[];
+  searchLinks: ShoppingSearchLink[];
   sources: LookupSource[];
 };
 

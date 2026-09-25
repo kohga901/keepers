@@ -80,6 +80,7 @@ export function buildLookupResult(
     provider,
     model,
     listings,
+    searchLinks: [],
     sources,
   };
 }

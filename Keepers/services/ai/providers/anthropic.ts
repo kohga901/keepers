@@ -43,7 +43,7 @@ export function createAnthropicLookupProvider(apiKey: string): ImageLookupProvid
             {
               role: 'user',
               content: [
-                { type: 'image', image: input.imageUrl },
+                { type: 'file', mediaType: 'image', data: input.imageUrl },
                 {
                   type: 'text',
                   text: `${buildImageLookupPrompt(input, maxResults)}\n\nProduce a concise cited research report for a separate schema-formatting pass. Include each direct listing URL as plain text.`,
