@@ -16,6 +16,25 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    npx expo start
    ```
 
+### Optional local AI key for development
+
+To avoid entering a test key in the app during local development, add the key to the existing
+ignored `.env` file beside `package.json`, or create an ignored `.env.local` file there:
+
+```dotenv
+EXPO_PUBLIC_KEEPERS_GOOGLE_AI_API_KEY=your_test_key
+# EXPO_PUBLIC_KEEPERS_OPENAI_API_KEY=your_test_key
+# EXPO_PUBLIC_KEEPERS_ANTHROPIC_API_KEY=your_test_key
+```
+
+Restart Expo with `npx expo start --clear`, select that provider in Settings, and the app will
+show that it is using the development key. The override is disabled when `__DEV__` is false.
+
+Expo embeds every `EXPO_PUBLIC_*` value in the client bundle. Use only a short-lived, restricted
+development key with a strict spending limit. Never commit `.env.local`, configure these variables
+in EAS, or include them in a preview or production build. Production users continue to supply their
+own keys, which the native app stores in encrypted device storage.
+
 In the output, you'll find options to open the app in a
 
 - [development build](https://docs.expo.dev/develop/development-builds/introduction/)

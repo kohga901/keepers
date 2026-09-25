@@ -14,6 +14,7 @@ import type {
 
 export * from './connection';
 export * from './credentials';
+export * from './developmentCredentials';
 export * from './errors';
 export * from './types';
 

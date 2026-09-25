@@ -1,6 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
+import { getDevelopmentProviderApiKey } from './developmentCredentials';
 import { AiLookupError } from './errors';
 import { aiProviderSchema, type AiProvider } from './types';
 
@@ -52,6 +53,9 @@ export async function deleteProviderApiKey(provider: AiProvider): Promise<void> 
 }
 
 export async function getProviderApiKeyForRequest(provider: AiProvider): Promise<string> {
+  const developmentApiKey = getDevelopmentProviderApiKey(provider);
+  if (developmentApiKey) return developmentApiKey;
+
   await ensureSecureStorage();
   const apiKey = await SecureStore.getItemAsync(API_KEY_STORAGE_KEYS[provider], STORAGE_OPTIONS);
 

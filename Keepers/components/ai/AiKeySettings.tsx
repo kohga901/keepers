@@ -15,6 +15,7 @@ import { useAppTheme } from '../../hooks/useAppTheme';
 import {
   deleteProviderApiKey,
   getCredentialStatus,
+  getDevelopmentCredentialStatus,
   getSelectedAiProvider,
   PROVIDER_DETAILS,
   saveProviderApiKey,
@@ -35,6 +36,8 @@ export function AiKeySettings() {
     anthropic: false,
   });
   const [busyAction, setBusyAction] = useState<BusyAction>(null);
+  const hasDevelopmentKey = getDevelopmentCredentialStatus()[provider];
+  const hasAvailableKey = hasDevelopmentKey || storedKeys[provider];
 
   const refresh = useCallback(async () => {
     if (Platform.OS === 'web') return;
@@ -72,7 +75,7 @@ export function AiKeySettings() {
   };
 
   const saveKey = async () => {
-    if (busyAction) return;
+    if (busyAction || hasDevelopmentKey) return;
     const normalizedKey = apiKey.trim();
     if (!normalizedKey) {
       Alert.alert('Enter an API key', `Paste your ${PROVIDER_DETAILS[provider].keyLabel} first.`);
@@ -99,8 +102,8 @@ export function AiKeySettings() {
 
   const testKey = async () => {
     if (busyAction) return;
-    if (!storedKeys[provider]) {
-      Alert.alert('No saved key', `Save a ${PROVIDER_DETAILS[provider].keyLabel} before testing it.`);
+    if (!hasAvailableKey) {
+      Alert.alert('No API key', `Add a ${PROVIDER_DETAILS[provider].keyLabel} before testing it.`);
       return;
     }
 
@@ -205,12 +208,16 @@ export function AiKeySettings() {
 
       <View style={styles.statusRow}>
         <Ionicons
-          name={hasSavedKey ? 'shield-checkmark' : 'shield-outline'}
+          name={hasAvailableKey ? 'shield-checkmark' : 'shield-outline'}
           size={17}
-          color={hasSavedKey ? theme.primary : theme.mutedText}
+          color={hasAvailableKey ? theme.primary : theme.mutedText}
         />
         <Text style={[styles.statusText, { color: theme.mutedText }]}>
-          {hasSavedKey ? 'A key is saved for this provider' : 'No key saved for this provider'}
+          {hasDevelopmentKey
+            ? 'Using the local development environment key'
+            : hasSavedKey
+              ? 'A key is saved for this provider'
+              : 'No key saved for this provider'}
         </Text>
       </View>
 
@@ -219,9 +226,13 @@ export function AiKeySettings() {
         autoCapitalize="none"
         autoComplete="off"
         autoCorrect={false}
-        editable={!isBusy}
+        editable={!isBusy && !hasDevelopmentKey}
         onChangeText={setApiKey}
-        placeholder={hasSavedKey ? 'Paste a replacement key' : PROVIDER_DETAILS[provider].keyLabel}
+        placeholder={hasDevelopmentKey
+          ? 'Development key loaded from the local environment'
+          : hasSavedKey
+            ? 'Paste a replacement key'
+            : PROVIDER_DETAILS[provider].keyLabel}
         placeholderTextColor={theme.mutedText}
         secureTextEntry
         spellCheck={false}
@@ -240,26 +251,35 @@ export function AiKeySettings() {
       <View style={styles.actionRow}>
         <Pressable
           accessibilityRole="button"
-          disabled={isBusy}
+          disabled={isBusy || hasDevelopmentKey}
           onPress={() => void saveKey()}
           style={({ pressed }) => [
             styles.primaryButton,
-            { backgroundColor: theme.primary, opacity: isBusy || pressed ? 0.65 : 1 },
+            {
+              backgroundColor: theme.primary,
+              opacity: isBusy || hasDevelopmentKey || pressed ? 0.65 : 1,
+            },
           ]}
         >
           <Text style={styles.primaryButtonText}>
-            {busyAction === 'save' ? 'Saving…' : hasSavedKey ? 'Replace key' : 'Save key'}
+            {busyAction === 'save'
+              ? 'Saving…'
+              : hasDevelopmentKey
+                ? 'Using dev key'
+                : hasSavedKey
+                  ? 'Replace key'
+                  : 'Save key'}
           </Text>
         </Pressable>
         <Pressable
           accessibilityRole="button"
-          disabled={isBusy || !hasSavedKey}
+          disabled={isBusy || !hasAvailableKey}
           onPress={() => void testKey()}
           style={({ pressed }) => [
             styles.secondaryButton,
             {
               borderColor: theme.border,
-              opacity: isBusy || !hasSavedKey || pressed ? 0.5 : 1,
+              opacity: isBusy || !hasAvailableKey || pressed ? 0.5 : 1,
             },
           ]}
         >
@@ -277,7 +297,11 @@ export function AiKeySettings() {
           style={({ pressed }) => [styles.deleteButton, { opacity: isBusy || pressed ? 0.55 : 1 }]}
         >
           <Text style={styles.deleteText}>
-            {busyAction === 'delete' ? 'Deleting…' : 'Delete saved key'}
+            {busyAction === 'delete'
+              ? 'Deleting…'
+              : hasDevelopmentKey
+                ? 'Delete saved fallback key'
+                : 'Delete saved key'}
           </Text>
         </Pressable>
       )}
@@ -285,9 +309,9 @@ export function AiKeySettings() {
       <View style={[styles.notice, { borderColor: theme.border }]}>
         <Ionicons name="information-circle-outline" size={19} color={theme.mutedText} />
         <Text style={[styles.noticeText, { color: theme.mutedText }]}>
-          Your key stays in encrypted storage on this device and is sent only to the selected AI
-          provider. Item images and search prompts are also sent to that provider. Use a dedicated,
-          restricted key with spending limits. Never paste a shared or production key here.
+          {hasDevelopmentKey
+            ? 'Development keys are loaded into the app bundle and are not secret. Use only a short-lived, restricted test key with a strict spending limit, and never include it in a release build.'
+            : 'Your key stays in encrypted storage on this device and is sent only to the selected AI provider. Item images and search prompts are also sent to that provider. Use a dedicated, restricted key with spending limits. Never paste a shared or production key here.'}
         </Text>
       </View>
     </View>
