@@ -38,6 +38,7 @@ const App: React.FC = () => {
   const swiper = useRef<any>(null);
   const loadedUserId = useRef<string | null>(null);
   const lookupAbortController = useRef<AbortController | null>(null);
+  const lookupCardIndex = useRef<number | null>(null);
   const lookupRequestId = useRef(0);
   const [cards, setCards] = useState<Item[]>([]);
   const [isAuthReady, setIsAuthReady] = useState(false);
@@ -104,7 +105,9 @@ const App: React.FC = () => {
       if (!hasSession) {
         loadedUserId.current = null;
         setCards([]);
-      } else {
+      } else if (loadedUserId.current !== session.user.id) {
+        // Session initialization and token refreshes for the same user must not
+        // clear an already-loaded feed.
         setCards([]);
         await initialDataFeed(session.user.id);
       }
@@ -123,7 +126,11 @@ const App: React.FC = () => {
     };
   }, []);
 
-  const startLookup = async (item: Item) => {
+  const startLookup = async (item: Item, cardIndex?: number) => {
+    if (cardIndex !== undefined) {
+      lookupCardIndex.current = cardIndex;
+    }
+
     lookupAbortController.current?.abort();
     const controller = new AbortController();
     const requestId = lookupRequestId.current + 1;
@@ -160,6 +167,8 @@ const App: React.FC = () => {
   };
 
   const closeLookup = () => {
+    const cardIndexToRestore = lookupCardIndex.current;
+    lookupCardIndex.current = null;
     lookupRequestId.current += 1;
     lookupAbortController.current?.abort();
     lookupAbortController.current = null;
@@ -167,6 +176,14 @@ const App: React.FC = () => {
     setLookupLoading(false);
     setLookupResult(null);
     setLookupError(null);
+
+    // Reset the deck's internal animation/index state after the native modal
+    // starts dismissing so its top card remains visible.
+    if (cardIndexToRestore !== null) {
+      setTimeout(() => {
+        swiper.current?.jumpToCardIndex(cardIndexToRestore);
+      }, 0);
+    }
   };
 
   const openSettings = () => {
@@ -195,7 +212,7 @@ const App: React.FC = () => {
       <Swiper<Item>
         ref={swiper}
         cards={cards}
-        renderCard={(card: Item) => {
+        renderCard={(card: Item, cardIndex: number) => {
           if (!card) return null;
           return (
            <View style={styles.card}>
@@ -219,7 +236,7 @@ const App: React.FC = () => {
                 accessibilityHint="Uses your selected AI provider to search for purchase listings"
                 accessibilityLabel={`Find ${card.name} with AI`}
                 accessibilityRole="button"
-                onPress={() => void startLookup(card)}
+                onPress={() => void startLookup(card, cardIndex)}
                 style={({ pressed }) => [styles.lookupButton, pressed && styles.lookupButtonPressed]}
               >
                 <Ionicons name="search" color="#FFFFFF" size={17} />
