@@ -87,6 +87,18 @@ function buildMarketplaceSearchLinks(query: string, maxResults: number): Shoppin
       title: `Search Poshmark for ${query}`,
       url: `https://poshmark.com/search?query=${encodedQuery}&type=listings&src=dir`,
     },
+    {
+      marketplace: 'Depop',
+      query,
+      title: `Search Depop for ${query}`,
+      url: `https://www.depop.com/search/?q=${encodedQuery}`,
+    },
+    {
+      marketplace: 'Mercari',
+      query,
+      title: `Search Mercari for ${query}`,
+      url: `https://www.mercari.com/search/?keyword=${encodedQuery}`,
+    },
   ].slice(0, maxResults);
 }
 
