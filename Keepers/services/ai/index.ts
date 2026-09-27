@@ -20,6 +20,7 @@ export * from './errors';
 export * from './types';
 
 const lookupCache = new Map<string, ImageLookupResult>();
+const inFlightLookups = new Map<string, Promise<ImageLookupResult>>();
 
 function lookupCacheKey(provider: AiProvider, input: ImageLookupInput): string {
   return JSON.stringify([
@@ -36,6 +37,55 @@ function readCachedLookup(key: string): ImageLookupResult | null {
 
 function cacheLookup(key: string, result: ImageLookupResult): void {
   lookupCache.set(key, result);
+}
+
+function waitForLookup(
+  lookup: Promise<ImageLookupResult>,
+  signal?: AbortSignal,
+): Promise<ImageLookupResult> {
+  if (!signal) return lookup;
+  if (signal.aborted) return Promise.reject(new AiLookupError('cancelled'));
+
+  return new Promise((resolve, reject) => {
+    const stopWaiting = () => {
+      signal.removeEventListener('abort', stopWaiting);
+      reject(new AiLookupError('cancelled'));
+    };
+    const cleanup = () => signal.removeEventListener('abort', stopWaiting);
+
+    signal.addEventListener('abort', stopWaiting, { once: true });
+    lookup.then(
+      (result) => {
+        cleanup();
+        resolve(result);
+      },
+      (error: unknown) => {
+        cleanup();
+        reject(error);
+      },
+    );
+  });
+}
+
+function startBackgroundLookup(
+  cacheKey: string,
+  providerName: AiProvider,
+  input: ImageLookupInput,
+): Promise<ImageLookupResult> {
+  const lookup = (async () => {
+    try {
+      const apiKey = await getProviderApiKeyForRequest(providerName);
+      const provider = createProvider(providerName, apiKey);
+      const result = await provider.lookup({ ...input, signal: undefined });
+      cacheLookup(cacheKey, result);
+      return result;
+    } finally {
+      inFlightLookups.delete(cacheKey);
+    }
+  })();
+
+  inFlightLookups.set(cacheKey, lookup);
+  return lookup;
 }
 
 function createProvider(provider: AiProvider, apiKey: string): ImageLookupProvider {
@@ -74,6 +124,8 @@ export async function lookupPurchasableItem(input: ImageLookupInput): Promise<Im
     if (input.signal?.aborted) throw new AiLookupError('cancelled');
     validateImageUrl(input.imageUrl);
     const providerName = await getSelectedAiProvider();
+    if (input.signal?.aborted) throw new AiLookupError('cancelled');
+
     const normalizedInput = {
       ...input,
       maxResults: normalizedMaxResults(input),
@@ -85,11 +137,10 @@ export async function lookupPurchasableItem(input: ImageLookupInput): Promise<Im
       return cached;
     }
 
-    const apiKey = await getProviderApiKeyForRequest(providerName);
-    const provider = createProvider(providerName, apiKey);
-    const result = await provider.lookup(normalizedInput);
-    cacheLookup(cacheKey, result);
-    return result;
+    const lookup =
+      inFlightLookups.get(cacheKey) ??
+      startBackgroundLookup(cacheKey, providerName, normalizedInput);
+    return await waitForLookup(lookup, input.signal);
   } catch (error) {
     throw toAiLookupError(error);
   }
