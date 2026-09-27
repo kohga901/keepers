@@ -5,6 +5,7 @@ import { AiLookupError, toAiLookupError } from './errors';
 import { createAnthropicLookupProvider } from './providers/anthropic';
 import { createGoogleLookupProvider } from './providers/google';
 import { createOpenAiLookupProvider } from './providers/openai';
+import { normalizedMaxResults } from './providers/shared';
 import type {
   AiProvider,
   ImageLookupInput,
@@ -17,6 +18,49 @@ export * from './credentials';
 export * from './developmentCredentials';
 export * from './errors';
 export * from './types';
+
+const LOOKUP_CACHE_TTL_MS = 10 * 60 * 1_000;
+const MAX_LOOKUP_CACHE_ENTRIES = 24;
+
+type LookupCacheEntry = {
+  expiresAt: number;
+  result: ImageLookupResult;
+};
+
+const lookupCache = new Map<string, LookupCacheEntry>();
+
+function lookupCacheKey(provider: AiProvider, input: ImageLookupInput): string {
+  return JSON.stringify([
+    provider,
+    input.imageUrl,
+    input.itemHint?.trim().slice(0, 300) ?? '',
+    input.maxResults,
+  ]);
+}
+
+function readCachedLookup(key: string): ImageLookupResult | null {
+  const cached = lookupCache.get(key);
+  if (!cached) return null;
+
+  if (cached.expiresAt <= Date.now()) {
+    lookupCache.delete(key);
+    return null;
+  }
+
+  return cached.result;
+}
+
+function cacheLookup(key: string, result: ImageLookupResult): void {
+  if (lookupCache.size >= MAX_LOOKUP_CACHE_ENTRIES) {
+    const oldestKey = lookupCache.keys().next().value;
+    if (typeof oldestKey === 'string') lookupCache.delete(oldestKey);
+  }
+
+  lookupCache.set(key, {
+    expiresAt: Date.now() + LOOKUP_CACHE_TTL_MS,
+    result,
+  });
+}
 
 function createProvider(provider: AiProvider, apiKey: string): ImageLookupProvider {
   switch (provider) {
@@ -51,11 +95,25 @@ export async function lookupPurchasableItem(input: ImageLookupInput): Promise<Im
   }
 
   try {
+    if (input.signal?.aborted) throw new AiLookupError('cancelled');
     validateImageUrl(input.imageUrl);
     const providerName = await getSelectedAiProvider();
+    const normalizedInput = {
+      ...input,
+      maxResults: normalizedMaxResults(input),
+    };
+    const cacheKey = lookupCacheKey(providerName, normalizedInput);
+    const cached = readCachedLookup(cacheKey);
+    if (cached) {
+      if (input.signal?.aborted) throw new AiLookupError('cancelled');
+      return cached;
+    }
+
     const apiKey = await getProviderApiKeyForRequest(providerName);
     const provider = createProvider(providerName, apiKey);
-    return await provider.lookup(input);
+    const result = await provider.lookup(normalizedInput);
+    cacheLookup(cacheKey, result);
+    return result;
   } catch (error) {
     throw toAiLookupError(error);
   }
