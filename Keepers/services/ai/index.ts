@@ -19,15 +19,7 @@ export * from './developmentCredentials';
 export * from './errors';
 export * from './types';
 
-const LOOKUP_CACHE_TTL_MS = 10 * 60 * 1_000;
-const MAX_LOOKUP_CACHE_ENTRIES = 24;
-
-type LookupCacheEntry = {
-  expiresAt: number;
-  result: ImageLookupResult;
-};
-
-const lookupCache = new Map<string, LookupCacheEntry>();
+const lookupCache = new Map<string, ImageLookupResult>();
 
 function lookupCacheKey(provider: AiProvider, input: ImageLookupInput): string {
   return JSON.stringify([
@@ -39,27 +31,11 @@ function lookupCacheKey(provider: AiProvider, input: ImageLookupInput): string {
 }
 
 function readCachedLookup(key: string): ImageLookupResult | null {
-  const cached = lookupCache.get(key);
-  if (!cached) return null;
-
-  if (cached.expiresAt <= Date.now()) {
-    lookupCache.delete(key);
-    return null;
-  }
-
-  return cached.result;
+  return lookupCache.get(key) ?? null;
 }
 
 function cacheLookup(key: string, result: ImageLookupResult): void {
-  if (lookupCache.size >= MAX_LOOKUP_CACHE_ENTRIES) {
-    const oldestKey = lookupCache.keys().next().value;
-    if (typeof oldestKey === 'string') lookupCache.delete(oldestKey);
-  }
-
-  lookupCache.set(key, {
-    expiresAt: Date.now() + LOOKUP_CACHE_TTL_MS,
-    result,
-  });
+  lookupCache.set(key, result);
 }
 
 function createProvider(provider: AiProvider, apiKey: string): ImageLookupProvider {
