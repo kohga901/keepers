@@ -17,32 +17,39 @@ export type AppTheme = {
   tabInactive: string;
   headerBg: string;
   headerText: string;
+  accentGold: string;
+  accentBrown: string;
 };
 
+// Palette: sage #6D9773, dark green #1E6B4C (brightened from source #0C3B2E), brown #B46617, gold #FFBA00, white.
 export const lightTheme: AppTheme = {
-  background: '#F7F2EC',
-  surface: '#1a2329',
-  text: '#4caf85',
-  mutedText: '#9fb0ba',
-  border: '#2e3a43',
-  primary: '#4caf85',
-  tabBg: '#101519',
-  tabActive: '#4caf85',
-  tabInactive: '#7f909a',
-  headerBg: '#f6f8fa',
-  headerText: '#4caf85',
+  background: '#F4F7F5',
+  surface: '#FFFFFF',
+  text: '#1E6B4C',
+  mutedText: '#6D9773',
+  border: '#D9E2DC',
+  primary: '#6D9773',
+  tabBg: '#FFFFFF',
+  tabActive: '#1E6B4C',
+  tabInactive: '#7E9787',
+  headerBg: '#1E6B4C',
+  headerText: '#FFFFFF',
+  accentGold: '#FFBA00',
+  accentBrown: '#B46617',
 };
 
 export const darkTheme: AppTheme = {
-  background: '#F7F2EC',
-  surface: '#1a2329',
-  text: '#4caf85',
-  mutedText: '#9fb0ba',
-  border: '#2e3a43',
-  primary: '#4caf85',
-  tabBg: '#101519',
-  tabActive: '#4caf85',
-  tabInactive: '#7f909a',
-  headerBg: '#f6f8fa',
-  headerText: '#4caf85',
+  background: '#F4F7F5',
+  surface: '#FFFFFF',
+  text: '#1E6B4C',
+  mutedText: '#6D9773',
+  border: '#D9E2DC',
+  primary: '#6D9773',
+  tabBg: '#FFFFFF',
+  tabActive: '#1E6B4C',
+  tabInactive: '#7E9787',
+  headerBg: '#1E6B4C',
+  headerText: '#FFFFFF',
+  accentGold: '#FFBA00',
+  accentBrown: '#B46617',
 };
