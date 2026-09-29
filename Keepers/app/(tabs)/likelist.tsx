@@ -5,8 +5,8 @@
  * Date: 2026-04-18
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
-import { StyleSheet, Text, View, Pressable, FlatList, Modal } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Animated, Easing, StyleSheet, Text, View, Pressable, FlatList, Modal } from 'react-native';
 import { Image } from 'expo-image';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
@@ -49,6 +49,8 @@ const MOCK_DISLIKED_ITEMS: Item[] = [
     gender: 'test',
   },
 ];
+
+const TOGGLE_OPTION_WIDTH = 130;
 
 const App: React.FC = () => {
   const [allLikedItems, setAllLikedItems] = useState<Item[]>([]);
@@ -96,37 +98,72 @@ const App: React.FC = () => {
   const { showPriceAsTier } = usePriceDisplay();
 
   const [activeTab, setActiveTab] = React.useState('liked');
+  const [filterOpen, setFilterOpen] = useState(false);
+  const toggleAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(toggleAnim, {
+      toValue: activeTab === 'liked' ? 0 : 1,
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [activeTab, toggleAnim]);
+
+  const indicatorTranslate = toggleAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, TOGGLE_OPTION_WIDTH],
+  });
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <View style={[styles.toggleContainer, { backgroundColor: theme.headerBg, borderColor: theme.border }]}>
-        <Pressable
-          style={[styles.toggleOption, activeTab === 'liked' && { backgroundColor: theme.primary }]}
-          onPress={() => setActiveTab('liked')}
-        >
-          <Text
-            style={[
-              styles.toggleText,
-              { color: activeTab === 'liked' ? '#fff' : theme.tabInactive },
-            ]}
-          >
-            Liked
-          </Text>
-        </Pressable>
+      <View style={styles.headerRow}>
+        <View style={styles.toggleWrapper}>
+          <View style={[styles.toggleContainer, { backgroundColor: theme.tabBg, borderColor: theme.border }]}>
+            <Animated.View
+              style={[
+                styles.toggleIndicator,
+                { width: TOGGLE_OPTION_WIDTH, backgroundColor: theme.primary, transform: [{ translateX: indicatorTranslate }] },
+              ]}
+            />
+            <Pressable style={[styles.toggleOption, { width: TOGGLE_OPTION_WIDTH }]} onPress={() => setActiveTab('liked')}>
+              <Text
+                style={[
+                  styles.toggleText,
+                  { color: activeTab === 'liked' ? '#fff' : theme.tabInactive },
+                ]}
+              >
+                Liked
+              </Text>
+            </Pressable>
 
-        <Pressable
-          style={[styles.toggleOption, activeTab === 'disliked' && { backgroundColor: theme.primary }]}
-          onPress={() => setActiveTab('disliked')}
-        >
-          <Text
-            style={[
-              styles.toggleText,
-              { color: activeTab === 'disliked' ? '#fff' : theme.tabInactive },
-            ]}
+            <Pressable style={[styles.toggleOption, { width: TOGGLE_OPTION_WIDTH }]} onPress={() => setActiveTab('disliked')}>
+              <Text
+                style={[
+                  styles.toggleText,
+                  { color: activeTab === 'disliked' ? '#fff' : theme.tabInactive },
+                ]}
+              >
+                Disliked
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+
+        <View style={styles.filterWrapper}>
+          <Pressable
+            style={[styles.filterButton, { backgroundColor: theme.tabBg, borderColor: theme.border }]}
+            onPress={() => setFilterOpen((prev) => !prev)}
           >
-            Disliked
-          </Text>
-        </Pressable>
+            <Ionicons name="filter" size={20} color={theme.tabActive} />
+          </Pressable>
+
+          {filterOpen && (
+            <View style={[styles.filterDropdown, { backgroundColor: theme.tabBg, borderColor: theme.border }]}>
+              <Text style={[styles.filterDropdownText, { color: theme.mutedText }]}>Coming soon!</Text>
+            </View>
+          )}
+        </View>
       </View>
 
       <View style={styles.content}>
@@ -226,22 +263,67 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingTop: 120,
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginBottom: 24,
+    position: 'relative',
+    zIndex: 20,
+  },
+  toggleWrapper: {
+    flex: 1,
+    alignItems: 'center',
+  },
   toggleContainer: {
     flexDirection: 'row',
-    alignSelf: 'center',
     borderRadius: 24,
     borderWidth: 1,
     padding: 4,
-    marginBottom: 24,
+    position: 'relative',
+  },
+  toggleIndicator: {
+    position: 'absolute',
+    left: 4,
+    top: 4,
+    bottom: 4,
+    borderRadius: 20,
   },
   toggleOption: {
-    paddingVertical: 8,
-    paddingHorizontal: 24,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: 20,
   },
   toggleText: {
     fontSize: 16,
     fontWeight: '700',
+    fontFamily: 'GeorgiaProSemiBold',
+  },
+  filterWrapper: {
+    position: 'relative',
+  },
+  filterButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterDropdown: {
+    position: 'absolute',
+    top: 48,
+    right: 0,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    zIndex: 10,
+  },
+  filterDropdownText: {
+    fontSize: 14,
+    fontWeight: '600',
     fontFamily: 'GeorgiaProSemiBold',
   },
   content: {
