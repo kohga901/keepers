@@ -328,7 +328,6 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingTop: 20,
   },
   list: {
     paddingHorizontal: 16,
