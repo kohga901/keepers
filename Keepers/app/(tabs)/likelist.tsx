@@ -117,7 +117,7 @@ const App: React.FC = () => {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <View style={[styles.headerRow, { backgroundColor: theme.headerBg }]}>
+      <View style={[styles.headerRow, { backgroundColor: theme.primary }]}>
         <View style={styles.toggleWrapper}>
           <View style={[styles.toggleContainer, { backgroundColor: theme.tabBg, borderColor: theme.border }]}>
             <Animated.View
@@ -261,14 +261,13 @@ const App: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 120,
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 14,
-    marginBottom: 24,
+    paddingTop: 134,
+    paddingBottom: 14,
     position: 'relative',
     zIndex: 20,
   },
@@ -329,6 +328,7 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+    paddingTop: 20,
   },
   list: {
     paddingHorizontal: 16,
