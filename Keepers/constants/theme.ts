@@ -21,18 +21,18 @@ export type AppTheme = {
   accentBrown: string;
 };
 
-// Palette: sage #6D9773, dark green #0C3B2E, brown #B46617, gold #FFBA00, white.
+// Palette: sage #6D9773, dark green #1E6B4C (brightened from source #0C3B2E), brown #B46617, gold #FFBA00, white.
 export const lightTheme: AppTheme = {
   background: '#F4F7F5',
   surface: '#FFFFFF',
-  text: '#0C3B2E',
+  text: '#1E6B4C',
   mutedText: '#6D9773',
   border: '#D9E2DC',
   primary: '#6D9773',
   tabBg: '#FFFFFF',
-  tabActive: '#0C3B2E',
+  tabActive: '#1E6B4C',
   tabInactive: '#7E9787',
-  headerBg: '#0C3B2E',
+  headerBg: '#1E6B4C',
   headerText: '#FFFFFF',
   accentGold: '#FFBA00',
   accentBrown: '#B46617',
@@ -41,14 +41,14 @@ export const lightTheme: AppTheme = {
 export const darkTheme: AppTheme = {
   background: '#F4F7F5',
   surface: '#FFFFFF',
-  text: '#0C3B2E',
+  text: '#1E6B4C',
   mutedText: '#6D9773',
   border: '#D9E2DC',
   primary: '#6D9773',
   tabBg: '#FFFFFF',
-  tabActive: '#0C3B2E',
+  tabActive: '#1E6B4C',
   tabInactive: '#7E9787',
-  headerBg: '#0C3B2E',
+  headerBg: '#1E6B4C',
   headerText: '#FFFFFF',
   accentGold: '#FFBA00',
   accentBrown: '#B46617',
