@@ -19,10 +19,11 @@ import { useFocusEffect } from "expo-router/react-navigation";
 import * as WebBrowser from 'expo-web-browser';
 
 // Front-end-only mock data until a Dislikes table/service exists on the backend.
+// Every name is prefixed "[DEMO]" so it's obvious in the UI that these aren't real items.
 const MOCK_DISLIKED_ITEMS: Item[] = [
   {
     id: 'mock-d1',
-    name: 'Oversized Hoodie',
+    name: '[DEMO] Oversized Hoodie',
     price: '59.99',
     imageUrl: 'https://picsum.photos/seed/oversized-hoodie/300/300',
     liked: false,
@@ -31,7 +32,7 @@ const MOCK_DISLIKED_ITEMS: Item[] = [
   },
   {
     id: 'mock-d2',
-    name: 'Striped Button-Up Shirt',
+    name: '[DEMO] Striped Button-Up Shirt',
     price: '42.00',
     imageUrl: 'https://picsum.photos/seed/striped-shirt/300/300',
     liked: false,
@@ -40,7 +41,7 @@ const MOCK_DISLIKED_ITEMS: Item[] = [
   },
   {
     id: 'mock-d3',
-    name: 'TEST FAKE ITEM - no server connection',
+    name: '[DEMO] Test Item (no server connection yet)',
     price: '0.00',
     imageUrl: 'https://picsum.photos/seed/test-fake-item/300/300',
     liked: false,
@@ -98,23 +99,29 @@ const App: React.FC = () => {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <View style={styles.topTabs}>
-        <Pressable onPress={() => setActiveTab('liked')}>
+      <View style={[styles.toggleContainer, { backgroundColor: theme.headerBg, borderColor: theme.border }]}>
+        <Pressable
+          style={[styles.toggleOption, activeTab === 'liked' && { backgroundColor: theme.primary }]}
+          onPress={() => setActiveTab('liked')}
+        >
           <Text
             style={[
-              styles.tabText,
-              { color: activeTab === 'liked' ? theme.text : theme.tabInactive },
+              styles.toggleText,
+              { color: activeTab === 'liked' ? '#fff' : theme.tabInactive },
             ]}
           >
             Liked
           </Text>
         </Pressable>
 
-        <Pressable onPress={() => setActiveTab('disliked')}>
+        <Pressable
+          style={[styles.toggleOption, activeTab === 'disliked' && { backgroundColor: theme.primary }]}
+          onPress={() => setActiveTab('disliked')}
+        >
           <Text
             style={[
-              styles.tabText,
-              { color: activeTab === 'disliked' ? theme.text : theme.tabInactive },
+              styles.toggleText,
+              { color: activeTab === 'disliked' ? '#fff' : theme.tabInactive },
             ]}
           >
             Disliked
@@ -219,17 +226,22 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingTop: 120,
   },
-  topTabs: {
+  toggleContainer: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: '100%',
+    alignSelf: 'center',
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: 4,
     marginBottom: 24,
   },
-  tabText: {
-    fontSize: 20,
+  toggleOption: {
+    paddingVertical: 8,
+    paddingHorizontal: 24,
+    borderRadius: 20,
+  },
+  toggleText: {
+    fontSize: 16,
     fontWeight: '700',
-    marginHorizontal: 24,
     fontFamily: 'GeorgiaProSemiBold',
   },
   content: {
