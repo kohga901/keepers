@@ -181,7 +181,7 @@ const App: React.FC = () => {
               onSwipeableOpen={() => (activeTab === 'liked' ? deleteItem(item.id) : deleteDislikedItem(item.id))}
             >
               <Pressable
-                style={styles.card}
+                style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}
                 onPress={() => {
                   setSelectedItem(item);
                   setModalVisible(true);
@@ -189,20 +189,20 @@ const App: React.FC = () => {
               >
                 <View style={styles.imageContainer}>
                   <Image
-                    style={styles.image}
+                    style={[styles.image, { borderColor: theme.primary }]}
                     source={{ uri: item.imageUrl }}
                     contentFit="cover"
                     transition={1000}
                   />
                   <View style={styles.itemInfo}>
-                    <Text style={[styles.itemName, { color: 'black' }, { fontFamily: 'GeorgiaProSemiBold', fontSize: 18 }]}>
+                    <Text style={[styles.itemName, { color: theme.text }, { fontFamily: 'GeorgiaProSemiBold', fontSize: 18 }]}>
                       {item.name}
                     </Text>
                     <View style={styles.priceGenderRow}>
-                      <Text style={[styles.itemPrice, { color: 'blue' }, { fontFamily: 'GeorgiaProSemiBold' }]}>
+                      <Text style={[styles.itemPrice, { color: theme.accentGold }, { fontFamily: 'GeorgiaProSemiBold' }]}>
                         {showPriceAsTier ? getPriceTierSymbol(item.price) : item.price}
                       </Text>
-                      <Text style={[styles.itemGender, { color: 'black' }, { fontFamily: 'GeorgiaProSemiBold' }]}>
+                      <Text style={[styles.itemGender, { color: theme.mutedText }, { fontFamily: 'GeorgiaProSemiBold' }]}>
                         {item.gender.toUpperCase()}
                       </Text>
                     </View>
@@ -226,26 +226,26 @@ const App: React.FC = () => {
                     style={styles.modalImage}
                     source={{ uri: selectedItem.imageUrl }}
                   />
-                  <View style={styles.textAndButtonContainer}>
-                    <Text style={{ color: theme.headerBg, fontSize: 18, fontWeight: '600', fontFamily: 'GeorgiaProSemiBold' }}>
+                  <View style={[styles.textAndButtonContainer, { backgroundColor: theme.primary }]}>
+                    <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '600', fontFamily: 'GeorgiaProSemiBold' }}>
                       {selectedItem.name}
                     </Text>
-                    <View style={{ height: 1, backgroundColor: theme.background, width: '100%', marginVertical: 10 }} />
+                    <View style={{ height: 1, backgroundColor: '#FFFFFF', opacity: 0.4, width: '100%', marginVertical: 10 }} />
 
-                    <Text style={{ color: theme.headerBg, fontFamily: 'GeorgiaProSemiBold', alignSelf: 'flex-start' }}>
+                    <Text style={{ color: theme.accentGold, fontFamily: 'GeorgiaProSemiBold', alignSelf: 'flex-start' }}>
                       {showPriceAsTier ? getPriceTierSymbol(selectedItem.price) : selectedItem.price}
                     </Text>
-                    <Text style={{ color: theme.headerBg, fontFamily: 'GeorgiaProSemiBold', alignSelf: 'flex-end' }}>
+                    <Text style={{ color: '#FFFFFF', fontFamily: 'GeorgiaProSemiBold', alignSelf: 'flex-end' }}>
                       {selectedItem.gender.toUpperCase()}
                     </Text>
 
-                    <Pressable style={styles.closeButton} onPress={() => {
+                    <Pressable style={[styles.closeButton, { backgroundColor: theme.surface }]} onPress={() => {
                       if (selectedItem.itemUrl) {
                         WebBrowser.openBrowserAsync(selectedItem.itemUrl);
                       }
 
                     }}>
-                      <Text style={styles.closeButtonText}>Go to Store Page</Text>
+                      <Text style={[styles.closeButtonText, { color: theme.text }]}>Go to Store Page</Text>
                     </Pressable>
                   </View>
                 </>
@@ -334,21 +334,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   card: {
-    backgroundColor: '#f6f8fa',
     borderRadius: 12,
     marginBottom: 16,
     overflow: 'hidden',
     minHeight: 140,
     width: '100%',
     borderWidth: 2,
-    borderColor: '#7f909a',
   },
   image: {
     width: 120,
     height: 120,
     borderRadius: 8,
     borderWidth: 2,
-    borderColor: '#4caf85',
   },
   itemInfo: {
     flex: 1,
@@ -411,21 +408,18 @@ const styles = StyleSheet.create({
     borderRadius: 15,
   },
   textAndButtonContainer: {
-    backgroundColor: '#4caf85',
     padding: 10,
     borderRadius: 10,
     width: '100%',
     alignItems: 'center',
   },
   closeButton: {
-    backgroundColor: '#fff',
     paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 10,
     marginTop: 20,
   },
   closeButtonText: {
-    color: 'Black',
     fontSize: 16,
     fontWeight: 'bold',
     fontFamily: 'GeorgiaProSemiBold',
