@@ -38,6 +38,15 @@ const MOCK_DISLIKED_ITEMS: Item[] = [
     itemUrl: '',
     gender: 'mens',
   },
+  {
+    id: 'mock-d3',
+    name: 'TEST FAKE ITEM - no server connection',
+    price: '0.00',
+    imageUrl: 'https://picsum.photos/seed/test-fake-item/300/300',
+    liked: false,
+    itemUrl: '',
+    gender: 'test',
+  },
 ];
 
 const App: React.FC = () => {
