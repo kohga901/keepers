@@ -7,9 +7,11 @@
     "icon": "./assets/images/icon.png",
     "scheme": "keepers",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -18,7 +20,6 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
     "web": {
@@ -43,7 +44,14 @@
       "expo-font",
       "expo-web-browser",
       "expo-image",
-      "expo-status-bar"
+      "expo-status-bar",
+      [
+        "expo-secure-store",
+        {
+          "configureAndroidBackup": true,
+          "faceIDPermission": "Allow Keepers to protect your AI API keys."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
