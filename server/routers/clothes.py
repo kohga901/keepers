@@ -8,6 +8,9 @@ Endpoints:
     - POST /clothes/recommendations — return personalised recommendations based on the user's preference vector
 """
 from typing import Any
+
+print("clothes.py: starting to import")
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 import numpy as np
@@ -20,6 +23,7 @@ from services import Startup
 import time
 from fastapi import BackgroundTasks
 
+print("clothes.py: imports done")
 
 def _supabase_execute(query, retries=3, delay=0.5):
     for attempt in range(retries):
@@ -34,8 +38,8 @@ def _supabase_execute(query, retries=3, delay=0.5):
 
 router = APIRouter(prefix="/clothes")
 
-ALPHA = 0.3
-BETA  = 0.2
+ALPHA = 0.5
+BETA  = 0.35
 
 # --- Request / Response models ---
 
@@ -127,6 +131,15 @@ def _update_pref_vec(pref_vec: np.ndarray, item_id: int, liked: bool) -> np.ndar
          # Deduct the item's embedding from the pref_vec.
         pref_vec = pref_vec - BETA * item_embedding
 
+    # Normalize so magnitude doesn't grow unbounded over many swipes,
+    # which would shrink each new swipe's relative influence on direction.
+    norm = np.linalg.norm(pref_vec)
+
+    if norm > 0:
+        pref_vec = pref_vec / norm
+
+    print(f"[_update_pref_vec] item={item_id} liked={liked} pref_vec[:5]={pref_vec[:5]}")
+    
     return pref_vec
 
 def _save_pref_vec(user_id: str, pref_vec: np.ndarray) -> None:
@@ -173,6 +186,8 @@ def _update_user_coordinates(user_id: str, pref_vec: np.ndarray) -> None:
     DB function, takes a user's pref_vec and converts it to x, y coordinates and uploads it to db.
     """
     coords = Startup.umap_reducer.transform(pref_vec.reshape(1, -1))[0]
+    print(f"[_update_user_coordinates] user={user_id} coords={coords}")
+    
     _supabase_execute(supabase.table("Coordinates").upsert({
         "user_id": user_id,
         "x": float(coords[0]),
@@ -189,16 +204,20 @@ def _fetch_disliked_item_ids(user_id: str):
 
 # --- Endpoints ---
 
-if not Startup.ready:
-    raise HTTPException(status_code=503, detail="Server still warming up, try again shortly")
 
 @router.post("/swipe")
-def swipe(req: SwipeData):
+def swipe(req: SwipeData, background_tasks: BackgroundTasks):
+
+    # If the server is still warming up, return a 503 Service Unavailable error.
+    if not Startup.ready:
+        raise HTTPException(status_code=503, detail="Server still warming up, try again shortly")
+    
     """
     DB function. Takes a SwipeData object and updates the db with the relative information:
         - User's pref_vec.
         - User's Like/Dislike history.
     """
+    
     # Get pref_vec of the user.
     pref_vec = _fetch_pref_vec(req.user_id)
 
@@ -213,17 +232,24 @@ def swipe(req: SwipeData):
 
     # Update coordinates every 4 swipes only.
     seen_count = len(_fetch_seen_item_ids(req.user_id))
+    print(f"[swipe] seen_count={seen_count} mod4={seen_count % 4}")
+
     if seen_count % 4 == 0:
-        try:
-            BackgroundTasks.add_task(_update_user_coordinates, req.user_id, pref_vec)
-        except Exception:
-            pass
+        print(f"[swipe] scheduling coordinate update for user={req.user_id}")
+        background_tasks.add_task(_update_user_coordinates, req.user_id, pref_vec)
+        print(f"[swipe] scheduled ok")
+
 
     # Return status to client.
     return {"status": "ok"}
 
 @router.post("/recommendations")
 def recommendations(req: RecommendationRequest) -> RecommendationResponse:
+
+    # If the server is still warming up, return a 503 Service Unavailable error.
+    if not Startup.ready:
+        raise HTTPException(status_code=503, detail="Server still warming up, try again shortly")
+
     # Get pref_vec of the user.
     pref_vec = _fetch_pref_vec(req.user_id)
 
@@ -252,6 +278,11 @@ def recommendations(req: RecommendationRequest) -> RecommendationResponse:
 
 @router.post("/recommendations/debug")
 def recommendations_debug(req: RecommendationRequest):
+
+    # If the server is still warming up, return a 503 Service Unavailable error.
+    if not Startup.ready:
+        raise HTTPException(status_code=503, detail="Server still warming up, try again shortly")
+    
     from services.recommendation_service import get_recommendations_with_scores
     pref_vec = _fetch_pref_vec(req.user_id)
     seen_item_ids = _fetch_seen_item_ids(req.user_id)

@@ -11,10 +11,8 @@ faiss_index/
 *.pth
 *.bin
 *.onnx
-*.pkl
 models/
 checkpoints/
-
 
 # Torch / HuggingFace model cache
 .cache/
@@ -34,6 +32,10 @@ build/
 venv/
 .venv/
 
+# Node
+node_modules/
+*.tsbuildinfo
+
 # OS
 .DS_Store
 Thumbs.db
@@ -41,3 +43,6 @@ Thumbs.db
 # IDEs
 .idea/
 .vscode/
+
+# Agents
+.claude

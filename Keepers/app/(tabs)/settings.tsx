@@ -6,11 +6,12 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import type { User } from '@supabase/supabase-js';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { usePriceDisplay } from '../../contexts/PriceDisplayContext';
+import { AiKeySettings } from '../../components/ai/AiKeySettings';
 import { useAppTheme } from '../../hooks/useAppTheme';
 import { supabase } from '../../utils/supabase';
 import { PRICE_TIERS } from '../../utils/price';
@@ -55,14 +56,14 @@ export default function Settings() {
   };
 
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          backgroundColor: theme.background,
-          paddingTop: insets.top + 72,
-        },
+    <ScrollView
+      contentContainerStyle={[
+        styles.content,
+        { paddingBottom: insets.bottom + 32, paddingTop: insets.top + 72 },
       ]}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
+      style={[styles.container, { backgroundColor: theme.background }]}
     >
       <View
         style={[
@@ -131,14 +132,23 @@ export default function Settings() {
           </View>
         )}
       </View>
-    </View>
+
+      <View style={styles.section}>
+        <AiKeySettings />
+      </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  content: {
     paddingHorizontal: 20,
+  },
+  section: {
+    marginTop: 16,
   },
   card: {
     borderWidth: 1,
