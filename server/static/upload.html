@@ -121,6 +121,22 @@
   .result-row.error .result-status { color: var(--danger); }
   .result-detail { color: var(--muted); font-size: 12px; margin-top: 2px; }
 
+  .tag-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+  .tag-chip {
+    background: #e8f2ff; color: var(--accent-hover); border-radius: 999px;
+    padding: 3px 10px; font-size: 13px; cursor: pointer;
+  }
+  .tag-chip:hover { background: #fdecea; color: var(--danger); }
+  .tag-options {
+    display: none; max-height: 160px; overflow-y: auto; margin-top: 4px;
+    border: 1px solid var(--border); border-radius: 8px; background: #fff;
+  }
+  .tag-options.open { display: block; }
+  .tag-option { padding: 7px 10px; font-size: 14px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
+  .tag-option .tag-category { color: var(--muted); font-size: 12px; }
+  .tag-option:hover { background: var(--bg); }
+  .tag-empty { padding: 7px 10px; font-size: 13px; color: var(--muted); }
+
   #status-line { font-size: 13px; color: var(--muted); margin-top: 8px; }
 </style>
 </head>
@@ -178,9 +194,11 @@
       <input type="url" name="item_web_listing" placeholder="https://…/product-page">
     </div>
 
-    <div class="field">
-      <label>Tags <span class="hint">(optional, comma separated)</span></label>
-      <input type="text" name="item_tags" placeholder="shoes, sneakers, casual">
+    <div class="field tag-field">
+      <label>Tags <span class="hint">(optional — search and pick from existing tags only)</span></label>
+      <div class="tag-chips"></div>
+      <input type="text" class="tag-search" placeholder="Search tags…" autocomplete="off">
+      <div class="tag-options"></div>
     </div>
   </div>
 </template>
@@ -193,9 +211,60 @@
   const statusLine = document.getElementById('status-line');
   const resultsEl = document.getElementById('results');
 
+  let existingTags = []; // [{ Tag, Category }, ...] from the master Tags table.
+  fetch('/admin/tags')
+    .then(r => r.json())
+    .then(d => { existingTags = d.tags; })
+    .catch(() => { statusLine.textContent = 'Could not load existing tags — tag search unavailable.'; });
+
+  function setupTagPicker(card) {
+    const chips = card.querySelector('.tag-chips');
+    const search = card.querySelector('.tag-search');
+    const options = card.querySelector('.tag-options');
+    card._tags = [];
+
+    function render() {
+      chips.innerHTML = '';
+      card._tags.forEach(tag => {
+        const chip = document.createElement('span');
+        chip.className = 'tag-chip';
+        chip.textContent = tag + ' ×';
+        chip.addEventListener('click', () => {
+          card._tags = card._tags.filter(t => t !== tag);
+          render();
+        });
+        chips.appendChild(chip);
+      });
+      const q = search.value.trim().toLowerCase();
+      const matches = existingTags.filter(t => !card._tags.includes(t.Tag) && t.Tag.toLowerCase().includes(q));
+      options.innerHTML = '';
+      if (matches.length === 0) {
+        options.innerHTML = '<div class="tag-empty">No matching existing tags</div>';
+      }
+      matches.slice(0, 50).forEach(({ Tag: tag, Category: category }) => {
+        const opt = document.createElement('div');
+        opt.className = 'tag-option';
+        opt.innerHTML = `<span>${escapeHtml(tag)}</span><span class="tag-category">${escapeHtml(category || '')}</span>`;
+        opt.addEventListener('mousedown', e => {
+          e.preventDefault();
+          card._tags.push(tag);
+          search.value = '';
+          render();
+        });
+        options.appendChild(opt);
+      });
+    }
+
+    search.addEventListener('focus', () => { options.classList.add('open'); render(); });
+    search.addEventListener('blur', () => options.classList.remove('open'));
+    search.addEventListener('input', render);
+    render();
+  }
+
   function addItemRow() {
     const node = template.content.cloneNode(true);
     const card = node.querySelector('.item-card');
+    setupTagPicker(card);
     node.querySelector('.remove-btn').addEventListener('click', () => {
       // Always keep at least one row on the page.
       if (container.children.length > 1) {
@@ -213,14 +282,13 @@
   function readItems() {
     return Array.from(container.querySelectorAll('.item-card')).map(card => {
       const get = name => card.querySelector(`[name="${name}"]`).value.trim();
-      const tags = get('item_tags');
       return {
         item_img: get('item_img'),
         item_name: get('item_name'),
         item_price: get('item_price') || null,
         item_gender: get('item_gender') || null,
         item_web_listing: get('item_web_listing') || null,
-        item_tags: tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : [],
+        item_tags: card._tags,
       };
     });
   }

@@ -1,3 +1,13 @@
+import os
+
+# Must be set before torch/faiss/umap/scikit-learn get imported anywhere below
+# (they each bundle their own copy of libomp.dylib on macOS). Two OpenMP
+# runtimes fighting over the same thread pool is a known cause of hard
+# SIGSEGV crashes — this env var tells OpenMP to tolerate the duplicate
+# instead of corrupting its own thread-barrier state.
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+
 from contextlib import asynccontextmanager
 from pathlib import Path
 import threading
