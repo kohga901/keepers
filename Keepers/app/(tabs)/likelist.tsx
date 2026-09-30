@@ -14,47 +14,15 @@ import { usePriceDisplay } from '../../contexts/PriceDisplayContext';
 import { useAppTheme } from '../../hooks/useAppTheme';
 import { Item } from '../../models/Items';
 import { getPriceTierSymbol } from '../../utils/price';
-import { deleteLikedItem, getLikedItems } from '@/services/dataServices';
+import { deleteLikedItem, getLikedItems, deleteDislikedItem as deleteDislikedItemRemote, getDislikedItems } from '@/services/dataServices';
 import { useFocusEffect } from "expo-router/react-navigation";
 import * as WebBrowser from 'expo-web-browser';
-
-// Front-end-only mock data until a Dislikes table/service exists on the backend.
-// Every name is prefixed "[DEMO]" so it's obvious in the UI that these aren't real items.
-const MOCK_DISLIKED_ITEMS: Item[] = [
-  {
-    id: 'mock-d1',
-    name: '[DEMO] Oversized Hoodie',
-    price: '59.99',
-    imageUrl: 'https://picsum.photos/seed/oversized-hoodie/300/300',
-    liked: false,
-    itemUrl: '',
-    gender: 'unisex',
-  },
-  {
-    id: 'mock-d2',
-    name: '[DEMO] Striped Button-Up Shirt',
-    price: '42.00',
-    imageUrl: 'https://picsum.photos/seed/striped-shirt/300/300',
-    liked: false,
-    itemUrl: '',
-    gender: 'mens',
-  },
-  {
-    id: 'mock-d3',
-    name: '[DEMO] Test Item (no server connection yet)',
-    price: '0.00',
-    imageUrl: 'https://picsum.photos/seed/test-fake-item/300/300',
-    liked: false,
-    itemUrl: '',
-    gender: 'test',
-  },
-];
 
 const TOGGLE_OPTION_WIDTH = 130;
 
 const App: React.FC = () => {
   const [allLikedItems, setAllLikedItems] = useState<Item[]>([]);
-  const [allDislikedItems, setAllDislikedItems] = useState<Item[]>(MOCK_DISLIKED_ITEMS);
+  const [allDislikedItems, setAllDislikedItems] = useState<Item[]>([]);
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
 
@@ -65,6 +33,7 @@ const App: React.FC = () => {
 
   const deleteDislikedItem = (id: string) => {
     setAllDislikedItems(prev => prev.filter(item => item.id !== id));
+    deleteDislikedItemRemote(id);
   };
 
 
@@ -90,7 +59,28 @@ const App: React.FC = () => {
         setAllLikedItems(parsedCards);
       };
 
+      const aquireDislikedItems = async () => {
+        const data = await getDislikedItems();
+
+        if (!data) return;
+
+        const parsedCards = (data as any[])
+          .filter((row) => row.Clothing)
+          .map((row) => ({
+            id: String(row.Clothing.item_id),
+            name: row.Clothing.item_name,
+            price: row.Clothing.item_price,
+            imageUrl: row.Clothing.item_img,
+            liked: false,
+            itemUrl: row.Clothing.item_web_listing,
+            gender: row.Clothing.item_gender,
+          }));
+
+        setAllDislikedItems(parsedCards);
+      };
+
       aquireLikedItems();
+      aquireDislikedItems();
 
     }, [])
   );
