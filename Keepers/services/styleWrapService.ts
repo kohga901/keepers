@@ -3,7 +3,7 @@ import type { WrapData, WrapItem, WrapTag } from '../utils/styleWrap';
 
 type ReactionRow = {
   clothes_id: string | number;
-  Clothing: { item_name: string | null; item_img: string | null } | null;
+  Clothing: { item_name: string | null; item_img: string | null; item_web_listing: string | null } | null;
 };
 type TagRow = { Tag: string; Category: string };
 type ItemTagRow = { clothes_id: string | number; Tag: string };
@@ -20,7 +20,7 @@ export async function getStyleWrap(signal: AbortSignal): Promise<WrapData> {
     const rows: ReactionRow[] = [];
     for (let offset = 0; ; offset += PAGE_SIZE) {
       const { data, error: queryError } = await supabase.from(table)
-        .select('clothes_id, Clothing(item_name, item_img)')
+        .select('clothes_id, Clothing(item_name, item_img, item_web_listing)')
         .eq('user_id', user!.id)
         .order('clothes_id')
         .range(offset, offset + PAGE_SIZE - 1)
@@ -36,6 +36,7 @@ export async function getStyleWrap(signal: AbortSignal): Promise<WrapData> {
   const likes: WrapItem[] = likedRows.map((row) => ({
     id: String(row.clothes_id), name: row.Clothing?.item_name ?? null,
     imageUrl: row.Clothing?.item_img ?? null,
+    itemUrl: row.Clothing?.item_web_listing ?? null,
   }));
   const result: WrapData = { likes, dislikeIds: dislikedRows.map((row) => String(row.clothes_id)), tags: [], tagsUnavailable: false };
   if (!likes.length) return result;

@@ -12,10 +12,11 @@ import { router } from 'expo-router';
 import { useFocusEffect, useHeaderHeight } from 'expo-router/react-navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
+import * as WebBrowser from 'expo-web-browser';
 import { useAppTheme } from '../../hooks/useAppTheme';
 import type { AppTheme } from '../../constants/theme';
 import { getStyleWrap } from '../../services/styleWrapService';
-import { buildStyleWrap, COLOR_SWATCHES, tagLabel, type WrapData } from '../../utils/styleWrap';
+import { buildStyleWrap, COLOR_SWATCHES, selectRandomKeepers, tagLabel, type WrapData } from '../../utils/styleWrap';
 
 export default function StyleWraps() {
   const { theme } = useAppTheme();
@@ -27,6 +28,7 @@ export default function StyleWraps() {
   const [error, setError] = useState<string | null>(null);
   const [storyIndex, setStoryIndex] = useState<number | null>(null);
   const [shareError, setShareError] = useState<string | null>(null);
+  const [purchaseError, setPurchaseError] = useState<string | null>(null);
   const request = useRef<AbortController | null>(null);
 
   const load = useCallback(async () => {
@@ -35,6 +37,7 @@ export default function StyleWraps() {
     request.current = controller;
     setLoading(true);
     setError(null);
+    setPurchaseError(null);
     try {
       const next = await getStyleWrap(controller.signal);
       if (!controller.signal.aborted) setData(next);
@@ -54,6 +57,7 @@ export default function StyleWraps() {
   }, [load]));
 
   const wrap = useMemo(() => data ? buildStyleWrap(data) : null, [data]);
+  const featuredKeepers = useMemo(() => wrap ? selectRandomKeepers(wrap.likes, 3) : [], [wrap]);
   const surface = { backgroundColor: theme.surface, borderColor: theme.border };
   const topGarment = wrap?.garments[0];
   const topFit = wrap?.fits[0];
@@ -75,6 +79,17 @@ export default function StyleWraps() {
       });
     } catch {
       setShareError('Sharing is unavailable right now. You can still replay your wrap.');
+    }
+  }
+
+  async function openStorePage(itemUrl: string) {
+    setPurchaseError(null);
+    try {
+      const url = new URL(itemUrl);
+      if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new Error('Unsupported store link');
+      await WebBrowser.openBrowserAsync(url.toString());
+    } catch {
+      setPurchaseError('This item’s store page is unavailable right now.');
     }
   }
 
@@ -173,11 +188,12 @@ export default function StyleWraps() {
               <Text style={[styles.small, { color: theme.text }]}>Using available tags from {wrap.taggedLikeCount} of your {wrap.likes.length} likes.</Text>
             </View>
 
-            {wrap.likes.some((item) => item.imageUrl) && <>
+            {featuredKeepers.length > 0 && <>
               <View style={styles.sectionDivider} />
               <View style={[styles.card, surface]}>
               <View style={styles.headingRow}><Text style={[styles.sectionTitle, { color: theme.text }]}>A few of your keepers</Text><Ionicons name="heart" size={20} color={theme.text} /></View>
-              <View style={styles.gallery}>{wrap.likes.filter((item) => item.imageUrl).slice(0, 3).map((item) => <View key={item.id} style={styles.galleryItem}><Image source={{ uri: item.imageUrl! }} style={[styles.itemImage, { backgroundColor: theme.background }]} contentFit="contain" accessibilityLabel={item.name ?? 'Liked clothing item'} /><Text numberOfLines={2} style={[styles.small, { color: theme.text }]}>{item.name ?? 'A keeper'}</Text></View>)}</View>
+              <View style={styles.gallery}>{featuredKeepers.map((item) => <Pressable key={item.id} accessibilityRole="link" accessibilityLabel={`Open the store page for ${item.name ?? 'this liked item'}`} onPress={() => void openStorePage(item.itemUrl!)} style={({ pressed }) => [styles.galleryItem, pressed && styles.galleryItemPressed]}><Image source={{ uri: item.imageUrl! }} style={[styles.itemImage, { backgroundColor: theme.background }]} contentFit="contain" accessibilityLabel={item.name ?? 'Liked clothing item'} /><Text numberOfLines={2} style={[styles.small, { color: theme.text }]}>{item.name ?? 'A keeper'}</Text><View style={styles.shopLink}><Text style={[styles.small, { color: theme.text }]}>Shop item</Text><Ionicons name="open-outline" size={14} color={theme.text} /></View></Pressable>)}</View>
+              {purchaseError && <Text accessibilityRole="alert" style={[styles.small, { color: theme.accentBrown }]}>{purchaseError}</Text>}
               <Pressable accessibilityRole="button" onPress={() => router.navigate('/likelist')} style={styles.textButton}><Text style={[styles.linkText, { color: theme.text }]}>Revisit your likes</Text><Ionicons name="arrow-forward" size={18} color={theme.text} /></Pressable>
               </View>
             </>}
@@ -262,7 +278,9 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
   detailRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   gallery: { flexDirection: 'row', gap: 12 },
   galleryItem: { flex: 1, gap: 8 },
+  galleryItemPressed: { opacity: 0.65 },
   itemImage: { width: '100%', aspectRatio: 0.8, borderRadius: 12 },
+  shopLink: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   textButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44, gap: 10 },
   linkText: { fontWeight: '700', fontSize: 14 },
   footer: { textAlign: 'center', fontSize: 12, lineHeight: 20, marginTop: 8 },

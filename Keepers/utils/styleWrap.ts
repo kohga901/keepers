@@ -2,6 +2,7 @@ export type WrapItem = {
   id: string;
   name: string | null;
   imageUrl: string | null;
+  itemUrl: string | null;
 };
 
 export type WrapTag = { itemId: string; name: string; category: string };
@@ -14,6 +15,18 @@ export type WrapData = {
 };
 
 export type RankedTag = { name: string; count: number; percent: number };
+
+export function selectRandomKeepers(items: WrapItem[], count: number, random = Math.random): WrapItem[] {
+  const eligible = items.filter((item) => item.imageUrl && item.itemUrl);
+  const shuffled = [...eligible];
+
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(random() * (index + 1));
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+  }
+
+  return shuffled.slice(0, count);
+}
 
 export function tagLabel(tag: string): string {
   if (tag.toLowerCase() === 'y2k') return 'Y2K';
