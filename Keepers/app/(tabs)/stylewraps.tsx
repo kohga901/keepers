@@ -26,6 +26,8 @@ import {
 import { getStyleWrap } from '../../services/styleWrapService';
 import { buildStyleWrap, COLOR_SWATCHES, selectRandomKeepers, tagLabel, type WrapData, type WrapItem } from '../../utils/styleWrap';
 
+const BUTTON_TEXT = '#0F1418';
+
 export default function StyleWraps() {
   const { theme } = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -198,7 +200,7 @@ export default function StyleWraps() {
             <Ionicons name="sparkles-outline" size={48} color={theme.text} />
             <Text style={styles.heroTitle}>Great style starts with a swipe.</Text>
             <Text style={styles.heroBody}>Find a few keepers and we’ll turn your likes, passes, and favorite looks into your personal style recap.</Text>
-            <Pressable accessibilityRole="button" onPress={() => router.navigate('/swiper')} style={styles.darkButton}><Text style={styles.lightButtonText}>Find my first keeper</Text><Ionicons name="arrow-forward" size={18} color={theme.headerText} /></Pressable>
+            <Pressable accessibilityRole="button" onPress={() => router.navigate('/swiper')} style={styles.darkButton}><Text style={styles.lightButtonText}>Find my first keeper</Text><Ionicons name="arrow-forward" size={18} color={BUTTON_TEXT} /></Pressable>
           </View>
         ) : wrap && data ? (
           <>
@@ -211,7 +213,7 @@ export default function StyleWraps() {
                 </Text>
                 <Text style={styles.heroCountLabel}>liked pieces</Text>
               </View>
-              <Pressable accessibilityRole="button" onPress={() => { setStoryIndex(0); setShareError(null); }} style={[styles.button, { backgroundColor: theme.surface }]}><Ionicons name="play" size={18} color={theme.text} /><Text style={styles.buttonText}>Unwrap my style</Text><Ionicons name="arrow-forward" size={18} color={theme.text} /></Pressable>
+              <Pressable accessibilityRole="button" onPress={() => { setStoryIndex(0); setShareError(null); }} style={[styles.button, { backgroundColor: theme.tabBg }]}><Ionicons name="play" size={18} color={BUTTON_TEXT} /><Text style={styles.buttonText}>Unwrap my style</Text><Ionicons name="arrow-forward" size={18} color={BUTTON_TEXT} /></Pressable>
               <Text style={styles.heroFootnote}>Your likes, styles, and favorite details.</Text>
             </View>
 
@@ -276,9 +278,9 @@ export default function StyleWraps() {
                   <Text numberOfLines={2} style={[styles.small, styles.galleryItemName, { color: theme.text }]}>{item.name ?? 'A keeper'}</Text>
                   <View style={styles.shopLink}><Text style={[styles.small, { color: theme.text }]}>Shop item</Text><Ionicons name="open-outline" size={14} color={theme.text} /></View>
                 </Pressable>
-                <Pressable accessibilityHint="Uses your selected AI provider to search for purchase listings" accessibilityLabel={`Find ${item.name ?? 'this liked item'} with AI`} accessibilityRole="button" onPress={() => void startLookup(item)} style={({ pressed }) => [styles.lookupButton, { backgroundColor: theme.text }, pressed && styles.galleryItemPressed]}>
-                  <Ionicons name="search" size={15} color={theme.headerText} />
-                  <Text style={[styles.lookupButtonText, { color: theme.headerText }]}>Find it</Text>
+                <Pressable accessibilityHint="Uses your selected AI provider to search for purchase listings" accessibilityLabel={`Find ${item.name ?? 'this liked item'} with AI`} accessibilityRole="button" onPress={() => void startLookup(item)} style={({ pressed }) => [styles.lookupButton, { backgroundColor: theme.primary }, pressed && styles.galleryItemPressed]}>
+                  <Ionicons name="search" size={15} color={BUTTON_TEXT} />
+                  <Text style={[styles.lookupButtonText, { color: BUTTON_TEXT }]}>Find it</Text>
                 </Pressable>
               </View>)}</View>
               {purchaseError && <Text accessibilityRole="alert" style={[styles.small, { color: theme.accentBrown }]}>{purchaseError}</Text>}
@@ -290,7 +292,7 @@ export default function StyleWraps() {
             <View style={[styles.card, surface]}>
               <View style={styles.detailRow}><Ionicons name="ribbon-outline" size={32} color={theme.text} /><View style={styles.flex}><Text style={[styles.tagName, { color: theme.text }]}>Next Chapter: {wrap.milestone} keepers</Text><Text style={[styles.body, { color: theme.text }]}>{wrap.milestone - wrap.likes.length} more likes until your next milestone.</Text></View></View>
               <View style={[styles.rankTrack, { backgroundColor: theme.background }]} accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: wrap.milestone, now: wrap.likes.length }} accessibilityLabel="Keepers milestone"><View style={[styles.rankFill, { width: `${wrap.likes.length / wrap.milestone * 100}%`, backgroundColor: theme.text }]} /></View>
-              <Pressable accessibilityRole="button" onPress={() => router.navigate('/swiper')} style={styles.darkButton}><Text style={styles.lightButtonText}>Find your next keeper</Text><Ionicons name="arrow-forward" size={18} color={theme.headerText} /></Pressable>
+              <Pressable accessibilityRole="button" onPress={() => router.navigate('/swiper')} style={styles.darkButton}><Text style={styles.lightButtonText}>Find your next keeper</Text><Ionicons name="arrow-forward" size={18} color={BUTTON_TEXT} /></Pressable>
             </View>
           </>
         ) : null}
@@ -311,7 +313,7 @@ export default function StyleWraps() {
           <View style={styles.storyControls}>
             <Pressable accessibilityRole="button" accessibilityLabel="Previous card" disabled={storyIndex === 0} onPress={() => setStoryIndex(storyIndex - 1)} style={[styles.backButton, { opacity: storyIndex === 0 ? 0.3 : 1 }]}><Ionicons name="arrow-back" size={22} color={theme.text} /></Pressable>
             <Text style={styles.small}>{storyIndex + 1} / {storyPages.length}</Text>
-            <Pressable accessibilityRole="button" onPress={() => storyIndex === storyPages.length - 1 ? void shareWrap() : setStoryIndex(storyIndex + 1)} style={styles.darkButton}><Text style={styles.lightButtonText}>{storyIndex === storyPages.length - 1 ? 'Share my wrap' : 'Next'}</Text><Ionicons name={storyIndex === storyPages.length - 1 ? 'share-outline' : 'arrow-forward'} size={20} color={theme.headerText} /></Pressable>
+            <Pressable accessibilityRole="button" onPress={() => storyIndex === storyPages.length - 1 ? void shareWrap() : setStoryIndex(storyIndex + 1)} style={styles.darkButton}><Text style={styles.lightButtonText}>{storyIndex === storyPages.length - 1 ? 'Share my wrap' : 'Next'}</Text><Ionicons name={storyIndex === storyPages.length - 1 ? 'share-outline' : 'arrow-forward'} size={20} color={BUTTON_TEXT} /></Pressable>
           </View>
         </View>}
       </Modal>
@@ -351,9 +353,9 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
   heroCountLabel: { flexShrink: 0, fontSize: 16, lineHeight: 23, color: theme.headerText },
   heroFootnote: { fontSize: 11, color: theme.headerText, textAlign: 'center', marginTop: -10 },
   button: { minHeight: 48, paddingHorizontal: 18, paddingVertical: 14, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
-  buttonText: { fontWeight: '700', fontSize: 15, color: theme.text, flexShrink: 1 },
-  darkButton: { minHeight: 48, paddingHorizontal: 20, paddingVertical: 14, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: theme.text },
-  lightButtonText: { fontWeight: '700', fontSize: 14, color: theme.headerText, flexShrink: 1 },
+  buttonText: { fontWeight: '700', fontSize: 15, color: BUTTON_TEXT, flexShrink: 1 },
+  darkButton: { minHeight: 48, paddingHorizontal: 20, paddingVertical: 14, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: theme.primary },
+  lightButtonText: { fontWeight: '700', fontSize: 14, color: BUTTON_TEXT, flexShrink: 1 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
   sectionTitle: { fontFamily: 'GeorgiaProSemiBold', fontSize: 21, flexShrink: 1 },
   statRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
