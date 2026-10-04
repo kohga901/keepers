@@ -94,3 +94,37 @@ are set up as above:
 ```bash
 dev.bat
 ```
+
+## GitLab CI/CD
+
+GitLab CI/CD runs the instructions in [`.gitlab-ci.yml`](.gitlab-ci.yml) on a
+GitLab Runner whenever code is pushed or a merge request is opened.
+
+The initial pipeline has two stages:
+
+1. **Validate** checks the frontend's TypeScript types, reports lint problems,
+   and compiles the Python source to catch syntax errors.
+2. **Build** exports the Expo web app and saves it as a downloadable pipeline
+   artifact for one week.
+
+Frontend lint is temporarily non-blocking because the current app has known
+React hook lint errors. The lint job will still show the errors in GitLab and
+should become blocking after they are fixed by removing `allow_failure: true`
+from the job.
+
+No credentials are required by this pipeline. If a future deployment needs
+tokens or keys, add them under **Settings > CI/CD > Variables** in GitLab; do
+not commit them to this repository.
+
+### Continuous delivery versus deployment
+
+The successful web artifact is a basic continuous-delivery result: every
+validated commit produces something ready to deploy. Automatic deployment is
+not enabled yet because each part of this project needs a destination:
+
+- The Expo web build can be hosted on GitLab Pages or another static host.
+- The FastAPI server needs a Python-capable host.
+- Android and iOS releases normally use Expo EAS and the app stores.
+
+After choosing those destinations, add a `deploy` stage and keep production
+credentials in protected GitLab CI/CD variables.
