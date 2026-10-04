@@ -80,8 +80,8 @@ export default function StyleWraps() {
   const topGarment = wrap?.garments[0];
   const topFit = wrap?.fits[0];
   const storyPages = wrap ? [
-    { eyebrow: '01 / EVERY YES. EVERY NO.', title: `${wrap.total.toLocaleString()} little decisions.`, body: 'A wardrobe point of view, one saved reaction at a time.', detail: `${wrap.likes.length} likes · ${wrap.dislikeCount} passes`, color: theme.background, icon: 'sparkles-outline' as const },
-    { eyebrow: '02 / THE KEEPER TEST', title: `${wrap.likeRate}% made the cut.`, body: 'That is your like rate across your currently saved reactions.', detail: `${wrap.dislikeRate}% passed. Knowing what you skip is part of knowing your style.`, color: theme.background, icon: 'heart-outline' as const },
+    { eyebrow: '01 / EVERY YES. EVERY NO.', title: `${wrap.total.toLocaleString()} little decisions.`, body: 'One saved reaction at a time.', detail: `${wrap.likes.length} likes · ${wrap.dislikeCount} passes`, color: theme.background, icon: 'person' as const },
+    { eyebrow: '02 / THE KEEPER TEST', title: `${wrap.likeRate}% made the cut.`, body: 'That is your like rate across your currently saved reactions.', detail: `${wrap.dislikeRate}% you passed on.`, color: theme.background, icon: 'heart-outline' as const },
     { eyebrow: '03 / YOUR STYLE DNA', title: wrap.styles.length ? tagLabel(wrap.styles[0].name) : 'Still taking shape.', body: wrap.styles.length ? `Your leading style tags: ${wrap.styles.slice(0, 3).map((tag) => tagLabel(tag.name)).join(' / ')}.` : 'Likes with style tags will reveal the looks you keep coming back to.', detail: wrap.styles.length ? `Based on ${wrap.styleTaggedCount} likes with style tags. Tied tags share their rank.` : 'Keep exploring. Your next keeper could start a whole new chapter.', color: theme.background, icon: 'shirt-outline' as const },
     { eyebrow: '04 / YOUR PERSONAL EDIT', title: wrap.personality.title, body: wrap.personality.description, detail: 'A playful snapshot of your saved likes. Always room to change your mind.', color: theme.background, icon: 'finger-print-outline' as const },
   ] : [];
