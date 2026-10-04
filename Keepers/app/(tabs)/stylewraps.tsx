@@ -106,7 +106,7 @@ export default function StyleWraps() {
           </View>
           <View style={[styles.periodPill, { borderColor: theme.border }]}><Text style={[styles.small, { color: theme.text }]}>All saved</Text></View>
         </View>
-        <Text style={[styles.intro, { color: theme.text }]}>Your taste has a story. Here’s yours so far.</Text>
+        <Text style={[styles.intro, { color: theme.text }]}>Here's your story so far...</Text>
 
         {loading && !data ? (
           <View style={styles.stateCard} accessibilityRole="progressbar" accessibilityLabel="Loading your style recap">
@@ -130,15 +130,15 @@ export default function StyleWraps() {
         ) : wrap && data ? (
           <>
             <View style={[styles.hero, { backgroundColor: theme.text }]}>
-              <View style={styles.headingRow}><Text style={[styles.eyebrow, { color: theme.accentGold }]}>YOUR RECAP</Text><Ionicons name="sparkles" size={25} color={theme.accentGold} /></View>
-              <Text style={[styles.heroTitle, { color: theme.headerText }]}>Your style so far.</Text>
+              <View style={styles.headingRow}><Text style={[styles.eyebrow, { color: theme.accentGold }]}>YOUR RECAP</Text><Ionicons name="person" size={25} color={theme.accentGold} /></View>
+              <Text style={[styles.heroTitle, { color: theme.headerText }]}>Your style so far</Text>
               <View style={styles.heroCountRow}><Text style={styles.heroCount}>{wrap.likes.length.toLocaleString()}</Text><Text style={styles.heroCountLabel}>liked pieces</Text></View>
               <Pressable accessibilityRole="button" onPress={() => { setStoryIndex(0); setShareError(null); }} style={[styles.button, { backgroundColor: theme.surface }]}><Ionicons name="play" size={18} color={theme.text} /><Text style={styles.buttonText}>Unwrap my style</Text><Ionicons name="arrow-forward" size={18} color={theme.text} /></Pressable>
               <Text style={styles.heroFootnote}>Your likes, styles, and favorite details.</Text>
             </View>
 
             <View style={styles.sectionDivider} />
-            <View style={styles.sectionHeader}><Text style={[styles.sectionTitle, { color: theme.text }]}>Your reactions</Text><Ionicons name="stats-chart-outline" size={20} color={theme.text} /></View>
+            <View style={styles.sectionHeader}><Text style={[styles.sectionTitle, { color: theme.text }]}>Your Reactions</Text><Ionicons name="stats-chart-outline" size={20} color={theme.text} /></View>
             <View style={styles.statRow}>
               {[
                 { label: 'Saved reactions', value: wrap.total.toLocaleString(), color: surface.backgroundColor },
@@ -151,13 +151,13 @@ export default function StyleWraps() {
               <View style={styles.verdictTrack} accessible accessibilityLabel={`${wrap.likeRate} percent liked, ${wrap.dislikeRate} percent passed`}>
                 <View style={{ flex: wrap.likes.length, backgroundColor: theme.text }} /><View style={{ flex: wrap.dislikeCount, backgroundColor: theme.primary }} />
               </View>
-              <Text style={[styles.small, { color: theme.text }]}>Based on reactions still in your history. Removing a like or dislike changes this recap.</Text>
+              <Text style={[styles.small, { color: theme.text }]}>Based on reactions still in your history.</Text>
             </View>
 
             {data.tagsUnavailable && <View style={[styles.card, surface]}><Text style={[styles.body, { color: theme.text }]}>Your reaction stats are ready. Style tags couldn’t load yet.</Text><Pressable accessibilityRole="button" onPress={() => void load()} style={styles.textButton}><Text style={[styles.linkText, { color: theme.text }]}>Retry style insights</Text><Ionicons name="refresh" size={18} color={theme.text} /></Pressable></View>}
 
             <View style={styles.sectionDivider} />
-            <View style={styles.sectionHeader}><Text style={[styles.sectionTitle, { color: theme.text }]}>Your style DNA</Text><Text style={[styles.small, { color: theme.text }]}>TOP TAGS</Text></View>
+            <View style={styles.sectionHeader}><Text style={[styles.sectionTitle, { color: theme.text }]}>Your Style</Text><Text style={[styles.small, { color: theme.text }]}>TOP TAGS</Text></View>
             <View style={[styles.card, surface]}>
               {wrap.styles.length ? <>
                 {wrap.styles.slice(0, 3).map((tag, index) => <View key={tag.name} style={styles.rankRow}>
@@ -179,7 +179,7 @@ export default function StyleWraps() {
             <View style={styles.sectionDivider} />
             <View style={styles.sectionHeader}><Text style={[styles.sectionTitle, { color: theme.text }]}>Favorite details</Text><Ionicons name="color-palette-outline" size={22} color={theme.text} /></View>
             <View style={[styles.card, surface]}>
-              <Text style={[styles.tagName, { color: theme.text }]}>Your color rotation</Text>
+              <Text style={[styles.tagName, { color: theme.text }]}>Your Color Palette</Text>
               {wrap.colors.length ? <View style={styles.palette}>{wrap.colors.slice(0, 5).map((tag) => <View key={tag.name} style={styles.colorItem}><View style={[styles.swatch, { backgroundColor: COLOR_SWATCHES[tag.name] ?? theme.background, borderColor: theme.border }]}>{!COLOR_SWATCHES[tag.name] && <Ionicons name="color-palette-outline" size={22} color={theme.text} />}</View><Text style={[styles.small, styles.centerText, { color: theme.text }]}>{tagLabel(tag.name)}</Text><Text style={[styles.small, { color: theme.text }]}>{tag.count} liked</Text></View>)}</View> : <Text style={[styles.body, { color: theme.text }]}>Color tags on your liked pieces will build your palette here.</Text>}
               <View style={[styles.divider, { backgroundColor: theme.border }]} />
               <View style={styles.detailRow}><Ionicons name="shirt-outline" size={25} color={theme.text} /><View style={styles.flex}><Text style={[styles.small, { color: theme.text }]}>GO-TO PIECE{topGarment && wrap.garments[1]?.count === topGarment.count ? ' · TIED FAVORITE' : ''}</Text><Text style={[styles.tagName, { color: theme.text }]}>{topGarment ? tagLabel(topGarment.name) : 'Still discovering'}</Text></View>{topGarment && <Text style={[styles.small, { color: theme.text }]}>{topGarment.count} liked</Text>}</View>
@@ -200,11 +200,10 @@ export default function StyleWraps() {
 
             <View style={styles.sectionDivider} />
             <View style={[styles.card, surface]}>
-              <View style={styles.detailRow}><Ionicons name="ribbon-outline" size={32} color={theme.text} /><View style={styles.flex}><Text style={[styles.tagName, { color: theme.text }]}>Next chapter: {wrap.milestone} keepers</Text><Text style={[styles.body, { color: theme.text }]}>{wrap.milestone - wrap.likes.length} more likes to reach your next milestone.</Text></View></View>
+              <View style={styles.detailRow}><Ionicons name="ribbon-outline" size={32} color={theme.text} /><View style={styles.flex}><Text style={[styles.tagName, { color: theme.text }]}>Next Chapter: {wrap.milestone} keepers</Text><Text style={[styles.body, { color: theme.text }]}>{wrap.milestone - wrap.likes.length} more likes until your next milestone.</Text></View></View>
               <View style={[styles.rankTrack, { backgroundColor: theme.background }]} accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: wrap.milestone, now: wrap.likes.length }} accessibilityLabel="Keepers milestone"><View style={[styles.rankFill, { width: `${wrap.likes.length / wrap.milestone * 100}%`, backgroundColor: theme.text }]} /></View>
               <Pressable accessibilityRole="button" onPress={() => router.navigate('/swiper')} style={styles.darkButton}><Text style={styles.lightButtonText}>Find your next keeper</Text><Ionicons name="arrow-forward" size={18} color={theme.headerText} /></Pressable>
             </View>
-            <Text style={[styles.footer, { color: theme.text }]}>A living recap, refreshed whenever you visit.{ '\n' }Your style gets to evolve with you.</Text>
           </>
         ) : null}
       </ScrollView>
