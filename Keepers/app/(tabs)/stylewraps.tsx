@@ -5,7 +5,7 @@
  * Date: 2026-04-01
  */
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, RefreshControl, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -13,10 +13,18 @@ import { useFocusEffect, useHeaderHeight } from 'expo-router/react-navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import * as WebBrowser from 'expo-web-browser';
+import { ImageLookupModal } from '../../components/ai/ImageLookupModal';
 import { useAppTheme } from '../../hooks/useAppTheme';
 import type { AppTheme } from '../../constants/theme';
+import type { Item } from '../../models/Items';
+import {
+  lookupPurchasableItem,
+  toAiLookupError,
+  type AiLookupErrorCode,
+  type ImageLookupResult,
+} from '../../services/ai';
 import { getStyleWrap } from '../../services/styleWrapService';
-import { buildStyleWrap, COLOR_SWATCHES, selectRandomKeepers, tagLabel, type WrapData } from '../../utils/styleWrap';
+import { buildStyleWrap, COLOR_SWATCHES, selectRandomKeepers, tagLabel, type WrapData, type WrapItem } from '../../utils/styleWrap';
 
 export default function StyleWraps() {
   const { theme } = useAppTheme();
@@ -30,6 +38,12 @@ export default function StyleWraps() {
   const [shareError, setShareError] = useState<string | null>(null);
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
   const request = useRef<AbortController | null>(null);
+  const lookupAbortController = useRef<AbortController | null>(null);
+  const lookupRequestId = useRef(0);
+  const [lookupItem, setLookupItem] = useState<Item | null>(null);
+  const [lookupResult, setLookupResult] = useState<ImageLookupResult | null>(null);
+  const [lookupError, setLookupError] = useState<{ code: AiLookupErrorCode; message: string } | null>(null);
+  const [lookupLoading, setLookupLoading] = useState(false);
 
   const load = useCallback(async () => {
     request.current?.abort();
@@ -55,6 +69,8 @@ export default function StyleWraps() {
       setStoryIndex(null);
     };
   }, [load]));
+
+  useEffect(() => () => lookupAbortController.current?.abort(), []);
 
   const wrap = useMemo(() => data ? buildStyleWrap(data) : null, [data]);
   const featuredKeepers = useMemo(() => wrap ? selectRandomKeepers(wrap.likes, 3) : [], [wrap]);
@@ -93,6 +109,63 @@ export default function StyleWraps() {
     }
   }
 
+  async function startLookup(item: WrapItem) {
+    lookupAbortController.current?.abort();
+    const controller = new AbortController();
+    const requestId = lookupRequestId.current + 1;
+    const target: Item = {
+      id: item.id,
+      name: item.name ?? 'Liked item',
+      imageUrl: item.imageUrl ?? '',
+      itemUrl: item.itemUrl ?? '',
+      price: '',
+      gender: '',
+      liked: true,
+    };
+
+    lookupAbortController.current = controller;
+    lookupRequestId.current = requestId;
+    setLookupItem(target);
+    setLookupResult(null);
+    setLookupError(null);
+    setLookupLoading(true);
+
+    try {
+      const result = await lookupPurchasableItem({
+        imageUrl: target.imageUrl,
+        itemHint: target.name,
+        maxResults: 5,
+        signal: controller.signal,
+      });
+      if (!controller.signal.aborted && lookupRequestId.current === requestId) setLookupResult(result);
+    } catch (cause) {
+      const safeError = toAiLookupError(cause);
+      if (safeError.code !== 'cancelled' && lookupRequestId.current === requestId) {
+        setLookupError({ code: safeError.code, message: safeError.message });
+      }
+    } finally {
+      if (lookupRequestId.current === requestId) {
+        setLookupLoading(false);
+        lookupAbortController.current = null;
+      }
+    }
+  }
+
+  function closeLookup() {
+    lookupRequestId.current += 1;
+    lookupAbortController.current?.abort();
+    lookupAbortController.current = null;
+    setLookupItem(null);
+    setLookupLoading(false);
+    setLookupResult(null);
+    setLookupError(null);
+  }
+
+  function openSettings() {
+    closeLookup();
+    router.push('/settings');
+  }
+
   return (
     <View style={[styles.screen, { backgroundColor: theme.background }]}>
       <ScrollView
@@ -106,7 +179,7 @@ export default function StyleWraps() {
           </View>
           <View style={[styles.periodPill, { borderColor: theme.border }]}><Text style={[styles.small, { color: theme.text }]}>All saved</Text></View>
         </View>
-        <Text style={[styles.intro, { color: theme.text }]}>Here's your story so far...</Text>
+        <Text style={[styles.intro, { color: theme.text }]}>Here’s your story so far…</Text>
 
         {loading && !data ? (
           <View style={styles.stateCard} accessibilityRole="progressbar" accessibilityLabel="Loading your style recap">
@@ -132,7 +205,12 @@ export default function StyleWraps() {
             <View style={[styles.hero, { backgroundColor: theme.text }]}>
               <View style={styles.headingRow}><Text style={[styles.eyebrow, { color: theme.accentGold }]}>YOUR RECAP</Text><Ionicons name="person" size={25} color={theme.accentGold} /></View>
               <Text style={[styles.heroTitle, { color: theme.headerText }]}>Your style so far</Text>
-              <View style={styles.heroCountRow}><Text style={styles.heroCount}>{wrap.likes.length.toLocaleString()}</Text><Text style={styles.heroCountLabel}>liked pieces</Text></View>
+              <View style={styles.heroCountRow}>
+                <Text style={styles.heroCount} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>
+                  {wrap.likes.length.toLocaleString()}
+                </Text>
+                <Text style={styles.heroCountLabel}>liked pieces</Text>
+              </View>
               <Pressable accessibilityRole="button" onPress={() => { setStoryIndex(0); setShareError(null); }} style={[styles.button, { backgroundColor: theme.surface }]}><Ionicons name="play" size={18} color={theme.text} /><Text style={styles.buttonText}>Unwrap my style</Text><Ionicons name="arrow-forward" size={18} color={theme.text} /></Pressable>
               <Text style={styles.heroFootnote}>Your likes, styles, and favorite details.</Text>
             </View>
@@ -192,7 +270,17 @@ export default function StyleWraps() {
               <View style={styles.sectionDivider} />
               <View style={[styles.card, surface]}>
               <View style={styles.headingRow}><Text style={[styles.sectionTitle, { color: theme.text }]}>A few of your keepers</Text><Ionicons name="heart" size={20} color={theme.text} /></View>
-              <View style={styles.gallery}>{featuredKeepers.map((item) => <Pressable key={item.id} accessibilityRole="link" accessibilityLabel={`Open the store page for ${item.name ?? 'this liked item'}`} onPress={() => void openStorePage(item.itemUrl!)} style={({ pressed }) => [styles.galleryItem, pressed && styles.galleryItemPressed]}><Image source={{ uri: item.imageUrl! }} style={[styles.itemImage, { backgroundColor: theme.background }]} contentFit="contain" accessibilityLabel={item.name ?? 'Liked clothing item'} /><Text numberOfLines={2} style={[styles.small, { color: theme.text }]}>{item.name ?? 'A keeper'}</Text><View style={styles.shopLink}><Text style={[styles.small, { color: theme.text }]}>Shop item</Text><Ionicons name="open-outline" size={14} color={theme.text} /></View></Pressable>)}</View>
+              <View style={styles.gallery}>{featuredKeepers.map((item) => <View key={item.id} style={styles.galleryItem}>
+                <Pressable accessibilityRole="link" accessibilityLabel={`Open the store page for ${item.name ?? 'this liked item'}`} onPress={() => void openStorePage(item.itemUrl!)} style={({ pressed }) => pressed && styles.galleryItemPressed}>
+                  <Image source={{ uri: item.imageUrl! }} style={[styles.itemImage, { backgroundColor: theme.background }]} contentFit="contain" accessibilityLabel={item.name ?? 'Liked clothing item'} />
+                  <Text numberOfLines={2} style={[styles.small, styles.galleryItemName, { color: theme.text }]}>{item.name ?? 'A keeper'}</Text>
+                  <View style={styles.shopLink}><Text style={[styles.small, { color: theme.text }]}>Shop item</Text><Ionicons name="open-outline" size={14} color={theme.text} /></View>
+                </Pressable>
+                <Pressable accessibilityHint="Uses your selected AI provider to search for purchase listings" accessibilityLabel={`Find ${item.name ?? 'this liked item'} with AI`} accessibilityRole="button" onPress={() => void startLookup(item)} style={({ pressed }) => [styles.lookupButton, { backgroundColor: theme.text }, pressed && styles.galleryItemPressed]}>
+                  <Ionicons name="search" size={15} color={theme.headerText} />
+                  <Text style={[styles.lookupButtonText, { color: theme.headerText }]}>Find it</Text>
+                </Pressable>
+              </View>)}</View>
               {purchaseError && <Text accessibilityRole="alert" style={[styles.small, { color: theme.accentBrown }]}>{purchaseError}</Text>}
               <Pressable accessibilityRole="button" onPress={() => router.navigate('/likelist')} style={styles.textButton}><Text style={[styles.linkText, { color: theme.text }]}>Revisit your likes</Text><Ionicons name="arrow-forward" size={18} color={theme.text} /></Pressable>
               </View>
@@ -227,6 +315,19 @@ export default function StyleWraps() {
           </View>
         </View>}
       </Modal>
+      <ImageLookupModal
+        errorCode={lookupError?.code ?? null}
+        errorMessage={lookupError?.message ?? null}
+        item={lookupItem}
+        loading={lookupLoading}
+        onClose={closeLookup}
+        onOpenSettings={openSettings}
+        onRetry={() => {
+          const item = featuredKeepers.find((keeper) => keeper.id === lookupItem?.id);
+          if (item) void startLookup(item);
+        }}
+        result={lookupResult}
+      />
     </View>
   );
 }
@@ -245,9 +346,9 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
   hero: { borderRadius: 12, padding: 24, gap: 22, overflow: 'hidden' },
   heroTitle: { fontFamily: 'GeorgiaProBold', fontSize: 30, lineHeight: 38, color: theme.text },
   heroBody: { fontSize: 15, lineHeight: 23, color: theme.text },
-  heroCountRow: { flexDirection: 'row', gap: 16, alignItems: 'center', flexWrap: 'wrap' },
-  heroCount: { fontFamily: 'GeorgiaProBold', fontSize: 60, fontWeight: '800', letterSpacing: -4, color: theme.accentGold },
-  heroCountLabel: { fontSize: 16, lineHeight: 23, color: theme.headerText },
+  heroCountRow: { width: '100%', flexDirection: 'row', gap: 12, alignItems: 'center' },
+  heroCount: { flexShrink: 1, minWidth: 0, fontFamily: 'GeorgiaProBold', fontSize: 60, fontWeight: '800', letterSpacing: -3, color: theme.accentGold },
+  heroCountLabel: { flexShrink: 0, fontSize: 16, lineHeight: 23, color: theme.headerText },
   heroFootnote: { fontSize: 11, color: theme.headerText, textAlign: 'center', marginTop: -10 },
   button: { minHeight: 48, paddingHorizontal: 18, paddingVertical: 14, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
   buttonText: { fontWeight: '700', fontSize: 15, color: theme.text, flexShrink: 1 },
@@ -279,7 +380,10 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
   galleryItem: { flex: 1, gap: 8 },
   galleryItemPressed: { opacity: 0.65 },
   itemImage: { width: '100%', aspectRatio: 0.8, borderRadius: 12 },
-  shopLink: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  galleryItemName: { marginTop: 8 },
+  shopLink: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
+  lookupButton: { alignItems: 'center', borderRadius: 10, flexDirection: 'row', gap: 5, justifyContent: 'center', paddingHorizontal: 8, paddingVertical: 10 },
+  lookupButtonText: { fontSize: 12, fontWeight: '700' },
   textButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44, gap: 10 },
   linkText: { fontWeight: '700', fontSize: 14 },
   footer: { textAlign: 'center', fontSize: 12, lineHeight: 20, marginTop: 8 },
