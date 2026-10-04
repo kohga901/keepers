@@ -213,7 +213,7 @@ export default function StyleWraps() {
                 </Text>
                 <Text style={styles.heroCountLabel}>liked pieces</Text>
               </View>
-              <Pressable accessibilityRole="button" onPress={() => { setStoryIndex(0); setShareError(null); }} style={[styles.button, { backgroundColor: theme.tabBg }]}><Ionicons name="play" size={18} color={BUTTON_TEXT} /><Text style={styles.buttonText}>Unwrap my style</Text><Ionicons name="arrow-forward" size={18} color={BUTTON_TEXT} /></Pressable>
+              <Pressable accessibilityRole="button" onPress={() => { setStoryIndex(0); setShareError(null); }} style={[styles.button, { backgroundColor: theme.accentGold}]}><Ionicons name="play" size={18} color={BUTTON_TEXT} /><Text style={styles.buttonText}>Unwrap my style</Text><Ionicons name="arrow-forward" size={18} color={BUTTON_TEXT} /></Pressable>
               <Text style={styles.heroFootnote}>Your likes, styles, and favorite details.</Text>
             </View>
 
