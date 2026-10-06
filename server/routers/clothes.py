@@ -10,6 +10,7 @@ Endpoints:
 from typing import Any
 import logging
 import random
+import time
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field
@@ -25,6 +26,11 @@ router = APIRouter(prefix="/clothes")
 
 # The stored pref_vec and map coordinates are refreshed once every this many swipes.
 SYNC_EVERY = 4
+
+# The app only asks for its next batch when it has 2 cards left, which a quick
+# swiper gets through before the batch arrives. So the server sends extra cards
+# whenever the user has fewer than this many still waiting in their deck.
+DECK_BUFFER = 6
 
 # --- Request / Response models ---
 
@@ -170,6 +176,9 @@ def swipe(req: SwipeData, background_tasks: BackgroundTasks):
     # Apply the swipe to the in-memory history.
     liked_ids, disliked_ids, switched = user_state.record_swipe(req.user_id, req.item_id, req.liked)
 
+    log.info("swipe user=%s item=%s liked=%s (likes=%d dislikes=%d)",
+             req.user_id, req.item_id, req.liked, len(liked_ids), len(disliked_ids))
+
     # An item can only be liked or disliked, not both. Remove the earlier opposite swipe.
     if switched:
         background_tasks.add_task(_remove_swipe, req.user_id, req.item_id, not req.liked)
@@ -188,9 +197,14 @@ def recommendations(req: RecommendationRequest) -> RecommendationResponse:
     if not Startup.ready:
         raise HTTPException(status_code=503, detail="Server still warming up, try again shortly")
 
+    started = time.perf_counter()
+
     # Get the swipe history of the user, plus the items to keep out of this batch:
     # everything they have swiped on and everything already sent to their deck.
-    liked_ids, disliked_ids, excluded_ids = user_state.snapshot(req.user_id)
+    liked_ids, disliked_ids, excluded_ids, in_deck = user_state.snapshot(req.user_id)
+
+    # Top the deck up if it is running low.
+    n = req.n + max(0, DECK_BUFFER - in_deck)
 
     # Build the pref_vec of the user from their swipe history.
     pref_vec = compute_pref_vec(liked_ids, disliked_ids)
@@ -199,19 +213,21 @@ def recommendations(req: RecommendationRequest) -> RecommendationResponse:
     if not np.any(pref_vec):
         with Startup._index_lock:
             unseen_ids = [i for i in Startup._item_ids if i not in excluded_ids]
-        results = random.sample(unseen_ids, k=min(req.n * 5, len(unseen_ids)))
+        results = random.sample(unseen_ids, k=min(n * 5, len(unseen_ids)))
     else:
-        results = get_recommendations(pref_vec, excluded_ids, n=req.n*5, batch_size=req.n)
+        results = get_recommendations(pref_vec, excluded_ids, n=n*5, batch_size=n)
 
     # Fetch the recommended items from the db.
     items = _fetch_clothing_items(results) if results else []
     items = [i for i in items if _matches_filters(i, req)]
-    items = items[:req.n]
-    if len(items) < req.n :
-        log.info("Only %d/%d items available for user %s", len(items), req.n, req.user_id)
+    items = items[:n]
 
     # Remember what was sent so the next batch doesn't repeat cards still in the deck.
     user_state.mark_served(req.user_id, [i["item_id"] for i in items])
+
+    log.info("recommendations user=%s sent=%d/%d personalised=%s (likes=%d dislikes=%d in_deck=%d) took=%dms",
+             req.user_id, len(items), n, bool(np.any(pref_vec)), len(liked_ids), len(disliked_ids), in_deck,
+             (time.perf_counter() - started) * 1000)
 
     # Send HTTP POST response to client.
     return RecommendationResponse(recommendations=items)
@@ -224,7 +240,7 @@ def recommendations_debug(req: RecommendationRequest):
         raise HTTPException(status_code=503, detail="Server still warming up, try again shortly")
     
     from services.recommendation_service import get_recommendations_with_scores
-    liked_ids, disliked_ids, excluded_ids = user_state.snapshot(req.user_id)
+    liked_ids, disliked_ids, excluded_ids, _ = user_state.snapshot(req.user_id)
     pref_vec = compute_pref_vec(liked_ids, disliked_ids)
     results = get_recommendations_with_scores(pref_vec, excluded_ids, n=req.n)
     return {"recommendations": [{"item_id": r[0], "score": r[1]} for r in results]}
