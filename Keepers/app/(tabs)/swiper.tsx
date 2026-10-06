@@ -8,7 +8,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Dimensions, Pressable, StyleSheet, View } from 'react-native';
+import { Text } from '../../components/Text';
 import Swiper from 'react-native-deck-swiper';
 import {getRecommendationsFromServer, sendSwipeToServer} from '../../services/serverApi';
 

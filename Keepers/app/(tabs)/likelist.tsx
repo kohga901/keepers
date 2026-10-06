@@ -6,7 +6,8 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, StyleSheet, Text, View, Pressable, FlatList, Modal } from 'react-native';
+import { Animated, Easing, StyleSheet, View, Pressable, FlatList, Modal } from 'react-native';
+import { Text } from '../../components/Text';
 import { Image } from 'expo-image';
 import { useSafeAreaFrame, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Swipeable } from 'react-native-gesture-handler';
@@ -231,14 +232,14 @@ const App: React.FC = () => {
                     transition={1000}
                   />
                   <View style={styles.itemInfo}>
-                    <Text style={[styles.itemName, { color: theme.text }, { fontFamily: 'GeorgiaProSemiBold', fontSize: 18 }]}>
+                    <Text style={[styles.itemName, { color: theme.text }, { fontFamily: 'PublicSans_600SemiBold', fontSize: 18 }]}>
                       {item.name}
                     </Text>
                     <View style={styles.priceGenderRow}>
-                      <Text style={[styles.itemPrice, { color: theme.accentGold }, { fontFamily: 'GeorgiaProSemiBold' }]}>
+                      <Text style={[styles.itemPrice, { color: theme.accentGold }, { fontFamily: 'PublicSans_600SemiBold' }]}>
                         {showPriceAsTier ? getPriceTierSymbol(item.price) : item.price}
                       </Text>
-                      <Text style={[styles.itemGender, { color: theme.mutedText }, { fontFamily: 'GeorgiaProSemiBold' }]}>
+                      <Text style={[styles.itemGender, { color: theme.mutedText }, { fontFamily: 'PublicSans_600SemiBold' }]}>
                         {item.gender.toUpperCase()}
                       </Text>
                     </View>
@@ -263,15 +264,15 @@ const App: React.FC = () => {
                     source={{ uri: selectedItem.imageUrl }}
                   />
                   <View style={[styles.textAndButtonContainer, { backgroundColor: theme.primary }]}>
-                    <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '600', fontFamily: 'GeorgiaProSemiBold' }}>
+                    <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '600', fontFamily: 'PublicSans_600SemiBold' }}>
                       {selectedItem.name}
                     </Text>
                     <View style={{ height: 1, backgroundColor: '#FFFFFF', opacity: 0.4, width: '100%', marginVertical: 10 }} />
 
-                    <Text style={{ color: theme.accentGold, fontFamily: 'GeorgiaProSemiBold', alignSelf: 'flex-start' }}>
+                    <Text style={{ color: theme.accentGold, fontFamily: 'PublicSans_600SemiBold', alignSelf: 'flex-start' }}>
                       {showPriceAsTier ? getPriceTierSymbol(selectedItem.price) : selectedItem.price}
                     </Text>
-                    <Text style={{ color: '#FFFFFF', fontFamily: 'GeorgiaProSemiBold', alignSelf: 'flex-end' }}>
+                    <Text style={{ color: '#FFFFFF', fontFamily: 'PublicSans_600SemiBold', alignSelf: 'flex-end' }}>
                       {selectedItem.gender.toUpperCase()}
                     </Text>
 
@@ -338,7 +339,8 @@ const styles = StyleSheet.create({
   toggleText: {
     fontSize: 16,
     fontWeight: '700',
-    fontFamily: 'GeorgiaProSemiBold',
+    fontFamily: 'PublicSans_700Bold',
+    textTransform: 'uppercase',
   },
   filterWrapper: {
     position: 'relative',
@@ -364,7 +366,7 @@ const styles = StyleSheet.create({
   filterDropdownText: {
     fontSize: 14,
     fontWeight: '600',
-    fontFamily: 'GeorgiaProSemiBold',
+    fontFamily: 'PublicSans_600SemiBold',
   },
   content: {
     flex: 1,
@@ -397,17 +399,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginBottom: 3,
-    fontFamily: 'GeorgiaProSemiBold',
+    fontFamily: 'PublicSans_600SemiBold',
   },
   itemPrice: {
     fontSize: 14,
     fontWeight: '500',
-    fontFamily: 'GeorgiaProRegular',
+    fontFamily: 'PublicSans_400Regular',
   },
   itemGender: {
     fontSize: 12,
     fontWeight: '400',
-    fontFamily: 'GeorgiaProRegular',
+    fontFamily: 'PublicSans_400Regular',
   },
   priceGenderRow: {
     flexDirection: 'row',
@@ -418,7 +420,7 @@ const styles = StyleSheet.create({
   text: {
     fontSize: 18,
     fontWeight: '600',
-    fontFamily: 'GeorgiaProRegular',
+    fontFamily: 'PublicSans_400Regular',
   },
   imageContainer: {
     flexDirection: 'row',
@@ -461,7 +463,7 @@ const styles = StyleSheet.create({
   closeButtonText: {
     fontSize: 16,
     fontWeight: 'bold',
-    fontFamily: 'GeorgiaProSemiBold',
+    fontFamily: 'PublicSans_600SemiBold',
   },
   deleteAction: {
     backgroundColor: 'red',

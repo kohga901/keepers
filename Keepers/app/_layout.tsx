@@ -15,24 +15,14 @@ import type { Session } from '@supabase/supabase-js';
 
 import { useFonts } from 'expo-font';
 import Auth from '../components/Auth';
+import { Fonts, fontAssets } from '../constants/fonts';
 import { PriceDisplayProvider } from '../contexts/PriceDisplayContext';
 import { useAppTheme } from '../hooks/useAppTheme';
 import { supabase } from '../utils/supabase';
 
 
 export default function RootLayout() {
-  const [loaded] = useFonts({
-    GeorgiaProBlack: require('../assets/fonts/GeorgiaPro-Black.ttf'),
-    GeorgiaProBlackItalic: require('../assets/fonts/GeorgiaPro-BlackItalic.ttf'),
-    GeorgiaProBold: require('../assets/fonts/GeorgiaPro-Bold.ttf'),
-    GeorgiaProBoldItalic: require('../assets/fonts/GeorgiaPro-BoldItalic.ttf'),
-    GeorgiaProItalic: require('../assets/fonts/GeorgiaPro-Italic.ttf'),
-    GeorgiaProLight: require('../assets/fonts/GeorgiaPro-Light.ttf'),
-    GeorgiaProLightItalic: require('../assets/fonts/GeorgiaPro-LightItalic.ttf'),
-    GeorgiaProRegular: require('../assets/fonts/GeorgiaPro-Regular.ttf'),
-    GeorgiaProSemiBold: require('../assets/fonts/GeorgiaPro-SemiBold.ttf'),
-    GeorgiaProSemiBoldItalic: require('../assets/fonts/GeorgiaPro-SemiBoldItalic.ttf'),
-  });
+  const [loaded] = useFonts(fontAssets);
   const [session, setSession] = useState<Session | null>(null);
   const [isSessionLoading, setIsSessionLoading] = useState(true);
   const { theme } = useAppTheme();
@@ -97,7 +87,7 @@ export default function RootLayout() {
     <PriceDisplayProvider>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <View style={{ flex: 1, backgroundColor: theme.background }}>
-          <Stack>
+          <Stack screenOptions={{ headerTitleStyle: { fontFamily: Fonts.black } }}>
             <Stack.Screen
               name="(tabs)"
               options={({ route }) => {
@@ -113,7 +103,7 @@ export default function RootLayout() {
                     backgroundColor: theme.headerBg,
                   },
                   headerTitleStyle: {
-                    fontFamily: 'GeorgiaProBlack', // Font is now global
+                    fontFamily: Fonts.black,
                     fontSize: 24,
                   },
                 };
