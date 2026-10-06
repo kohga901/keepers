@@ -100,21 +100,24 @@ export default function RootLayout() {
           <Stack>
             <Stack.Screen
               name="(tabs)"
-              options={({ route }) => ({
-                // Liked History renders its own collapsing header instead.
-                headerShown: getFocusedRouteNameFromRoute(route) !== 'likelist',
-                headerTransparent: true,
-                title: 'K E E P E R S',
-                headerTintColor: theme.headerText,
-                headerShadowVisible: true,
-                headerStyle: {
-                  backgroundColor: theme.headerBg,
-                },
-                headerTitleStyle: {
-                  fontFamily: 'GeorgiaProBlack', // Font is now global
-                  fontSize: 24,
-                },
-              })}
+              options={({ route }) => {
+                const focusedTab = getFocusedRouteNameFromRoute(route);
+                return {
+                  // Liked History renders its own collapsing header instead.
+                  headerShown: focusedTab !== 'likelist',
+                  headerTransparent: true,
+                  title: focusedTab === 'settings' ? 'S E T T I N G S' : 'K E E P E R S',
+                  headerTintColor: theme.headerText,
+                  headerShadowVisible: true,
+                  headerStyle: {
+                    backgroundColor: theme.headerBg,
+                  },
+                  headerTitleStyle: {
+                    fontFamily: 'GeorgiaProBlack', // Font is now global
+                    fontSize: 24,
+                  },
+                };
+              }}
             />
           </Stack>
           <StatusBar style="dark" />

@@ -26,7 +26,7 @@ export type AppTheme = {
 
 // Palette: sage #6D9773, dark green #1E6B4C (brightened from source #0C3B2E), brown #B46617, gold #FFBA00, white.
 export const lightTheme: AppTheme = {
-  background: '#F4F7F5',
+  background: '#F2EBDD',
   surface: '#FFFFFF',
   text: '#1E6B4C',
   mutedText: '#6D9773',
@@ -45,7 +45,7 @@ export const lightTheme: AppTheme = {
 };
 
 export const darkTheme: AppTheme = {
-  background: '#F4F7F5',
+  background: '#F2EBDD',
   surface: '#FFFFFF',
   text: '#1E6B4C',
   mutedText: '#6D9773',

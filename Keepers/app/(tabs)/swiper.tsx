@@ -8,7 +8,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Dimensions, Pressable, StyleSheet, Text, View } from 'react-native';
 import Swiper from 'react-native-deck-swiper';
 import {getRecommendationsFromServer, sendSwipeToServer} from '../../services/serverApi';
 
@@ -16,6 +16,7 @@ import { Image } from 'expo-image';
 import * as WebBrowser from 'expo-web-browser';
 import { ImageLookupModal } from '../../components/ai/ImageLookupModal';
 import { usePriceDisplay } from '../../contexts/PriceDisplayContext';
+import { useAppTheme } from '../../hooks/useAppTheme';
 import { supabase } from '../../utils/supabase';
 import { getPriceTierSymbol } from '../../utils/price';
 import { Item, ClothingRow } from '../../models/Items';
@@ -42,6 +43,18 @@ const LABEL_OPACITY_OUTPUT = [1, 0, 0, 0, 1] as unknown as [number, number, numb
 
 // This controls how many new items are fetched.
 const amountOfItemsToFetch = 10;
+// Start fetching the next batch once this many unswiped cards are left, so fast swipers don't run dry.
+const prefetchWhenCardsRemaining = 5;
+
+const toItem = (row: ClothingRow): Item => ({
+  id: String(row.item_id),
+  name: row.item_name,
+  price: row.item_price,
+  imageUrl: row.item_img,
+  liked: false,
+  itemUrl: row.item_web_listing,
+  gender: row.item_gender,
+});
 
 const App: React.FC = () => {
   const router = useRouter();
@@ -61,6 +74,61 @@ const App: React.FC = () => {
   } | null>(null);
   const [lookupLoading, setLookupLoading] = useState(false);
   const { showPriceAsTier } = usePriceDisplay();
+  const { theme } = useAppTheme();
+
+  // Deck refill state. Only one recommendations request runs at a time; callers share it.
+  const pendingFetch = useRef<Promise<boolean> | null>(null);
+  const outOfCardsRef = useRef(false);
+  const keepCardAfterTopSwipe = useRef(false);
+  const [outOfCards, setOutOfCards] = useState(false);
+  const [deckKey, setDeckKey] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshFailed, setRefreshFailed] = useState(false);
+
+  const markOutOfCards = () => {
+    outOfCardsRef.current = true;
+    setOutOfCards(true);
+  };
+
+  // Fetches the next batch and adds it to the deck. Resolves true if any cards were added.
+  const loadMoreCards = () => {
+    if (pendingFetch.current) return pendingFetch.current;
+
+    const request = (async () => {
+      try {
+        const data = await getRecommendationsFromServer(amountOfItemsToFetch);
+        const newCards: Item[] = data ? data.map(toItem) : [];
+        if (newCards.length === 0) return false;
+
+        if (outOfCardsRef.current) {
+          // The deck stops rendering once it's swiped through, so start a fresh one.
+          outOfCardsRef.current = false;
+          setOutOfCards(false);
+          setCards(newCards);
+          setDeckKey((key) => key + 1);
+        } else {
+          setCards((prev) => [...prev, ...newCards]);
+        }
+        return true;
+      } catch (error) {
+        console.error('Failed to load more recommendations', error);
+        return false;
+      } finally {
+        pendingFetch.current = null;
+      }
+    })();
+
+    pendingFetch.current = request;
+    return request;
+  };
+
+  const refreshDeck = async () => {
+    setIsRefreshing(true);
+    setRefreshFailed(false);
+    const loaded = await loadMoreCards();
+    setRefreshFailed(!loaded);
+    setIsRefreshing(false);
+  };
 
   useEffect(() => {
 
@@ -89,21 +157,17 @@ const App: React.FC = () => {
       loadedUserId.current = userId;
 
       const data = await getRecommendationsFromServer(amountOfItemsToFetch);
-      if (!data) return
+      const parsedCards: Item[] = data ? data.map(toItem) : [];
 
-      const parsedCards: Item[] = data.map((row: ClothingRow) => {
-        return {
-          id: String(row.item_id),
-          name: row.item_name,
-          price: row.item_price,
-          imageUrl: row.item_img,
-          liked: false,
-          itemUrl: row.item_web_listing,
-          gender: row.item_gender,
-        };
-      });
+      if (parsedCards.length === 0) {
+        markOutOfCards();
+        return;
+      }
 
-      setCards((prev) => [...prev, ...parsedCards])
+      outOfCardsRef.current = false;
+      setOutOfCards(false);
+      setCards(parsedCards);
+      setDeckKey((key) => key + 1);
     }
 
     checkSessionAndLoad();
@@ -219,110 +283,133 @@ const App: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <Swiper<Item>
-        ref={swiper}
-        cards={cards}
-        renderCard={(card: Item, cardIndex: number) => {
-          if (!card) return null;
-          return (
-           <View style={styles.card}>
-            <View style={styles.imagePlaceholder}>
-              <Image
-                style={styles.image}
-                source={{ uri: card.imageUrl }}
-                placeholder={{ blurhash }}
-                contentFit="cover"
-                transition={1000}
-              />
-            </View>
-            <View style={styles.cardInfo}>
-              <View style={styles.cardDetails}>
-                <Text numberOfLines={2} style={styles.cardName}>{card.name}</Text>
-                <Text style={styles.cardPrice}>
-                  {showPriceAsTier ? getPriceTierSymbol(card.price) : card.price}
-                </Text>
+      {outOfCards ? (
+        <View style={styles.messageContainer}>
+          <Text style={styles.messageText}>
+            {refreshFailed
+              ? "We still couldn't load more items. Check your connection and try again."
+              : "You're swiping faster than we can keep up! Tap refresh to load more items."}
+          </Text>
+          <Pressable
+            accessibilityLabel="Load more items"
+            accessibilityRole="button"
+            disabled={isRefreshing}
+            onPress={() => void refreshDeck()}
+            style={({ pressed }) => [
+              styles.refreshButton,
+              { backgroundColor: theme.primary },
+              pressed && styles.refreshButtonPressed,
+            ]}
+          >
+            {isRefreshing ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Ionicons name="refresh" color="#FFFFFF" size={30} />
+            )}
+          </Pressable>
+        </View>
+      ) : (
+        <Swiper<Item>
+          key={deckKey}
+          ref={swiper}
+          cards={cards}
+          renderCard={(card: Item, cardIndex: number) => {
+            if (!card) return null;
+            return (
+             <View style={styles.card}>
+              <View style={styles.imagePlaceholder}>
+                <Image
+                  style={styles.image}
+                  source={{ uri: card.imageUrl }}
+                  placeholder={{ blurhash }}
+                  contentFit="cover"
+                  transition={1000}
+                />
               </View>
-              <Pressable
-                accessibilityHint="Uses your selected AI provider to search for purchase listings"
-                accessibilityLabel={`Find ${card.name} with AI`}
-                accessibilityRole="button"
-                onPress={() => void startLookup(card, cardIndex)}
-                style={({ pressed }) => [styles.lookupButton, pressed && styles.lookupButtonPressed]}
-              >
-                <Ionicons name="search" color="#FFFFFF" size={17} />
-                <Text style={styles.lookupButtonText}>Find it</Text>
-              </Pressable>
+              <View style={styles.cardInfo}>
+                <View style={styles.cardDetails}>
+                  <Text numberOfLines={2} style={styles.cardName}>{card.name}</Text>
+                  <Text style={styles.cardPrice}>
+                    {showPriceAsTier ? getPriceTierSymbol(card.price) : card.price}
+                  </Text>
+                </View>
+                <Pressable
+                  accessibilityHint="Uses your selected AI provider to search for purchase listings"
+                  accessibilityLabel={`Find ${card.name} with AI`}
+                  accessibilityRole="button"
+                  onPress={() => void startLookup(card, cardIndex)}
+                  style={({ pressed }) => [styles.lookupButton, pressed && styles.lookupButtonPressed]}
+                >
+                  <Ionicons name="search" color="#FFFFFF" size={17} />
+                  <Text style={styles.lookupButtonText}>Find it</Text>
+                </Pressable>
+              </View>
             </View>
-          </View>
-          );
-        }}
-        onSwiped={async (index: number) => {
-          //console.log('Swiped index:', index);
-          if (!isAuthenticated) {
-            return;
-          }
-
-          if ((index+3) % amountOfItemsToFetch === 0) {
-            const data = await getRecommendationsFromServer(amountOfItemsToFetch);
-            if (!data) return;
-
-            const parsedCards: Item[] = data.map((row: ClothingRow) => {
-              return {
-                id: String(row.item_id),
-                name: row.item_name,
-                price: row.item_price,
-                imageUrl: row.item_img,
-                liked: false,
-                itemUrl: row.item_web_listing,
-                gender: row.item_gender,
-              };
-            });
-
-            setCards((prev) => [...prev, ...parsedCards]);
-          }
-        }}
-        onSwipedTop={(cardIndex) => {
-          // Swiper updates to next card after this callback. Scheduled after React-Native-Deck-Swiper update.
-          setTimeout(() => {
-            swiper.current?.jumpToCardIndex(cardIndex);
-          }, 0);
-          const item = cards[cardIndex];
-          if (item?.itemUrl) {
-            try {
-              const parsedUrl = new URL(item.itemUrl);
-              if (parsedUrl.protocol === 'https:') {
-                void WebBrowser.openBrowserAsync(parsedUrl.toString());
-              } else {
-                Alert.alert('Link unavailable', 'Keepers blocked an insecure listing link.');
-              }
-            } catch {
-              Alert.alert('Link unavailable', 'This item does not have a valid listing link.');
+            );
+          }}
+          onSwiped={async (index: number) => {
+            //console.log('Swiped index:', index);
+            if (!isAuthenticated) {
+              return;
             }
-          }
-        }}
-        onSwipedLeft={async (cardIndex: number) => {
-          await sendSwipeToServer(cards[cardIndex].id, false);
-        }}
-        onSwipedRight ={async (cardIndex: number) => {
-          await sendSwipeToServer(cards[cardIndex].id, true);
+
+            const cardsRemaining = cards.length - (index + 1);
+            if (cardsRemaining <= prefetchWhenCardsRemaining) {
+              void loadMoreCards();
+            }
+          }}
+          onSwipedAll={() => {
+            // Swiping up opens the listing but keeps the card, so it doesn't empty the deck.
+            if (keepCardAfterTopSwipe.current) {
+              keepCardAfterTopSwipe.current = false;
+              return;
+            }
+            markOutOfCards();
+          }}
+          onSwipedTop={(cardIndex) => {
+            keepCardAfterTopSwipe.current = cardIndex === cards.length - 1;
+            // Swiper updates to next card after this callback. Scheduled after React-Native-Deck-Swiper update.
+            setTimeout(() => {
+              swiper.current?.jumpToCardIndex(cardIndex);
+            }, 0);
+            const item = cards[cardIndex];
+            if (item?.itemUrl) {
+              try {
+                const parsedUrl = new URL(item.itemUrl);
+                if (parsedUrl.protocol === 'https:') {
+                  void WebBrowser.openBrowserAsync(parsedUrl.toString());
+                } else {
+                  Alert.alert('Link unavailable', 'Keepers blocked an insecure listing link.');
+                }
+              } catch {
+                Alert.alert('Link unavailable', 'This item does not have a valid listing link.');
+              }
+            }
+          }}
+          onSwipedLeft={async (cardIndex: number) => {
+            await sendSwipeToServer(cards[cardIndex].id, false);
+          }}
+          onSwipedRight ={async (cardIndex: number) => {
+            await sendSwipeToServer(cards[cardIndex].id, true);
           
-        }}
-        disableBottomSwipe={true}
-        horizontalThreshold={HORIZONTAL_SWIPE_THRESHOLD}
-        verticalThreshold={VERTICAL_SWIPE_THRESHOLD}
-        overlayOpacityHorizontalThreshold={HORIZONTAL_LABEL_HINT}
-        overlayOpacityVerticalThreshold={VERTICAL_LABEL_HINT}
-        animateOverlayLabelsOpacity
-        inputOverlayLabelsOpacityRangeX={[-HORIZONTAL_SWIPE_THRESHOLD, -HORIZONTAL_LABEL_HINT, 0, HORIZONTAL_LABEL_HINT, HORIZONTAL_SWIPE_THRESHOLD]}
-        outputOverlayLabelsOpacityRangeX={LABEL_OPACITY_OUTPUT}
-        inputOverlayLabelsOpacityRangeY={[-VERTICAL_SWIPE_THRESHOLD, -VERTICAL_LABEL_HINT, 0, VERTICAL_LABEL_HINT, VERTICAL_SWIPE_THRESHOLD]}
-        outputOverlayLabelsOpacityRangeY={LABEL_OPACITY_OUTPUT}
-        overlayLabels={overlayLabels}
-        stackSize={3}
-        stackSeparation={15}
-        cardVerticalMargin={CARD_VERTICAL_MARGIN}
-        backgroundColor="transparent"
-      />
+          }}
+          disableBottomSwipe={true}
+          horizontalThreshold={HORIZONTAL_SWIPE_THRESHOLD}
+          verticalThreshold={VERTICAL_SWIPE_THRESHOLD}
+          overlayOpacityHorizontalThreshold={HORIZONTAL_LABEL_HINT}
+          overlayOpacityVerticalThreshold={VERTICAL_LABEL_HINT}
+          animateOverlayLabelsOpacity
+          inputOverlayLabelsOpacityRangeX={[-HORIZONTAL_SWIPE_THRESHOLD, -HORIZONTAL_LABEL_HINT, 0, HORIZONTAL_LABEL_HINT, HORIZONTAL_SWIPE_THRESHOLD]}
+          outputOverlayLabelsOpacityRangeX={LABEL_OPACITY_OUTPUT}
+          inputOverlayLabelsOpacityRangeY={[-VERTICAL_SWIPE_THRESHOLD, -VERTICAL_LABEL_HINT, 0, VERTICAL_LABEL_HINT, VERTICAL_SWIPE_THRESHOLD]}
+          outputOverlayLabelsOpacityRangeY={LABEL_OPACITY_OUTPUT}
+          overlayLabels={overlayLabels}
+          stackSize={3}
+          stackSeparation={15}
+          cardVerticalMargin={CARD_VERTICAL_MARGIN}
+          backgroundColor="transparent"
+        />
+      )}
 
       <ImageLookupModal
         errorCode={lookupError?.code ?? null}
@@ -349,21 +436,21 @@ const overlayLabels = {
   left: {
     title: "NOPE",
     style: {
-      label: { color: "red", fontSize: 28, fontWeight: "bold", borderColor: "red", borderWidth: 2, padding: 8 },
+      label: { color: "white", backgroundColor: "red", fontSize: 28, fontWeight: "bold", borderColor: "red", borderWidth: 2, borderRadius: 8, overflow: "hidden", padding: 8 },
       wrapper: { flexDirection: "column", alignItems: "flex-end", justifyContent: "flex-start", marginTop: 20, marginLeft: -20 },
     },
   },
   right: {
     title: "LIKE",
     style: {
-      label: { color: "green", fontSize: 28, fontWeight: "bold", borderColor: "green", borderWidth: 2, padding: 8 },
+      label: { color: "white", backgroundColor: "green", fontSize: 28, fontWeight: "bold", borderColor: "green", borderWidth: 2, borderRadius: 8, overflow: "hidden", padding: 8 },
       wrapper: { flexDirection: "column", alignItems: "flex-start", justifyContent: "flex-start", marginTop: 20, marginLeft: 20 },
     },
   },
   top: {
     title: "GO TO ITEM",
     style: {
-      label: { color: "#007AFF", fontSize: 28, fontWeight: "bold", borderColor: "#007AFF", borderWidth: 2, padding: 8 },
+      label: { color: "white", backgroundColor: "#007AFF", fontSize: 28, fontWeight: "bold", borderColor: "#007AFF", borderWidth: 2, borderRadius: 8, overflow: "hidden", padding: 8 },
       wrapper: { flexDirection: "column", alignItems: "center", justifyContent: "flex-center", marginTop: 570},
     },
   },
@@ -384,6 +471,22 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
     color: '#1A1A1A',
+  },
+  refreshButton: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  refreshButtonPressed: {
+    opacity: 0.72,
   },
   buttonContainer: {
     position: "absolute",
