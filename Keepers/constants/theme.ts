@@ -15,6 +15,9 @@ export type AppTheme = {
   tabBg: string;
   tabActive: string;
   tabInactive: string;
+  tabBarBg: string;
+  tabBarActive: string;
+  tabBarInactive: string;
   headerBg: string;
   headerText: string;
   accentGold: string;
@@ -32,7 +35,10 @@ export const lightTheme: AppTheme = {
   tabBg: '#FFFFFF',
   tabActive: '#1E6B4C',
   tabInactive: '#7E9787',
-  headerBg: '#1E6B4C',
+  tabBarBg: '#1E6B4C',
+  tabBarActive: '#FFFFFF',
+  tabBarInactive: 'rgba(255,255,255,0.6)',
+  headerBg: '#6D9773',
   headerText: '#FFFFFF',
   accentGold: '#FFBA00',
   accentBrown: '#B46617',
@@ -48,7 +54,10 @@ export const darkTheme: AppTheme = {
   tabBg: '#FFFFFF',
   tabActive: '#1E6B4C',
   tabInactive: '#7E9787',
-  headerBg: '#1E6B4C',
+  tabBarBg: '#1E6B4C',
+  tabBarActive: '#FFFFFF',
+  tabBarInactive: 'rgba(255,255,255,0.6)',
+  headerBg: '#6D9773',
   headerText: '#FFFFFF',
   accentGold: '#FFBA00',
   accentBrown: '#B46617',

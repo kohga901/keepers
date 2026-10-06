@@ -5,9 +5,10 @@
  * Date: 2026-04-18
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet, Text, View, Pressable, FlatList, Modal } from 'react-native';
 import { Image } from 'expo-image';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { usePriceDisplay } from '../../contexts/PriceDisplayContext';
@@ -105,9 +106,44 @@ const App: React.FC = () => {
     outputRange: [0, TOGGLE_OPTION_WIDTH],
   });
 
+  // Collapsing header: slides up as the list scrolls down, and back in on scroll up.
+  const insets = useSafeAreaInsets();
+  const listRef = useRef<FlatList<Item>>(null);
+  const [scrollY] = useState(() => new Animated.Value(0));
+  const onListScroll = useMemo(
+    () => Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true }),
+    [scrollY],
+  );
+  const [headerHeight, setHeaderHeight] = useState(insets.top + 70);
+
+  const headerTranslate = useMemo(() => {
+    // Ignore iOS overscroll bounce so the header doesn't jitter at the top.
+    const clampedScroll = scrollY.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0, 1],
+      extrapolateLeft: 'clamp',
+    });
+    return Animated.diffClamp(clampedScroll, 0, headerHeight).interpolate({
+      inputRange: [0, headerHeight],
+      outputRange: [0, -headerHeight],
+    });
+  }, [scrollY, headerHeight]);
+
+  const switchTab = (tab: string) => {
+    setActiveTab(tab);
+    setFilterOpen(false);
+    listRef.current?.scrollToOffset({ offset: 0, animated: false });
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <View style={[styles.headerRow, { backgroundColor: theme.primary }]}>
+      <Animated.View
+        onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}
+        style={[
+          styles.headerRow,
+          { backgroundColor: theme.primary, paddingTop: insets.top + 12, transform: [{ translateY: headerTranslate }] },
+        ]}
+      >
         <View style={styles.toggleWrapper}>
           <View style={[styles.toggleContainer, { backgroundColor: theme.tabBg, borderColor: theme.border }]}>
             <Animated.View
@@ -116,7 +152,7 @@ const App: React.FC = () => {
                 { width: TOGGLE_OPTION_WIDTH, backgroundColor: theme.primary, transform: [{ translateX: indicatorTranslate }] },
               ]}
             />
-            <Pressable style={[styles.toggleOption, { width: TOGGLE_OPTION_WIDTH }]} onPress={() => setActiveTab('liked')}>
+            <Pressable style={[styles.toggleOption, { width: TOGGLE_OPTION_WIDTH }]} onPress={() => switchTab('liked')}>
               <Text
                 style={[
                   styles.toggleText,
@@ -127,7 +163,7 @@ const App: React.FC = () => {
               </Text>
             </Pressable>
 
-            <Pressable style={[styles.toggleOption, { width: TOGGLE_OPTION_WIDTH }]} onPress={() => setActiveTab('disliked')}>
+            <Pressable style={[styles.toggleOption, { width: TOGGLE_OPTION_WIDTH }]} onPress={() => switchTab('disliked')}>
               <Text
                 style={[
                   styles.toggleText,
@@ -154,13 +190,17 @@ const App: React.FC = () => {
             </View>
           )}
         </View>
-      </View>
+      </Animated.View>
 
       <View style={styles.content}>
-        <FlatList
+        <Animated.FlatList
+          ref={listRef}
           data={activeTab === 'liked' ? allLikedItems : allDislikedItems}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, { paddingTop: headerHeight + 16 }]}
+          scrollIndicatorInsets={{ top: headerHeight }}
+          onScroll={onListScroll}
+          scrollEventThrottle={16}
           renderItem={({ item }) => (
             <Swipeable
               renderRightActions={() => (
@@ -256,9 +296,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingTop: 134,
     paddingBottom: 14,
-    position: 'relative',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
     zIndex: 20,
   },
   toggleWrapper: {

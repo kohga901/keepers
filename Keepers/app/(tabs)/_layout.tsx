@@ -18,8 +18,8 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: theme.tabActive,
-        tabBarInactiveTintColor: theme.tabInactive,
+        tabBarActiveTintColor: theme.tabBarActive,
+        tabBarInactiveTintColor: theme.tabBarInactive,
         headerStyle: {
           backgroundColor: theme.headerBg,
         },
@@ -29,8 +29,8 @@ export default function TabLayout() {
           backgroundColor: theme.background,
         },
         tabBarStyle: {
-          backgroundColor: theme.tabBg,
-          borderTopColor: theme.border,
+          backgroundColor: theme.tabBarBg,
+          borderTopColor: theme.tabBarBg,
         },
       }}
     >

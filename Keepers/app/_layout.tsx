@@ -7,6 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import { Stack } from 'expo-router';
+import { getFocusedRouteNameFromRoute } from 'expo-router/react-navigation';
 import { StatusBar } from 'expo-status-bar';
 import { View, ActivityIndicator } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -99,8 +100,9 @@ export default function RootLayout() {
           <Stack>
             <Stack.Screen
               name="(tabs)"
-              options={{
-                headerShown: true,
+              options={({ route }) => ({
+                // Liked History renders its own collapsing header instead.
+                headerShown: getFocusedRouteNameFromRoute(route) !== 'likelist',
                 headerTransparent: true,
                 title: 'K E E P E R S',
                 headerTintColor: theme.headerText,
@@ -112,7 +114,7 @@ export default function RootLayout() {
                   fontFamily: 'GeorgiaProBlack', // Font is now global
                   fontSize: 24,
                 },
-              }}
+              })}
             />
           </Stack>
           <StatusBar style="dark" />
