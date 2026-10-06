@@ -131,6 +131,7 @@ def initialize():
         index = idx
         ready = True
         log.info("Startup complete: index has %d items, %d have map coordinates", idx.ntotal, len(coordinates))
+        log.info("=== SERVER READY: you can run expo now ===")
     except Exception:
         # This runs in a background thread, so without this the failure would be
         # silent and every request would return 503 forever.
