@@ -26,9 +26,19 @@ import {
   type ImageLookupResult,
 } from '../../services/ai';
 
-const { height } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 const CARD_HEIGHT_RATIO = 0.7;
 const CARD_VERTICAL_MARGIN = (height * (1 - CARD_HEIGHT_RATIO)) / 2;
+
+// Swipe sensitivity. A swipe counts once the card passes the threshold; the LIKE/NOPE
+// label starts fading in at the hint distance and is fully visible at the threshold,
+// so users can see the decision before letting go.
+const HORIZONTAL_SWIPE_THRESHOLD = width / 6;
+const HORIZONTAL_LABEL_HINT = width / 20;
+const VERTICAL_SWIPE_THRESHOLD = height / 5;
+const VERTICAL_LABEL_HINT = height / 10;
+// The library's typings declare 3 values here, but at runtime it must match the 5-value input range.
+const LABEL_OPACITY_OUTPUT = [1, 0, 0, 0, 1] as unknown as [number, number, number];
 
 // This controls how many new items are fetched.
 const amountOfItemsToFetch = 10;
@@ -298,6 +308,15 @@ const App: React.FC = () => {
           
         }}
         disableBottomSwipe={true}
+        horizontalThreshold={HORIZONTAL_SWIPE_THRESHOLD}
+        verticalThreshold={VERTICAL_SWIPE_THRESHOLD}
+        overlayOpacityHorizontalThreshold={HORIZONTAL_LABEL_HINT}
+        overlayOpacityVerticalThreshold={VERTICAL_LABEL_HINT}
+        animateOverlayLabelsOpacity
+        inputOverlayLabelsOpacityRangeX={[-HORIZONTAL_SWIPE_THRESHOLD, -HORIZONTAL_LABEL_HINT, 0, HORIZONTAL_LABEL_HINT, HORIZONTAL_SWIPE_THRESHOLD]}
+        outputOverlayLabelsOpacityRangeX={LABEL_OPACITY_OUTPUT}
+        inputOverlayLabelsOpacityRangeY={[-VERTICAL_SWIPE_THRESHOLD, -VERTICAL_LABEL_HINT, 0, VERTICAL_LABEL_HINT, VERTICAL_SWIPE_THRESHOLD]}
+        outputOverlayLabelsOpacityRangeY={LABEL_OPACITY_OUTPUT}
         overlayLabels={overlayLabels}
         stackSize={3}
         stackSeparation={15}

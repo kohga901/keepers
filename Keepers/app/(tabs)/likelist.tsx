@@ -8,15 +8,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet, Text, View, Pressable, FlatList, Modal } from 'react-native';
 import { Image } from 'expo-image';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaFrame, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { usePriceDisplay } from '../../contexts/PriceDisplayContext';
+import { useStackHeaderHeight } from '../../contexts/StackHeaderHeightContext';
 import { useAppTheme } from '../../hooks/useAppTheme';
 import { Item } from '../../models/Items';
 import { getPriceTierSymbol } from '../../utils/price';
 import { deleteLikedItem, getLikedItems, deleteDislikedItem as deleteDislikedItemRemote, getDislikedItems } from '@/services/dataServices';
-import { useFocusEffect } from "expo-router/react-navigation";
+import { getDefaultHeaderHeight, useFocusEffect } from "expo-router/react-navigation";
 import * as WebBrowser from 'expo-web-browser';
 
 const TOGGLE_OPTION_WIDTH = 130;
@@ -114,7 +115,11 @@ const App: React.FC = () => {
     () => Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true }),
     [scrollY],
   );
-  const [headerHeight, setHeaderHeight] = useState(insets.top + 70);
+  const frame = useSafeAreaFrame();
+  // Match the real height of the "KEEPERS" header shown on the other tabs (e.g. Swiper).
+  const stackHeaderHeight = useStackHeaderHeight();
+  const headerHeight = stackHeaderHeight > 0 ? stackHeaderHeight : getDefaultHeaderHeight(frame, false, insets.top);
+  const headerBarHeight = headerHeight - insets.top;
 
   const headerTranslate = useMemo(() => {
     // Ignore iOS overscroll bounce so the header doesn't jitter at the top.
@@ -138,57 +143,58 @@ const App: React.FC = () => {
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <Animated.View
-        onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}
         style={[
-          styles.headerRow,
-          { backgroundColor: theme.primary, paddingTop: insets.top + 12, transform: [{ translateY: headerTranslate }] },
+          styles.headerContainer,
+          { backgroundColor: theme.primary, height: headerHeight, transform: [{ translateY: headerTranslate }] },
         ]}
       >
-        <View style={styles.toggleWrapper}>
-          <View style={[styles.toggleContainer, { backgroundColor: theme.tabBg, borderColor: theme.border }]}>
-            <Animated.View
-              style={[
-                styles.toggleIndicator,
-                { width: TOGGLE_OPTION_WIDTH, backgroundColor: theme.primary, transform: [{ translateX: indicatorTranslate }] },
-              ]}
-            />
-            <Pressable style={[styles.toggleOption, { width: TOGGLE_OPTION_WIDTH }]} onPress={() => switchTab('liked')}>
-              <Text
+        <View style={[styles.headerRow, { height: headerBarHeight }]}>
+          <View style={styles.toggleWrapper}>
+            <View style={[styles.toggleContainer, { backgroundColor: theme.tabBg, borderColor: theme.border }]}>
+              <Animated.View
                 style={[
-                  styles.toggleText,
-                  { color: activeTab === 'liked' ? '#fff' : theme.tabInactive },
+                  styles.toggleIndicator,
+                  { width: TOGGLE_OPTION_WIDTH, backgroundColor: theme.primary, transform: [{ translateX: indicatorTranslate }] },
                 ]}
-              >
-                Liked
-              </Text>
-            </Pressable>
+              />
+              <Pressable style={[styles.toggleOption, { width: TOGGLE_OPTION_WIDTH }]} onPress={() => switchTab('liked')}>
+                <Text
+                  style={[
+                    styles.toggleText,
+                    { color: activeTab === 'liked' ? '#fff' : theme.tabInactive },
+                  ]}
+                >
+                  Liked
+                </Text>
+              </Pressable>
 
-            <Pressable style={[styles.toggleOption, { width: TOGGLE_OPTION_WIDTH }]} onPress={() => switchTab('disliked')}>
-              <Text
-                style={[
-                  styles.toggleText,
-                  { color: activeTab === 'disliked' ? '#fff' : theme.tabInactive },
-                ]}
-              >
-                Disliked
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-
-        <View style={styles.filterWrapper}>
-          <Pressable
-            style={[styles.filterButton, { backgroundColor: theme.tabBg, borderColor: theme.border }]}
-            onPress={() => setFilterOpen((prev) => !prev)}
-          >
-            <Ionicons name="filter" size={20} color={theme.tabActive} />
-          </Pressable>
-
-          {filterOpen && (
-            <View style={[styles.filterDropdown, { backgroundColor: theme.tabBg, borderColor: theme.border }]}>
-              <Text style={[styles.filterDropdownText, { color: theme.mutedText }]}>Coming soon!</Text>
+              <Pressable style={[styles.toggleOption, { width: TOGGLE_OPTION_WIDTH }]} onPress={() => switchTab('disliked')}>
+                <Text
+                  style={[
+                    styles.toggleText,
+                    { color: activeTab === 'disliked' ? '#fff' : theme.tabInactive },
+                  ]}
+                >
+                  Disliked
+                </Text>
+              </Pressable>
             </View>
-          )}
+          </View>
+
+          <View style={styles.filterWrapper}>
+            <Pressable
+              style={[styles.filterButton, { backgroundColor: theme.tabBg, borderColor: theme.border }]}
+              onPress={() => setFilterOpen((prev) => !prev)}
+            >
+              <Ionicons name="filter" size={20} color={theme.tabActive} />
+            </Pressable>
+
+            {filterOpen && (
+              <View style={[styles.filterDropdown, { backgroundColor: theme.tabBg, borderColor: theme.border }]}>
+                <Text style={[styles.filterDropdownText, { color: theme.mutedText }]}>Coming soon!</Text>
+              </View>
+            )}
+          </View>
         </View>
       </Animated.View>
 
@@ -292,16 +298,18 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingBottom: 14,
+  headerContainer: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     zIndex: 20,
+    justifyContent: 'flex-end',
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
   },
   toggleWrapper: {
     flex: 1,
@@ -311,18 +319,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     borderRadius: 24,
     borderWidth: 1,
-    padding: 4,
+    padding: 3,
     position: 'relative',
   },
   toggleIndicator: {
     position: 'absolute',
-    left: 4,
-    top: 4,
-    bottom: 4,
+    left: 3,
+    top: 3,
+    bottom: 3,
     borderRadius: 20,
   },
   toggleOption: {
-    paddingVertical: 10,
+    paddingVertical: 6,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 20,
@@ -336,16 +344,16 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   filterButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   filterDropdown: {
     position: 'absolute',
-    top: 48,
+    top: 42,
     right: 0,
     borderWidth: 1,
     borderRadius: 12,
