@@ -74,6 +74,11 @@ SUPABASE_URL=
 SUPABASE_KEY=
 ```
 
+To use the Easy Upload page (`/static/upload.html`), also add
+`ENABLE_ADMIN_UPLOAD=1`. Uploading loads PyTorch and CLIP, which does not fit
+in the hosted server's memory, so it is switched off unless this is set. Leave
+it unset on Render; items uploaded locally show up there after a restart.
+
 Start the API:
 
 ```bash

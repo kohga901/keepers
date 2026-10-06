@@ -13,20 +13,103 @@ import numpy as np
 from services.Startup import EMBEDDING_DIM
 from services import Startup
 
+# --- Preference tuning ---
+
+# How strongly the average disliked item pushes the pref_vec away, relative to
+# the average liked item pulling it in.
+DISLIKE_WEIGHT = 0.35
+
+# How many of the nearest catalog items are averaged to place a user on the map.
+COORDINATE_NEIGHBOURS = 15
+
 # --- Diversity tuning ---
+# Tune these with tools/simulate_recommendations.py.
 
 # MMR trade-off: 1.0 = pure similarity (old behaviour), lower = more diverse.
 MMR_LAMBDA = 0.7
 
 # How many nearest unseen items MMR is allowed to choose from.
-MMR_POOL_SIZE = 100
+MMR_POOL_SIZE = 50
 
 # "Adjacent" items are sampled from similarity ranks [MMR_POOL_SIZE, ADJACENT_POOL_SIZE).
 ADJACENT_POOL_SIZE = 500
 
 # Fraction of each batch reserved for exploration. The rest is exploit (MMR).
-ADJACENT_FRAC = 0.2
-RANDOM_FRAC = 0.2
+ADJACENT_FRAC = 0.1
+RANDOM_FRAC = 0.1
+
+
+def _mean_embedding(item_ids: list[int]) -> np.ndarray | None:
+    """Mean embedding of the given items, or None if none of them have an embedding."""
+    embeddings = Startup.item_id_to_embedding
+    vecs = [embeddings[i] for i in item_ids if i in embeddings]
+
+    if not vecs:
+        return None
+
+    return np.mean(vecs, axis=0)
+
+
+def compute_pref_vec(liked_ids: list[int], disliked_ids: list[int]) -> np.ndarray:
+    """
+    Builds a preference vector from a user's full swipe history:
+        normalize(mean(liked) - DISLIKE_WEIGHT * mean(disliked))
+
+    Every swipe counts equally no matter how long ago it happened, and the
+    result only depends on the two lists, so repeated swipes and unlikes can't
+    make it drift.
+
+    Returns:
+        Unit-length preference vector, or an all 0 vector if the user has no likes.
+    """
+    liked_mean = _mean_embedding(liked_ids)
+
+    # With no likes there is nothing to point towards. The opposite of a disliked
+    # item isn't a meaningful direction, so stay on the cold start path.
+    if liked_mean is None:
+        return np.zeros(EMBEDDING_DIM, dtype=np.float32)
+
+    pref_vec = liked_mean
+
+    disliked_mean = _mean_embedding(disliked_ids)
+    if disliked_mean is not None:
+        pref_vec = pref_vec - DISLIKE_WEIGHT * disliked_mean
+
+    norm = np.linalg.norm(pref_vec)
+    if norm > 0:
+        pref_vec = pref_vec / norm
+
+    return pref_vec.astype(np.float32)
+
+
+def estimate_coordinates(pref_vec: np.ndarray) -> tuple[float, float] | None:
+    """
+    Places a preference vector on the 2D item map: the similarity-weighted
+    average position of the catalog items nearest to it. This stands in for
+    UMAP's transform(), which costs ~250 MB of memory just to import.
+
+    Returns:
+        (x, y), or None if no nearby item has a map position.
+    """
+    pref = np.array(pref_vec, dtype=np.float32).reshape(1, EMBEDDING_DIM)
+    coordinates = Startup.item_coordinates
+
+    with Startup._index_lock:
+        # Not every item has a map position, so look a bit further than needed.
+        k = min(COORDINATE_NEIGHBOURS * 4, Startup.index.ntotal)
+        scores, indices = Startup.index.search(pref, k=k)
+        neighbours = [(Startup._item_ids[idx], float(score)) for idx, score in zip(indices[0], scores[0])]
+
+    points = [(coordinates[item_id], score) for item_id, score in neighbours if item_id in coordinates and score > 0]
+    points = points[:COORDINATE_NEIGHBOURS]
+
+    if not points:
+        return None
+
+    xy = np.array([p for p, _ in points])
+    weights = np.array([w for _, w in points])
+    x, y = (xy * weights[:, None]).sum(axis=0) / weights.sum()
+    return float(x), float(y)
 
 
 def _mmr_select(cand_vecs: np.ndarray, pref: np.ndarray, count: int, lam: float) -> list[int]:
@@ -157,14 +240,15 @@ def get_recommendations_with_scores(
     pref = np.array(pref_vec, dtype=np.float32).reshape(1, EMBEDDING_DIM)
     faiss.normalize_L2(pref)
 
-    k = min(n + len(seen_item_ids), Startup.index.ntotal)
-    scores, indices = Startup.index.search(pref, k=k)
-
     seen_set = set(seen_item_ids)
-    results = [
-        (Startup._item_ids[idx], float(scores[0][i]))
-        for i, idx in enumerate(indices[0])
-        if Startup._item_ids[idx] not in seen_set
-    ]
+
+    with Startup._index_lock:
+        k = min(n + len(seen_set), Startup.index.ntotal)
+        scores, indices = Startup.index.search(pref, k=k)
+        results = [
+            (Startup._item_ids[idx], float(scores[0][i]))
+            for i, idx in enumerate(indices[0])
+            if Startup._item_ids[idx] not in seen_set
+        ]
 
     return results[:n]

@@ -8,38 +8,23 @@ Endpoints:
     - POST /clothes/recommendations — return personalised recommendations based on the user's preference vector
 """
 from typing import Any
+import logging
+import random
 
-print("clothes.py: starting to import")
-
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field
 import numpy as np
-import json
-from services.Startup import EMBEDDING_DIM
-import random
-from db import supabase
-from services.recommendation_service import get_recommendations
-from services import Startup
-import time
-from fastapi import BackgroundTasks
 
-print("clothes.py: imports done")
+from db import supabase, supabase_execute as _supabase_execute
+from services import Startup, user_state
+from services.recommendation_service import compute_pref_vec, estimate_coordinates, get_recommendations
 
-def _supabase_execute(query, retries=3, delay=0.5):
-    for attempt in range(retries):
-        try:
-            return query.execute()
-        except Exception:
-            if attempt < retries - 1:
-                time.sleep(delay)
-            else:
-                raise
-
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/clothes")
 
-ALPHA = 0.5
-BETA  = 0.35
+# The stored pref_vec and map coordinates are refreshed once every this many swipes.
+SYNC_EVERY = 4
 
 # --- Request / Response models ---
 
@@ -93,55 +78,6 @@ def _fetch_clothing_items(item_ids: list[int]) -> list[dict]:
     # Return the 
     return sorted(response.data, key=lambda x: order.get(x["item_id"], 999))
 
-def _fetch_pref_vec(user_id: str) -> np.ndarray:
-    """
-    DB function. Fetches a user's preference vector from the db.
-    """
-    # SQL query to db.
-    response = _supabase_execute(supabase.table("User_Preferences").select("pref_vec").eq("user_id", user_id))
-
-    # If user has no preference vector, initialize it all to 0.
-    if not response.data or response.data[0]["pref_vec"] is None:
-
-        # Return an all 0 vector.
-        return np.zeros(EMBEDDING_DIM, dtype=np.float32)
-    
-    # Return preference vector
-    return np.array(json.loads(response.data[0]["pref_vec"]), dtype=np.float32)
-
-def _update_pref_vec(pref_vec: np.ndarray, item_id: int, liked: bool) -> np.ndarray:
-    """
-    Updates a preference vector with a given vector and liked status.
-
-    Returns:
-        New preference vector.
-    """
-    # Get item's embedding.
-    item_embedding = Startup.item_id_to_embedding.get(item_id)
-
-    # If item's embedding is 0 or non existent.
-    if item_embedding is None:
-        # Just return back the preference vector as is.
-        return pref_vec
-    
-    if liked:
-        # Add the item's embedding to the pref_vec.
-        pref_vec = pref_vec + ALPHA * item_embedding
-    else:
-         # Deduct the item's embedding from the pref_vec.
-        pref_vec = pref_vec - BETA * item_embedding
-
-    # Normalize so magnitude doesn't grow unbounded over many swipes,
-    # which would shrink each new swipe's relative influence on direction.
-    norm = np.linalg.norm(pref_vec)
-
-    if norm > 0:
-        pref_vec = pref_vec / norm
-
-    print(f"[_update_pref_vec] item={item_id} liked={liked} pref_vec[:5]={pref_vec[:5]}")
-    
-    return pref_vec
-
 def _save_pref_vec(user_id: str, pref_vec: np.ndarray) -> None:
     """
     DB function. Replace a user's pref_vec with a new pref_vec.
@@ -165,34 +101,43 @@ def _record_swipe(user_id: str, item_id: int, liked: bool) -> None:
         "clothes_id": item_id
     }))
 
-def _fetch_seen_item_ids(user_id: str) -> list[int]:
+def _remove_swipe(user_id: str, item_id: int, liked: bool) -> None:
     """
-    DB function. Fetch the item_id's of clothes that the user has already seen.
+    DB function. Removes an item from a user's Likes (liked=True) or Dislikes (liked=False).
     """
-    # Likes of the user.
-    likes    = _supabase_execute(supabase.table("Likes").select("clothes_id").eq("user_id", user_id))
+    table = "Likes" if liked else "Dislikes"
 
-    # Dislikes of the user.
-    dislikes = _supabase_execute(supabase.table("Dislikes").select("clothes_id").eq("user_id", user_id))
-
-    # Join likes and dislikes.
-    seen = [row["clothes_id"] for row in likes.data]
-    seen += [row["clothes_id"] for row in dislikes.data]
-    return seen
-
+    _supabase_execute(supabase.table(table).delete().eq("user_id", user_id).eq("clothes_id", item_id))
 
 def _update_user_coordinates(user_id: str, pref_vec: np.ndarray) -> None:
     """
     DB function, takes a user's pref_vec and converts it to x, y coordinates and uploads it to db.
     """
-    coords = Startup.umap_reducer.transform(pref_vec.reshape(1, -1))[0]
-    print(f"[_update_user_coordinates] user={user_id} coords={coords}")
-    
+    coords = estimate_coordinates(pref_vec)
+
+    if coords is None:
+        return
+
     _supabase_execute(supabase.table("Coordinates").upsert({
         "user_id": user_id,
-        "x": float(coords[0]),
-        "y": float(coords[1])
+        "x": coords[0],
+        "y": coords[1]
     }))
+
+def _sync_user(user_id: str, liked_ids: list[int], disliked_ids: list[int]) -> None:
+    """
+    DB function. Saves a user's current pref_vec and map coordinates. Runs as a
+    background task so the swipe that triggered it doesn't wait for it.
+    """
+    try:
+        pref_vec = compute_pref_vec(liked_ids, disliked_ids)
+        _save_pref_vec(user_id, pref_vec)
+
+        # A user with no likes has an all 0 pref_vec, which has no place on the map.
+        if np.any(pref_vec):
+            _update_user_coordinates(user_id, pref_vec)
+    except Exception:
+        log.exception("Failed to save pref_vec/coordinates for user %s", user_id)
 
 def _fetch_liked_item_ids(user_id: str):
     response = _supabase_execute(supabase.table("Likes").select("clothes_id").eq("user_id",user_id))
@@ -218,27 +163,20 @@ def swipe(req: SwipeData, background_tasks: BackgroundTasks):
         - User's Like/Dislike history.
     """
     
-    # Get pref_vec of the user.
-    pref_vec = _fetch_pref_vec(req.user_id)
-
-    # Update the pref_vec of the user.
-    pref_vec = _update_pref_vec(pref_vec, req.item_id, req.liked)
-
-    # Save and upload the pref_vec to db.
-    _save_pref_vec(req.user_id, pref_vec)
-
-    # Save and upload the swipe data to the db.
+    # Save and upload the swipe data to the db. This is the only db call the
+    # client waits for; the pref_vec is rebuilt from the swipe history on demand.
     _record_swipe(req.user_id, req.item_id, req.liked)
 
-    # Update coordinates every 4 swipes only.
-    seen_count = len(_fetch_seen_item_ids(req.user_id))
-    print(f"[swipe] seen_count={seen_count} mod4={seen_count % 4}")
+    # Apply the swipe to the in-memory history.
+    liked_ids, disliked_ids, switched = user_state.record_swipe(req.user_id, req.item_id, req.liked)
 
-    if seen_count % 4 == 0:
-        print(f"[swipe] scheduling coordinate update for user={req.user_id}")
-        background_tasks.add_task(_update_user_coordinates, req.user_id, pref_vec)
-        print(f"[swipe] scheduled ok")
+    # An item can only be liked or disliked, not both. Remove the earlier opposite swipe.
+    if switched:
+        background_tasks.add_task(_remove_swipe, req.user_id, req.item_id, not req.liked)
 
+    # Save the pref_vec and coordinates every few swipes only.
+    if (len(liked_ids) + len(disliked_ids)) % SYNC_EVERY == 0:
+        background_tasks.add_task(_sync_user, req.user_id, liked_ids, disliked_ids)
 
     # Return status to client.
     return {"status": "ok"}
@@ -250,29 +188,31 @@ def recommendations(req: RecommendationRequest) -> RecommendationResponse:
     if not Startup.ready:
         raise HTTPException(status_code=503, detail="Server still warming up, try again shortly")
 
-    # Get pref_vec of the user.
-    pref_vec = _fetch_pref_vec(req.user_id)
+    # Get the swipe history of the user, plus the items to keep out of this batch:
+    # everything they have swiped on and everything already sent to their deck.
+    liked_ids, disliked_ids, excluded_ids = user_state.snapshot(req.user_id)
 
-    # Get seen items of the user.
-    seen_item_ids = _fetch_seen_item_ids(req.user_id)
+    # Build the pref_vec of the user from their swipe history.
+    pref_vec = compute_pref_vec(liked_ids, disliked_ids)
 
-    # If the pref_vec of a user is 0, get n random items from the db.
-    if np.all(pref_vec == 0.0):
-        random_ids = random.sample(Startup._item_ids, k=min(req.n * 5, len(Startup._item_ids)))
-        items = _fetch_clothing_items(random_ids)
-        items = [i for i in items if _matches_filters(i, req)]
-        items = items[:req.n]
-        return RecommendationResponse(recommendations=items)
-
-    # If user already has an existing pref_vec fetch n items and return it to client.
-    results = get_recommendations(pref_vec, seen_item_ids, n=req.n*5, batch_size=req.n)
+    # If the pref_vec of a user is 0, get random unseen items.
+    if not np.any(pref_vec):
+        with Startup._index_lock:
+            unseen_ids = [i for i in Startup._item_ids if i not in excluded_ids]
+        results = random.sample(unseen_ids, k=min(req.n * 5, len(unseen_ids)))
+    else:
+        results = get_recommendations(pref_vec, excluded_ids, n=req.n*5, batch_size=req.n)
 
     # Fetch the recommended items from the db.
-    items = _fetch_clothing_items(results)
+    items = _fetch_clothing_items(results) if results else []
     items = [i for i in items if _matches_filters(i, req)]
     items = items[:req.n]
     if len(items) < req.n :
-        print(f"Only {len(items)}/{req.n} items matched filters for user {req.user_id}")
+        log.info("Only %d/%d items available for user %s", len(items), req.n, req.user_id)
+
+    # Remember what was sent so the next batch doesn't repeat cards still in the deck.
+    user_state.mark_served(req.user_id, [i["item_id"] for i in items])
+
     # Send HTTP POST response to client.
     return RecommendationResponse(recommendations=items)
 
@@ -284,9 +224,9 @@ def recommendations_debug(req: RecommendationRequest):
         raise HTTPException(status_code=503, detail="Server still warming up, try again shortly")
     
     from services.recommendation_service import get_recommendations_with_scores
-    pref_vec = _fetch_pref_vec(req.user_id)
-    seen_item_ids = _fetch_seen_item_ids(req.user_id)
-    results = get_recommendations_with_scores(pref_vec, seen_item_ids, n=req.n)
+    liked_ids, disliked_ids, excluded_ids = user_state.snapshot(req.user_id)
+    pref_vec = compute_pref_vec(liked_ids, disliked_ids)
+    results = get_recommendations_with_scores(pref_vec, excluded_ids, n=req.n)
     return {"recommendations": [{"item_id": r[0], "score": r[1]} for r in results]}
 
 @router.get("/liked/{user_id}")

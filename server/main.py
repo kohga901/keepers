@@ -9,6 +9,7 @@ os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 
 from contextlib import asynccontextmanager
+import logging
 from pathlib import Path
 import threading
 
@@ -17,18 +18,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+# httpx logs a line for every Supabase call at INFO, which drowns out everything else.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
+load_dotenv(dotenv_path=Path(__file__).parent / ".env")
+
 from routers import admin, clothes, users
 from services import Startup
-import time
-print(f"[{time.time()}] main.py: imports done, about to load app")
-
-load_dotenv()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print(f"[{time.time()}] lifespan: starting background thread")
+    # Runs in the background so the port is bound before the index is built.
     threading.Thread(target=Startup.initialize, daemon=True).start()
-    print(f"[{time.time()}] lifespan: yielding, app should be live now")
     yield
 
 # Initialize the FastAPI framework.
@@ -48,5 +50,3 @@ app.include_router(admin.router)
 
 # Serves static/upload.html (the "Easy Upload" page) at /static/upload.html.
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
-
-print(f"[{time.time()}] main.py: fully loaded")

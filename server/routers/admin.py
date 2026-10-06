@@ -23,14 +23,23 @@ Endpoints:
 """
 
 import logging as log
+import os
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from db import supabase
+from db import supabase, supabase_execute as _supabase_execute
 from services import Startup, clip_service
 
 router = APIRouter(prefix="/admin")
+
+
+def _upload_enabled() -> bool:
+    """
+    Uploading loads torch + CLIP, which doesn't fit in the hosted server's
+    512 MB. It is only allowed where ENABLE_ADMIN_UPLOAD=1 is set (a local run).
+    """
+    return os.getenv("ENABLE_ADMIN_UPLOAD") == "1"
 
 
 # --- Request / Response models ---
@@ -60,18 +69,6 @@ class UploadResponse(BaseModel):
 
 
 # --- Helpers ---
-
-def _supabase_execute(query, retries: int = 3, delay: float = 0.5):
-    import time
-    for attempt in range(retries):
-        try:
-            return query.execute()
-        except Exception:
-            if attempt < retries - 1:
-                time.sleep(delay)
-            else:
-                raise
-
 
 def _next_item_id() -> int:
     """Fetches the current highest item_id in the Clothing table and returns id + 1."""
@@ -128,6 +125,12 @@ def upload_items(req: UploadRequest) -> UploadResponse:
     Embeds and inserts one or more clothing items. Each item is processed
     independently — one bad image link won't fail the rest of the batch.
     """
+    if not _upload_enabled():
+        raise HTTPException(
+            status_code=503,
+            detail="Uploading is disabled on this server. Run the server locally with ENABLE_ADMIN_UPLOAD=1 to add items.",
+        )
+
     results: list[UploadResult] = []
 
     # Track ids handed out within this batch so two items in the same
