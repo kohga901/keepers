@@ -15,6 +15,9 @@ export type AppTheme = {
   tabBg: string;
   tabActive: string;
   tabInactive: string;
+  tabBarBg: string;
+  tabBarActive: string;
+  tabBarInactive: string;
   headerBg: string;
   headerText: string;
   accentGold: string;
@@ -23,7 +26,7 @@ export type AppTheme = {
 
 // Palette: sage #6D9773, dark green #1E6B4C (brightened from source #0C3B2E), brown #B46617, gold #FFBA00, white.
 export const lightTheme: AppTheme = {
-  background: '#F4F7F5',
+  background: '#F2EBDD',
   surface: '#FFFFFF',
   text: '#1E6B4C',
   mutedText: '#6D9773',
@@ -32,14 +35,17 @@ export const lightTheme: AppTheme = {
   tabBg: '#FFFFFF',
   tabActive: '#1E6B4C',
   tabInactive: '#7E9787',
-  headerBg: '#1E6B4C',
+  tabBarBg: '#6D9773',
+  tabBarActive: '#FFFFFF',
+  tabBarInactive: 'rgba(255,255,255,0.6)',
+  headerBg: '#6D9773',
   headerText: '#FFFFFF',
   accentGold: '#FFBA00',
   accentBrown: '#B46617',
 };
 
 export const darkTheme: AppTheme = {
-  background: '#F4F7F5',
+  background: '#F2EBDD',
   surface: '#FFFFFF',
   text: '#1E6B4C',
   mutedText: '#6D9773',
@@ -48,7 +54,10 @@ export const darkTheme: AppTheme = {
   tabBg: '#FFFFFF',
   tabActive: '#1E6B4C',
   tabInactive: '#7E9787',
-  headerBg: '#1E6B4C',
+  tabBarBg: '#6D9773',
+  tabBarActive: '#FFFFFF',
+  tabBarInactive: 'rgba(255,255,255,0.6)',
+  headerBg: '#6D9773',
   headerText: '#FFFFFF',
   accentGold: '#FFBA00',
   accentBrown: '#B46617',
