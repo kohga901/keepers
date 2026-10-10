@@ -18,10 +18,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 
+# Show INFO logs from the server's own modules, with a timestamp on each line.
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 # httpx logs a line for every Supabase call at INFO, which drowns out everything else.
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
+# Load the environment variables from server/.env.
 load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 
 from routers import admin, clothes, users
@@ -36,6 +38,7 @@ async def lifespan(app: FastAPI):
 # Initialize the FastAPI framework.
 app = FastAPI(lifespan=lifespan)
 
+# Allow requests from any origin, so the app can call the server from anywhere.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

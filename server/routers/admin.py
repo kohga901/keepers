@@ -72,9 +72,12 @@ class UploadResponse(BaseModel):
 
 def _next_item_id() -> int:
     """Fetches the current highest item_id in the Clothing table and returns id + 1."""
+    # SELECT item_id FROM "Clothing" ORDER BY item_id DESC LIMIT 1
     response = _supabase_execute(
         supabase.table("Clothing").select("item_id").order("item_id", desc=True).limit(1)
     )
+
+    # An empty table starts at 1.
     if not response.data:
         return 1
     return int(response.data[0]["item_id"]) + 1
@@ -89,23 +92,33 @@ def _fetch_existing_tags() -> list[dict]:
     """
     tags: list[dict] = []
     page_size = 1000
+
+    # Row number the next page starts at.
     start = 0
     while True:
+        # Fetch one page of tags.
         response = _supabase_execute(
             supabase.table("Tags").select("Tag, Category").range(start, start + page_size - 1)
         )
         tags.extend(response.data)
+
+        # A page that isn't full is the last one.
         if len(response.data) < page_size:
             break
         start += page_size
+
+    # Sort the tags by name.
     tags.sort(key=lambda t: t["Tag"])
     return tags
 
 
 def _tag_clothing_item(item_id: int, tags: list[str]) -> None:
     """Links a clothing item to its tags via the Tagged_Clothing join table."""
+    # Nothing to link.
     if not tags:
         return
+
+    # Insert one row per tag.
     _supabase_execute(supabase.table("Tagged_Clothing").insert([
         {"clothes_id": item_id, "Tag": tag} for tag in tags
     ]))
@@ -125,12 +138,14 @@ def upload_items(req: UploadRequest) -> UploadResponse:
     Embeds and inserts one or more clothing items. Each item is processed
     independently — one bad image link won't fail the rest of the batch.
     """
+    # Uploading is switched off on this server, so return a 503 Service Unavailable error.
     if not _upload_enabled():
         raise HTTPException(
             status_code=503,
             detail="Uploading is disabled on this server. Run the server locally with ENABLE_ADMIN_UPLOAD=1 to add items.",
         )
 
+    # Outcome of each item, in the order the items were sent.
     results: list[UploadResult] = []
 
     # Track ids handed out within this batch so two items in the same
@@ -143,6 +158,7 @@ def upload_items(req: UploadRequest) -> UploadResponse:
 
     for item in req.items:
         try:
+            # Reject the item if any of its tags isn't in the master Tags table.
             unknown = [t for t in item.item_tags if t not in known_tags]
             if unknown:
                 raise ValueError(f"Unknown tag(s): {', '.join(unknown)}. Only existing tags are allowed.")
@@ -177,9 +193,11 @@ def upload_items(req: UploadRequest) -> UploadResponse:
             # 5. Make it immediately recommendable.
             Startup.add_item_embedding(item_id, raw_embedding)
 
+            # Record the item as uploaded.
             results.append(UploadResult(item_name=item.item_name, status="ok", item_id=item_id))
 
         except Exception as e:
+            # Record the failure and carry on with the next item.
             log.error(f"Failed to upload item '{item.item_name}': {e}")
             results.append(UploadResult(item_name=item.item_name, status="error", error=str(e)))
 
