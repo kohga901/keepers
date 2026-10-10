@@ -12,11 +12,14 @@ this server (the app deletes likes directly) get picked up.
 The state lives in this process only, so the server must run as a single worker.
 """
 
+import logging
 import threading
 import time
 from collections import OrderedDict
 
 from db import supabase, supabase_fetch_all
+
+log = logging.getLogger(__name__)
 
 # Seconds before a user's state is reloaded from Supabase.
 STATE_TTL = 300
@@ -32,8 +35,10 @@ SERVED_TTL = 600
 class _UserState:
     def __init__(self):
         self.lock = threading.Lock()
-        self.liked: set[int] = set()
-        self.disliked: set[int] = set()
+        # item_ids in swipe order, oldest first. Dicts (values unused) rather than
+        # sets so the order survives; compute_pref_vec weights recent swipes more.
+        self.liked: dict[int, None] = {}
+        self.disliked: dict[int, None] = {}
         # Items sent to the app that may still be sitting unswiped in its deck,
         # mapped to when they were sent.
         self.served: dict[int, float] = {}
@@ -44,10 +49,29 @@ _states: OrderedDict[str, _UserState] = OrderedDict()
 _states_lock = threading.Lock()
 
 
-def _fetch_ids(table: str, user_id: str) -> set[int]:
-    """DB function. Every clothes_id a user has in Likes or Dislikes."""
-    query = lambda: supabase.table(table).select("clothes_id").eq("user_id", user_id).order("clothes_id")
-    return {row["clothes_id"] for rows in supabase_fetch_all(query) for row in rows}
+# Set to False if Likes/Dislikes have no created_at column, so history loads unordered.
+_has_created_at = True
+
+
+def _fetch_ids(table: str, user_id: str) -> dict[int, None]:
+    """DB function. Every clothes_id a user has in Likes or Dislikes, oldest swipe first."""
+    global _has_created_at
+
+    def query():
+        q = supabase.table(table).select("clothes_id").eq("user_id", user_id)
+        if _has_created_at:
+            q = q.order("created_at")
+        # clothes_id breaks ties, and keeps paging stable without created_at.
+        return q.order("clothes_id")
+
+    try:
+        return {row["clothes_id"]: None for rows in supabase_fetch_all(query) for row in rows}
+    except Exception as e:
+        if not _has_created_at or "created_at" not in str(e):
+            raise
+        log.warning("%s has no created_at column, so swipe recency is only known since this server started", table)
+        _has_created_at = False
+        return _fetch_ids(table, user_id)
 
 
 def _get(user_id: str) -> _UserState:
@@ -74,8 +98,8 @@ def _ensure_loaded(state: _UserState, user_id: str) -> None:
 
     state.liked = liked
     # If an item somehow ended up in both tables, treat it as liked.
-    state.disliked = disliked - liked
-    for item_id in liked | disliked:
+    state.disliked = {i: None for i in disliked if i not in liked}
+    for item_id in liked.keys() | disliked.keys():
         state.served.pop(item_id, None)
     state.loaded_at = time.monotonic()
 
@@ -85,11 +109,12 @@ def snapshot(user_id: str) -> tuple[list[int], list[int], set[int], int]:
     Returns:
         (liked item_ids, disliked item_ids, item_ids to keep out of the next batch,
          number of served items the user hasn't swiped on yet)
+        Both item_id lists are ordered oldest swipe first.
     """
     state = _get(user_id)
     with state.lock:
         _ensure_loaded(state, user_id)
-        excluded = state.liked | state.disliked | set(state.served)
+        excluded = state.liked.keys() | state.disliked.keys() | state.served.keys()
         return list(state.liked), list(state.disliked), excluded, len(state.served)
 
 
@@ -100,6 +125,7 @@ def record_swipe(user_id: str, item_id: int, liked: bool) -> tuple[list[int], li
 
     Returns:
         (liked item_ids, disliked item_ids, whether the item was previously swiped the other way)
+        Both item_id lists are ordered oldest swipe first.
     """
     state = _get(user_id)
     with state.lock:
@@ -107,8 +133,10 @@ def record_swipe(user_id: str, item_id: int, liked: bool) -> tuple[list[int], li
 
         target, other = (state.liked, state.disliked) if liked else (state.disliked, state.liked)
         switched = item_id in other
-        other.discard(item_id)
-        target.add(item_id)
+        other.pop(item_id, None)
+        # Re-insert so a repeat swipe moves the item to the newest end.
+        target.pop(item_id, None)
+        target[item_id] = None
         state.served.pop(item_id, None)
 
         return list(state.liked), list(state.disliked), switched

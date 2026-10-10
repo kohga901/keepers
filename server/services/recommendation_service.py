@@ -19,6 +19,10 @@ from services import Startup
 # the average liked item pulling it in.
 DISLIKE_WEIGHT = 0.35
 
+# Recency: a swipe's weight halves every this many newer swipes of the same kind,
+# so the 30th most recent like counts half as much as the latest one.
+RECENCY_HALF_LIFE = 30
+
 # How many of the nearest catalog items are averaged to place a user on the map.
 COORDINATE_NEIGHBOURS = 15
 
@@ -39,30 +43,46 @@ ADJACENT_FRAC = 0.1
 RANDOM_FRAC = 0.1
 
 
-def _mean_embedding(item_ids: list[int]) -> np.ndarray | None:
-    """Mean embedding of the given items, or None if none of them have an embedding."""
+def _recency_weighted_mean(item_ids: list[int]) -> np.ndarray | None:
+    """
+    Recency-weighted mean embedding of the given items, ordered oldest to newest.
+    The newest item has weight 1, and weights halve every RECENCY_HALF_LIFE items back.
+
+    Returns:
+        The weighted mean, or None if none of the items have an embedding.
+    """
     embeddings = Startup.item_id_to_embedding
-    vecs = [embeddings[i] for i in item_ids if i in embeddings]
+    newest = len(item_ids) - 1
+
+    vecs, weights = [], []
+    for position, item_id in enumerate(item_ids):
+        if item_id in embeddings:
+            vecs.append(embeddings[item_id])
+            weights.append(0.5 ** ((newest - position) / RECENCY_HALF_LIFE))
 
     if not vecs:
         return None
 
-    return np.mean(vecs, axis=0)
+    return np.average(vecs, axis=0, weights=weights)
 
 
 def compute_pref_vec(liked_ids: list[int], disliked_ids: list[int]) -> np.ndarray:
     """
     Builds a preference vector from a user's full swipe history:
-        normalize(mean(liked) - DISLIKE_WEIGHT * mean(disliked))
+        normalize(wmean(liked) - DISLIKE_WEIGHT * wmean(disliked))
 
-    Every swipe counts equally no matter how long ago it happened, and the
-    result only depends on the two lists, so repeated swipes and unlikes can't
-    make it drift.
+    wmean is a recency-weighted mean, so recent swipes count more (see
+    RECENCY_HALF_LIFE). The result only depends on the two lists, so repeated
+    swipes and unlikes can't make it drift.
+
+    Args:
+        liked_ids:    Liked item_ids, ordered oldest to newest.
+        disliked_ids: Disliked item_ids, ordered oldest to newest.
 
     Returns:
         Unit-length preference vector, or an all 0 vector if the user has no likes.
     """
-    liked_mean = _mean_embedding(liked_ids)
+    liked_mean = _recency_weighted_mean(liked_ids)
 
     # With no likes there is nothing to point towards. The opposite of a disliked
     # item isn't a meaningful direction, so stay on the cold start path.
@@ -71,7 +91,7 @@ def compute_pref_vec(liked_ids: list[int], disliked_ids: list[int]) -> np.ndarra
 
     pref_vec = liked_mean
 
-    disliked_mean = _mean_embedding(disliked_ids)
+    disliked_mean = _recency_weighted_mean(disliked_ids)
     if disliked_mean is not None:
         pref_vec = pref_vec - DISLIKE_WEIGHT * disliked_mean
 
