@@ -5,7 +5,8 @@
  * Date: 2026-04-01
  */
 
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { Text } from '../../components/Text';
 
 import { useAppTheme } from '../../hooks/useAppTheme';
 

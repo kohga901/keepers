@@ -15,6 +15,7 @@
     "@ai-sdk/anthropic": "^4.0.61",
     "@ai-sdk/google": "^4.0.78",
     "@ai-sdk/openai": "^4.0.73",
+    "@expo-google-fonts/public-sans": "^0.4.2",
     "@expo/vector-icons": "^15.0.3",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-navigation/bottom-tabs": "^7.4.0",

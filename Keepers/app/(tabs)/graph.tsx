@@ -5,9 +5,9 @@ import {
 	LayoutChangeEvent,
 	Pressable,
 	StyleSheet,
-	Text,
 	View,
 } from 'react-native';
+import { Text } from '../../components/Text';
 import { Image } from 'expo-image';
 import { useIsFocused } from "expo-router/react-navigation";
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
@@ -1096,7 +1096,7 @@ const styles = StyleSheet.create({
 		paddingHorizontal: 24,
 	},
 	messageText: {
-		fontFamily: 'GeorgiaProSemiBold',
+		fontFamily: 'PublicSans_600SemiBold',
 		fontSize: 16,
 	},
 	plotWrap: {
@@ -1120,7 +1120,7 @@ const styles = StyleSheet.create({
 	},
 	popupTitle: {
 		color: '#f5f7f8',
-		fontFamily: 'GeorgiaProSemiBold',
+		fontFamily: 'PublicSans_600SemiBold',
 		fontSize: 15,
 	},
 	popupArrowDown: {
@@ -1161,13 +1161,13 @@ const styles = StyleSheet.create({
 		backgroundColor: 'rgba(247, 242, 236, 0.92)',
 	},
 	overlayTitle: {
-		fontFamily: 'GeorgiaProBlack',
+		fontFamily: 'PublicSans_900Black',
 		fontSize: 16,
 		color: '#102026',
 	},
 	overlaySubtitle: {
 		marginTop: 2,
-		fontFamily: 'GeorgiaProRegular',
+		fontFamily: 'PublicSans_400Regular',
 		fontSize: 13,
 		color: '#384046',
 	},
@@ -1179,13 +1179,13 @@ const styles = StyleSheet.create({
 	},
 	closeButtonText: {
 		color: '#0c191f',
-		fontFamily: 'GeorgiaProSemiBold',
+		fontFamily: 'PublicSans_600SemiBold',
 		fontSize: 12,
 	},
 	sheetHint: {
 		marginTop: 12,
 		color: '#d6e3ea',
-		fontFamily: 'GeorgiaProRegular',
+		fontFamily: 'PublicSans_400Regular',
 		fontSize: 14,
 	},
 	loadingRow: {
@@ -1196,13 +1196,13 @@ const styles = StyleSheet.create({
 	},
 	loadingText: {
 		color: '#d6e3ea',
-		fontFamily: 'GeorgiaProRegular',
+		fontFamily: 'PublicSans_400Regular',
 		fontSize: 14,
 	},
 	errorText: {
 		marginTop: 12,
 		color: '#f39aa0',
-		fontFamily: 'GeorgiaProRegular',
+		fontFamily: 'PublicSans_400Regular',
 		fontSize: 14,
 	},
 	itemRow: {
@@ -1230,7 +1230,7 @@ const styles = StyleSheet.create({
 	},
 	noImageText: {
 		color: '#c5d4dc',
-		fontFamily: 'GeorgiaProRegular',
+		fontFamily: 'PublicSans_400Regular',
 		fontSize: 12,
 	},
 	itemInfo: {
@@ -1239,13 +1239,13 @@ const styles = StyleSheet.create({
 	},
 	itemName: {
 		color: '#f0f5f8',
-		fontFamily: 'GeorgiaProSemiBold',
+		fontFamily: 'PublicSans_600SemiBold',
 		fontSize: 15,
 		marginBottom: 6,
 	},
 	itemPrice: {
 		color: '#8de4b7',
-		fontFamily: 'GeorgiaProBold',
+		fontFamily: 'PublicSans_700Bold',
 		fontSize: 15,
 		textDecorationLine: 'underline',
 	},
