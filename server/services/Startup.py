@@ -31,6 +31,15 @@ EMBEDDING_DIM = 512
 # Rows per request when fetching embeddings. Each row is ~12 KB of JSON.
 EMBEDDING_PAGE_SIZE = 500
 
+# Two items whose embeddings are at least this similar are treated as the same
+# product. The catalog holds some products under more than one item_id (same
+# photo, name and listing), and a user must never be shown both copies.
+# Identical photos give a similarity of 1.0; the margin only absorbs rounding.
+DUPLICATE_SIMILARITY = 0.999
+
+# How many nearest items are checked when looking for an item's duplicates.
+DUPLICATE_NEIGHBOURS = 10
+
 # 2D map position of each catalog item, the same file the app's map tab draws.
 ITEM_COORDINATES_PATH = Path(__file__).resolve().parents[1] / "data" / "item_coordinates.csv"
 
@@ -48,6 +57,10 @@ item_coordinates = None
 
 # Mean embedding of the catalog, subtracted from every embedding.
 catalog_mean = None
+
+# item_id → every item_id of the same product, itself included. Only items that
+# have at least one duplicate are in here.
+duplicate_groups: dict[int, frozenset[int]] = {}
 
 # True once everything above is loaded and requests can be answered.
 ready = False
@@ -82,6 +95,74 @@ def center_embeddings(raw: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     # Normalize again so inner product is cosine similarity.
     faiss.normalize_L2(centered)
     return centered, mean
+
+
+def find_duplicate_groups(idx, embeddings: np.ndarray, item_ids: list[int]) -> dict[int, frozenset[int]]:
+    """
+    Groups items whose embeddings are near-identical (see DUPLICATE_SIMILARITY).
+
+    Args:
+        idx:        FAISS index holding `embeddings`.
+        embeddings: (N, 512) unit-length embeddings, in the same order as item_ids.
+        item_ids:   item_id of each row.
+
+    Returns:
+        item_id → every item_id in its group, for items that have a duplicate.
+    """
+    # Get the nearest items of every item, and their similarity scores.
+    k = min(DUPLICATE_NEIGHBOURS, idx.ntotal)
+    scores, indices = idx.search(embeddings, k=k)
+
+    # Each row starts as its own group. parent[row] points towards the group's first row.
+    parent = list(range(len(item_ids)))
+
+    def find(row: int) -> int:
+        # Follow the pointers up to the first row of the group.
+        while parent[row] != row:
+            parent[row] = parent[parent[row]]
+            row = parent[row]
+        return row
+
+    # Join every pair of rows that are similar enough into one group.
+    rows, cols = np.nonzero(scores >= DUPLICATE_SIMILARITY)
+    for row, col in zip(rows, cols):
+        a, b = find(int(row)), find(int(indices[row, col]))
+        if a != b:
+            parent[max(a, b)] = min(a, b)
+
+    # Collect the item_ids of each group.
+    members: dict[int, list[int]] = {}
+    for row, item_id in enumerate(item_ids):
+        members.setdefault(find(row), []).append(item_id)
+
+    # Keep only groups with more than one item, and look them up by any member.
+    groups: dict[int, frozenset[int]] = {}
+    for ids in members.values():
+        if len(ids) > 1:
+            group = frozenset(ids)
+            for item_id in ids:
+                groups[item_id] = group
+
+    return groups
+
+
+def duplicates_of(item_id: int) -> frozenset[int] | tuple[int]:
+    """Every item_id of the same product as item_id, itself included."""
+    return duplicate_groups.get(item_id, (item_id,))
+
+
+def drop_duplicates(item_ids: list[int]) -> list[int]:
+    """Keeps the first item of each product and drops later copies of it, preserving order."""
+    # item_ids already covered by an item that was kept.
+    covered: set[int] = set()
+    kept: list[int] = []
+
+    for item_id in item_ids:
+        if item_id not in covered:
+            kept.append(item_id)
+            covered.update(duplicates_of(item_id))
+
+    return kept
 
 
 def _fetch_embeddings() -> tuple[list[int], np.ndarray]:
@@ -137,7 +218,7 @@ def _load_item_coordinates() -> dict[int, tuple[float, float]]:
 
 
 def initialize():
-    global index, _item_ids, item_id_to_embedding, item_coordinates, catalog_mean, ready
+    global index, _item_ids, item_id_to_embedding, item_coordinates, catalog_mean, duplicate_groups, ready
 
     try:
         # Fetch all embeddings from Supabase.
@@ -157,6 +238,11 @@ def initialize():
         # item_id → embedding lookup for building pref vecs
         mapping = {item_id: embeddings[i] for i, item_id in enumerate(item_ids_local)}
 
+        # Find the items that are copies of the same product.
+        groups = find_duplicate_groups(idx, embeddings, item_ids_local)
+        log.info("Found %d items that are copies of another item (%d products stored more than once)",
+                 len(groups), len(set(groups.values())))
+
         # Load the map position of each item.
         coordinates = _load_item_coordinates()
 
@@ -165,6 +251,7 @@ def initialize():
         item_id_to_embedding = mapping
         item_coordinates = coordinates
         catalog_mean = mean
+        duplicate_groups = groups
         index = idx
         ready = True
         log.info("Startup complete: index has %d items, %d have map coordinates", idx.ntotal, len(coordinates))
@@ -201,6 +288,16 @@ def add_item_embedding(item_id: int, raw_embedding: np.ndarray) -> None:
 
     # Add the item to the index and both lookups.
     with _index_lock:
+        # Look for existing items that are the same product as the new one.
+        scores, indices = index.search(centered, k=min(DUPLICATE_NEIGHBOURS, index.ntotal))
+        same = [_item_ids[idx] for idx, score in zip(indices[0], scores[0]) if score >= DUPLICATE_SIMILARITY]
+
+        # Put the new item and everything it matches into one group.
+        if same:
+            group = frozenset({item_id}).union(*(duplicates_of(i) for i in same))
+            for member in group:
+                duplicate_groups[member] = group
+
         index.add(centered)
         _item_ids.append(item_id)
         item_id_to_embedding[item_id] = centered[0]

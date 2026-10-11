@@ -252,6 +252,9 @@ def recommendations(req: RecommendationRequest) -> RecommendationResponse:
             with Startup._index_lock:
                 unseen_ids = [i for i in Startup._item_ids if i not in excluded_ids]
             results = random.sample(unseen_ids, k=min(n * 5, len(unseen_ids)))
+
+            # Drop later copies of the same product from the sample.
+            results = Startup.drop_duplicates(results)
         # Otherwise get the items recommended for the pref_vec.
         else:
             results = get_recommendations(pref_vec, excluded_ids, n=n*5, batch_size=n)

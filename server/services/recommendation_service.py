@@ -280,7 +280,8 @@ def get_recommendations(
         while source:
             item = source.pop()
             if item not in used:
-                used.add(item)
+                # Mark the item and its copies as used, so the same product isn't added twice.
+                used.update(Startup.duplicates_of(item))
                 results.append(item)
                 return True
 

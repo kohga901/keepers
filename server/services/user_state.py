@@ -19,6 +19,7 @@ from collections import OrderedDict
 from contextlib import contextmanager
 
 from db import supabase, supabase_fetch_all
+from services import Startup
 
 log = logging.getLogger(__name__)
 
@@ -39,8 +40,9 @@ class _UserState:
         # sets so the order survives; compute_pref_vec weights recent swipes more.
         self.liked: dict[int, None] = {}
         self.disliked: dict[int, None] = {}
-        # Every item the user has swiped on or been sent. It only ever grows, so
-        # an item is never recommended twice, even after it is unliked.
+        # Every item the user has swiped on or been sent, plus every other copy of
+        # the same product. It only ever grows, so a product is never recommended
+        # twice, even after it is unliked.
         self.seen: set[int] = set()
         # When the state was last loaded from Supabase. None means never.
         self.loaded_at: float | None = None
@@ -55,6 +57,14 @@ _states_lock = threading.Lock()
 
 # Set to False if Likes/Dislikes have no created_at column, so history loads unordered.
 _has_created_at = True
+
+
+def _with_duplicates(item_ids) -> set[int]:
+    """The given item_ids plus every other item_id that is the same product as one of them."""
+    expanded: set[int] = set()
+    for item_id in item_ids:
+        expanded.update(Startup.duplicates_of(item_id))
+    return expanded
 
 
 def _fetch_ids(table: str, user_id: str) -> dict[int, None]:
@@ -118,7 +128,7 @@ def _ensure_loaded(state: _UserState, user_id: str) -> None:
     state.disliked = {i: None for i in disliked if i not in liked}
 
     # Everything swiped counts as seen. Nothing is ever removed from seen.
-    state.seen.update(liked, disliked)
+    state.seen.update(_with_duplicates(liked), _with_duplicates(disliked))
 
     # Record when the state was loaded.
     state.loaded_at = time.monotonic()
@@ -177,8 +187,8 @@ def record_swipe(user_id: str, item_id: int, liked: bool) -> tuple[list[int], li
         target.pop(item_id, None)
         target[item_id] = None
 
-        # A swiped item counts as seen.
-        state.seen.add(item_id)
+        # A swiped item counts as seen, and so do its copies.
+        state.seen.update(Startup.duplicates_of(item_id))
 
         return list(state.liked), list(state.disliked), switched
 
@@ -210,5 +220,5 @@ def remove_swipe(user_id: str, item_id: int, liked: bool) -> tuple[list[int], li
 def mark_served(user_id: str, item_ids: list[int]) -> None:
     state = _get(user_id)
     with state.lock:
-        # A sent item counts as seen, so it is never sent again.
-        state.seen.update(item_ids)
+        # A sent item counts as seen, and so do its copies, so the product is never sent again.
+        state.seen.update(_with_duplicates(item_ids))
