@@ -186,13 +186,12 @@ export default function StyleWraps() {
               <View style={styles.verdictTrack} accessible accessibilityLabel={`${wrap.likeRate} percent liked, ${wrap.dislikeRate} percent passed`}>
                 <View style={{ flex: wrap.likes.length, backgroundColor: theme.text }} /><View style={{ flex: wrap.dislikeCount, backgroundColor: theme.primary }} />
               </View>
-              <Text style={[styles.small, { color: theme.text }]}>Based on reactions still in your history.</Text>
             </View>
 
             {data.tagsUnavailable && <View style={[styles.card, surface]}><Text style={[styles.body, { color: theme.text }]}>Your reaction stats are ready. Style tags couldn’t load yet.</Text><Pressable accessibilityRole="button" onPress={() => void load()} style={styles.textButton}><Text style={[styles.linkText, { color: theme.text }]}>Retry style insights</Text><Ionicons name="refresh" size={18} color={theme.text} /></Pressable></View>}
 
             <View style={styles.sectionDivider} />
-            <View style={styles.sectionHeader}><Text style={[styles.sectionTitle, { color: theme.text }]}>Your Style</Text><Text style={[styles.small, { color: theme.text }]}>TOP TAGS</Text></View>
+            <View style={styles.sectionHeader}><Text style={[styles.sectionTitle, { color: theme.text }]}>Your Style</Text><Ionicons name="pricetag-outline" size={22} color={theme.text} accessibilityLabel="Top tags" /></View>
             <View style={[styles.card, surface]}>
               {wrap.styles.length ? <>
                 {wrap.styles.slice(0, 3).map((tag, index) => <View key={tag.name} style={styles.rankRow}>
@@ -203,7 +202,7 @@ export default function StyleWraps() {
             </View>
 
             <View style={styles.sectionDivider} />
-            <View style={styles.sectionHeader}><Text style={[styles.sectionTitle, { color: theme.text }]}>Favorite details</Text><Ionicons name="color-palette-outline" size={22} color={theme.text} /></View>
+            <View style={styles.sectionHeader}><Text style={[styles.sectionTitle, { color: theme.text }]}>Favorite Details</Text><Ionicons name="color-palette-outline" size={22} color={theme.text} /></View>
             <View style={[styles.card, surface]}>
               <Text style={[styles.tagName, { color: theme.text }]}>Your Color Palette</Text>
               {wrap.colors.length ? <View style={styles.palette}>{wrap.colors.slice(0, 5).map((tag) => <View key={tag.name} style={styles.colorItem}><View style={[styles.swatch, { backgroundColor: COLOR_SWATCHES[tag.name] ?? theme.background, borderColor: theme.border }]}>{!COLOR_SWATCHES[tag.name] && <Ionicons name="color-palette-outline" size={22} color={theme.text} />}</View><Text style={[styles.small, styles.centerText, { color: theme.text }]}>{tagLabel(tag.name)}</Text><Text style={[styles.small, { color: theme.text }]}>{tag.count} liked</Text></View>)}</View> : <Text style={[styles.body, { color: theme.text }]}>Color tags on your liked pieces will build your palette here.</Text>}
@@ -217,16 +216,16 @@ export default function StyleWraps() {
               <View style={styles.sectionDivider} />
               <View style={[styles.card, surface]}>
               <View style={styles.headingRow}>
-                <Text style={[styles.sectionTitle, { color: theme.text }]}>A few of your keepers</Text>
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>A few of your Keepers</Text>
                 {loading ? (
-                  <ActivityIndicator color={theme.text} size="small" accessibilityLabel="Refreshing your keepers" />
+                  <ActivityIndicator color={theme.text} size="small" accessibilityLabel="Refreshing your Keepers" />
                 ) : (
                   <Ionicons name="heart" size={20} color={theme.text} />
                 )}
               </View>
               <View style={styles.gallery}>{featuredKeepers.map((item) => <View key={item.id} style={styles.galleryItem}>
                 <Pressable accessibilityRole="link" accessibilityLabel={`Open the store page for ${item.name ?? 'this liked item'}`} onPress={() => void openStorePage(item.itemUrl!)} style={({ pressed }) => pressed && styles.galleryItemPressed}>
-                  <Image source={{ uri: item.imageUrl! }} style={[styles.itemImage, { backgroundColor: theme.background }]} contentFit="contain" accessibilityLabel={item.name ?? 'Liked clothing item'} />
+                  <Image source={{ uri: item.imageUrl! }} style={[styles.itemImage, { backgroundColor: theme.background }]} contentFit="cover" accessibilityLabel={item.name ?? 'Liked clothing item'} />
                   <Text numberOfLines={2} style={[styles.small, styles.galleryItemName, { color: theme.text }]}>{item.name ?? 'A keeper'}</Text>
                   <View style={styles.shopLink}><Text style={[styles.small, { color: theme.text }]}>Shop item</Text><Ionicons name="open-outline" size={14} color={theme.text} /></View>
                 </Pressable>
@@ -242,7 +241,7 @@ export default function StyleWraps() {
 
             <View style={styles.sectionDivider} />
             <View style={[styles.card, surface]}>
-              <View style={styles.detailRow}><Ionicons name="ribbon-outline" size={32} color={theme.text} /><View style={styles.flex}><Text style={[styles.tagName, { color: theme.text }]}>Next Chapter: {wrap.milestone} keepers</Text><Text style={[styles.body, { color: theme.text }]}>{wrap.milestone - wrap.likes.length} more likes until your next milestone.</Text></View></View>
+              <View style={styles.detailRow}><Ionicons name="ribbon-outline" size={32} color={theme.text} /><View style={styles.flex}><Text style={[styles.tagName, { color: theme.text }]}>Next Chapter: {wrap.milestone} Keepers</Text><Text style={[styles.body, { color: theme.text }]}>{wrap.milestone - wrap.likes.length} more likes until your next milestone.</Text></View></View>
               <View style={[styles.rankTrack, { backgroundColor: theme.background }]} accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: wrap.milestone, now: wrap.likes.length }} accessibilityLabel="Keepers milestone"><View style={[styles.rankFill, { width: `${wrap.likes.length / wrap.milestone * 100}%`, backgroundColor: theme.text }]} /></View>
               <Pressable accessibilityRole="button" onPress={() => router.navigate('/swiper')} style={styles.darkButton}><Text style={styles.lightButtonText}>Find your next keeper</Text><Ionicons name="arrow-forward" size={18} color={BUTTON_TEXT} /></Pressable>
             </View>

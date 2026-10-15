@@ -304,15 +304,6 @@ export function AiKeySettings() {
           </Text>
         </Pressable>
       )}
-
-      <View style={[styles.notice, { borderColor: theme.border }]}>
-        <Ionicons name="information-circle-outline" size={19} color={theme.mutedText} />
-        <Text style={[styles.noticeText, { color: theme.mutedText }]}>
-          {hasDevelopmentKey
-            ? 'Development keys are loaded into the app bundle and are not secret. Use only a short-lived, restricted test key with a strict spending limit, and never include it in a release build.'
-            : 'Your key stays in encrypted storage on this device and is sent only to the selected AI provider. Item images and search prompts are also sent to that provider. Use a dedicated, restricted key with spending limits. Never paste a shared or production key here.'}
-        </Text>
-      </View>
     </View>
   );
 }
