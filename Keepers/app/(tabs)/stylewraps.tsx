@@ -148,19 +148,21 @@ export default function StyleWraps() {
     <View style={[styles.screen, { backgroundColor: theme.background }]}>
       <ScrollView
         contentContainerStyle={[styles.content, { paddingTop: headerHeight + 24 }]}
-        refreshControl={<RefreshControl refreshing={loading && !!data} onRefresh={() => void load()} tintColor={theme.text} progressViewOffset={headerHeight} />}
+        // Refresh feedback is shown in the keepers card once data is available.
+        refreshControl={<RefreshControl refreshing={false} onRefresh={() => void load()} tintColor={theme.text} progressViewOffset={headerHeight} />}
       >
-        {loading && !data ? (
-          <View style={styles.stateCard} accessibilityRole="progressbar" accessibilityLabel="Loading your style recap">
-            <ActivityIndicator color={theme.text} size="large" />
-            <Text style={[styles.body, { color: theme.text }]}>Finding your signature…</Text>
-          </View>
-        ) : error ? (
+        {error && (
           <View style={[styles.card, surface]}>
             <Ionicons name="cloud-offline-outline" size={32} color={theme.text} />
             <Text style={[styles.sectionTitle, { color: theme.text }]}>Your wrap is taking a moment.</Text>
             <Text accessibilityRole="alert" style={[styles.body, { color: theme.text }]}>{error}</Text>
             <Pressable accessibilityRole="button" onPress={() => void load()} style={styles.darkButton}><Text style={styles.lightButtonText}>Try again</Text></Pressable>
+          </View>
+        )}
+        {loading && !data ? (
+          <View style={styles.stateCard} accessibilityRole="progressbar" accessibilityLabel="Loading your style recap">
+            <ActivityIndicator color={theme.text} size="large" />
+            <Text style={[styles.body, { color: theme.text }]}>Getting Your Style...</Text>
           </View>
         ) : wrap && wrap.total === 0 ? (
           <View style={[styles.hero, { backgroundColor: theme.surface }]}>
@@ -201,13 +203,6 @@ export default function StyleWraps() {
             </View>
 
             <View style={styles.sectionDivider} />
-            <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-              <View style={styles.headingRow}><Text style={styles.eyebrow}>YOUR STYLE PERSONA</Text><Ionicons name="finger-print-outline" size={28} color={theme.text} /></View>
-              <Text style={styles.personaTitle}>{wrap.personality.title}</Text>
-              <Text style={styles.heroBody}>{wrap.personality.description}</Text>
-            </View>
-
-            <View style={styles.sectionDivider} />
             <View style={styles.sectionHeader}><Text style={[styles.sectionTitle, { color: theme.text }]}>Favorite details</Text><Ionicons name="color-palette-outline" size={22} color={theme.text} /></View>
             <View style={[styles.card, surface]}>
               <Text style={[styles.tagName, { color: theme.text }]}>Your Color Palette</Text>
@@ -218,10 +213,17 @@ export default function StyleWraps() {
               <View style={styles.detailRow}><Ionicons name="resize-outline" size={25} color={theme.text} /><View style={styles.flex}><Text style={[styles.small, { color: theme.text }]}>SIGNATURE FIT{topFit && wrap.fits[1]?.count === topFit.count ? ' · TIED FAVORITE' : ''}</Text><Text style={[styles.tagName, { color: theme.text }]}>{topFit ? tagLabel(topFit.name) : 'Still discovering'}</Text></View>{topFit && <Text style={[styles.small, { color: theme.text }]}>{topFit.count} liked</Text>}</View>
             </View>
 
-            {featuredKeepers.length > 0 && <>
+            {(featuredKeepers.length > 0 || loading) && <>
               <View style={styles.sectionDivider} />
               <View style={[styles.card, surface]}>
-              <View style={styles.headingRow}><Text style={[styles.sectionTitle, { color: theme.text }]}>A few of your keepers</Text><Ionicons name="heart" size={20} color={theme.text} /></View>
+              <View style={styles.headingRow}>
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>A few of your keepers</Text>
+                {loading ? (
+                  <ActivityIndicator color={theme.text} size="small" accessibilityLabel="Refreshing your keepers" />
+                ) : (
+                  <Ionicons name="heart" size={20} color={theme.text} />
+                )}
+              </View>
               <View style={styles.gallery}>{featuredKeepers.map((item) => <View key={item.id} style={styles.galleryItem}>
                 <Pressable accessibilityRole="link" accessibilityLabel={`Open the store page for ${item.name ?? 'this liked item'}`} onPress={() => void openStorePage(item.itemUrl!)} style={({ pressed }) => pressed && styles.galleryItemPressed}>
                   <Image source={{ uri: item.imageUrl! }} style={[styles.itemImage, { backgroundColor: theme.background }]} contentFit="contain" accessibilityLabel={item.name ?? 'Liked clothing item'} />
