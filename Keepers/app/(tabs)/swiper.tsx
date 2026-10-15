@@ -67,6 +67,7 @@ const App: React.FC = () => {
   const [cards, setCards] = useState<Item[]>([]);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isFeedLoading, setIsFeedLoading] = useState(true);
   const [lookupItem, setLookupItem] = useState<Item | null>(null);
   const [lookupResult, setLookupResult] = useState<ImageLookupResult | null>(null);
   const [lookupError, setLookupError] = useState<{
@@ -134,41 +135,50 @@ const App: React.FC = () => {
   useEffect(() => {
 
     const checkSessionAndLoad = async () => {
-      const { data, error } = await supabase.auth.getSession();
-      if (error) {
-        console.error('Failed to read session', error.message);
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
+
+        const hasSession = !!data.session;
+        setIsAuthenticated(hasSession);
+
+        if (data.session) {
+          await initialDataFeed(data.session.user.id);
+        } else {
+          setCards([]);
+        }
+      } catch (error) {
+        console.error('Failed to read session', error);
+      } finally {
         setIsAuthReady(true);
-        return;
       }
-
-      const hasSession = !!data.session;
-      setIsAuthenticated(hasSession);
-
-      if (hasSession) {
-        await initialDataFeed(data.session.user.id);
-      } else {
-        setCards([]);
-      }
-
-      setIsAuthReady(true);
     };
 
     const initialDataFeed = async (userId: string) => {
       if (loadedUserId.current === userId) return;
       loadedUserId.current = userId;
+      setIsFeedLoading(true);
 
-      const data = await getRecommendationsFromServer(amountOfItemsToFetch);
-      const parsedCards: Item[] = data ? data.map(toItem) : [];
+      try {
+        const data = await getRecommendationsFromServer(amountOfItemsToFetch);
+        const parsedCards: Item[] = data ? data.map(toItem) : [];
 
-      if (parsedCards.length === 0) {
+        if (parsedCards.length === 0) {
+          markOutOfCards();
+          return;
+        }
+
+        outOfCardsRef.current = false;
+        setOutOfCards(false);
+        setCards(parsedCards);
+        setDeckKey((key) => key + 1);
+      } catch (error) {
+        console.error('Failed to load the initial feed', error);
+        setRefreshFailed(true);
         markOutOfCards();
-        return;
+      } finally {
+        setIsFeedLoading(false);
       }
-
-      outOfCardsRef.current = false;
-      setOutOfCards(false);
-      setCards(parsedCards);
-      setDeckKey((key) => key + 1);
     }
 
     checkSessionAndLoad();
@@ -266,10 +276,11 @@ const App: React.FC = () => {
     router.push('/settings');
   };
 
-  if (!isAuthReady) {
+  if (!isAuthReady || (isAuthenticated && isFeedLoading)) {
     return (
-      <View style={styles.messageContainer}>
-        <Text style={styles.messageText}>Loading your feed...</Text>
+      <View style={[styles.messageContainer, { backgroundColor: theme.background }]} accessibilityRole="progressbar" accessibilityLabel="Loading your feed">
+        <ActivityIndicator size="large" color={theme.text} />
+        <Text style={[styles.messageText, { color: theme.text, marginTop: 16 }]}>Loading your feed...</Text>
       </View>
     );
   }

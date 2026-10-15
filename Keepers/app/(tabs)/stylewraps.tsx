@@ -144,6 +144,15 @@ export default function StyleWraps() {
     router.push('/settings');
   }
 
+  if (loading && !data) {
+    return (
+      <View style={[styles.loadingState, { backgroundColor: theme.background }]} accessibilityRole="progressbar" accessibilityLabel="Loading your style recap">
+        <ActivityIndicator size="large" color={theme.text} />
+        <Text style={styles.loadingText}>Loading your style recap...</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.screen, { backgroundColor: theme.background }]}>
       <ScrollView
@@ -159,12 +168,7 @@ export default function StyleWraps() {
             <Pressable accessibilityRole="button" onPress={() => void load()} style={styles.darkButton}><Text style={styles.lightButtonText}>Try again</Text></Pressable>
           </View>
         )}
-        {loading && !data ? (
-          <View style={styles.stateCard} accessibilityRole="progressbar" accessibilityLabel="Loading your style recap">
-            <ActivityIndicator color={theme.text} size="large" />
-            <Text style={[styles.body, { color: theme.text }]}>Getting Your Style...</Text>
-          </View>
-        ) : wrap && wrap.total === 0 ? (
+        {wrap && wrap.total === 0 ? (
           <View style={[styles.hero, { backgroundColor: theme.surface }]}>
             <Ionicons name="sparkles-outline" size={48} color={theme.text} />
             <Text style={styles.heroTitle}>Great style starts with a swipe.</Text>
@@ -275,7 +279,8 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
   pageTitle: { fontFamily: 'GeorgiaProBold', fontSize: 32, marginTop: 7 },
   periodPill: { borderWidth: 1, borderRadius: 20, paddingVertical: 7, paddingHorizontal: 11 },
   intro: { fontSize: 15, lineHeight: 23, marginTop: -6, marginBottom: 6 },
-  stateCard: { paddingVertical: 80, alignItems: 'center', gap: 18 },
+  loadingState: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, gap: 16 },
+  loadingText: { fontFamily: 'PublicSans_600SemiBold', fontSize: 16, color: theme.text, textAlign: 'center' },
   card: { borderWidth: 1, borderRadius: 12, padding: 20, gap: 16 },
   hero: { borderRadius: 12, padding: 24, gap: 22, overflow: 'hidden' },
   heroTitle: { fontFamily: 'GeorgiaProBold', fontSize: 30, lineHeight: 38, color: theme.text },

@@ -739,6 +739,7 @@ export default function GraphTab() {
 	const [plotSize, setPlotSize] = useState<PlotSize>({ width: 0, height: 0 });
 	const [selectedItem, setSelectedItem] = useState<SelectedItem | null>(null);
 	const [preferencePoint, setPreferencePoint] = useState<PreferencePoint | null>(null);
+	const [isLoadingPreferences, setIsLoadingPreferences] = useState(true);
 	const [isLoadingItem, setIsLoadingItem] = useState(false);
 	const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -778,7 +779,11 @@ export default function GraphTab() {
 			}
 		};
 
-		fetchPreferencePoint();
+		void fetchPreferencePoint().catch((error) => {
+			console.error('Failed to load graph preferences', error);
+		}).finally(() => {
+			if (!cancelled) setIsLoadingPreferences(false);
+		});
 
 		return () => {
 			cancelled = true;
@@ -973,6 +978,13 @@ export default function GraphTab() {
 		}
 	};
 
+	const renderGraphLoading = () => (
+		<View style={[styles.centered, { backgroundColor: theme.background }]} accessibilityRole="progressbar" accessibilityLabel="Loading your style map">
+			<ActivityIndicator size="large" color={theme.text} />
+			<Text style={[styles.messageText, { color: theme.text, marginTop: 16 }]}>Loading your style map...</Text>
+		</View>
+	);
+
 	// Empty-state view when there is no usable graph data.
 	if (!bounds || points.length === 0) {
 		return (
@@ -981,6 +993,8 @@ export default function GraphTab() {
 			</View>
 		);
 	}
+
+	if (isLoadingPreferences) return renderGraphLoading();
 
 	// Main graph screen: WebView plot plus floating details popup and title bar.
 	return (
@@ -991,6 +1005,8 @@ export default function GraphTab() {
 					ref={webViewRef}
 					originWhitelist={['*']}
 					source={{ html: webContent }}
+					startInLoadingState
+					renderLoading={() => <View style={StyleSheet.absoluteFill}>{renderGraphLoading()}</View>}
 					onMessage={handleWebMessage}
 					javaScriptEnabled
 					domStorageEnabled
