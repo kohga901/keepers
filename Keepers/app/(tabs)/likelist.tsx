@@ -236,7 +236,7 @@ const App: React.FC = () => {
                       {item.name}
                     </Text>
                     <View style={styles.priceGenderRow}>
-                      <Text style={[styles.itemPrice, { color: theme.accentGold }, { fontFamily: 'PublicSans_600SemiBold' }]}>
+                      <Text style={[styles.itemPrice, { color: theme.accentBrown }, { fontFamily: 'PublicSans_600SemiBold' }]}>
                         {showPriceAsTier ? getPriceTierSymbol(item.price) : item.price}
                       </Text>
                       <Text style={[styles.itemGender, { color: theme.mutedText }, { fontFamily: 'PublicSans_600SemiBold' }]}>
@@ -269,7 +269,7 @@ const App: React.FC = () => {
                     </Text>
                     <View style={{ height: 1, backgroundColor: '#FFFFFF', opacity: 0.4, width: '100%', marginVertical: 10 }} />
 
-                    <Text style={{ color: theme.accentGold, fontFamily: 'PublicSans_600SemiBold', alignSelf: 'flex-start' }}>
+                    <Text style={{ color: theme.accentBrown, fontFamily: 'PublicSans_600SemiBold', alignSelf: 'flex-start' }}>
                       {showPriceAsTier ? getPriceTierSymbol(selectedItem.price) : selectedItem.price}
                     </Text>
                     <Text style={{ color: '#FFFFFF', fontFamily: 'PublicSans_600SemiBold', alignSelf: 'flex-end' }}>

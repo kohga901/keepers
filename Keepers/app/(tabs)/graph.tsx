@@ -1013,22 +1013,22 @@ export default function GraphTab() {
 							]}
 						>
 							<View style={styles.popupHeader}>
-								<Text style={styles.popupTitle}>Point #{selectedPointId}</Text>
-								<Pressable onPress={clearSelection} style={styles.closeButton}>
+								<Text style={[styles.popupTitle, { color: theme.text }]}>Point #{selectedPointId}</Text>
+								<Pressable onPress={clearSelection} style={[styles.closeButton, { backgroundColor: theme.primary }]}>
 									<Text style={styles.closeButtonText}>Close</Text>
 								</Pressable>
 							</View>
 
 							{isLoadingItem ? (
 								<View style={styles.loadingRow}>
-									<ActivityIndicator size="small" color="#4caf85" />
-									<Text style={styles.loadingText}>Loading item...</Text>
+									<ActivityIndicator size="small" color={theme.primary} />
+									<Text style={[styles.loadingText, { color: theme.mutedText }]}>Loading item...</Text>
 								</View>
 							) : loadError ? (
-								<Text style={styles.errorText}>{loadError}</Text>
+								<Text style={[styles.errorText, { color: theme.accentBrown }]}>{loadError}</Text>
 							) : selectedItem ? (
 								<View style={styles.itemRow}>
-									<View style={styles.imageFrame}>
+									<View style={[styles.imageFrame, { backgroundColor: theme.background, borderColor: theme.border }]}>
 										{selectedItem.imageUrl ? (
 											<Image
 												style={styles.itemImage}
@@ -1038,21 +1038,21 @@ export default function GraphTab() {
 											/>
 										) : (
 											<View style={styles.noImageWrap}>
-												<Text style={styles.noImageText}>No Image</Text>
+												<Text style={[styles.noImageText, { color: theme.mutedText }]}>No Image</Text>
 											</View>
 										)}
 									</View>
 									<View style={styles.itemInfo}>
-										<Text style={styles.itemName}>{selectedItem.name}</Text>
+										<Text style={[styles.itemName, { color: theme.text }]}>{selectedItem.name}</Text>
 										<Pressable onPress={() => WebBrowser.openBrowserAsync(selectedItem.itemUrl)}>
-											<Text style={styles.itemPrice}>
+											<Text style={[styles.itemPrice, { color: theme.accentBrown }]}>
 												{selectedItem.price}
 											</Text>
 										</Pressable>
 									</View>
 								</View>
 							) : (
-								<Text style={styles.sheetHint}>No details available.</Text>
+								<Text style={[styles.sheetHint, { color: theme.mutedText }]}>No details available.</Text>
 							)}
 
 							{popupPosition.showAbove ? (
@@ -1112,6 +1112,11 @@ const styles = StyleSheet.create({
 		paddingHorizontal: 10,
 		paddingVertical: 10,
 		minHeight: 120,
+		shadowColor: '#000000',
+		shadowOffset: { width: 0, height: 4 },
+		shadowOpacity: 0.18,
+		shadowRadius: 8,
+		elevation: 6,
 	},
 	popupHeader: {
 		flexDirection: 'row',
@@ -1172,7 +1177,6 @@ const styles = StyleSheet.create({
 		color: '#384046',
 	},
 	closeButton: {
-		backgroundColor: '#4caf85',
 		borderRadius: 8,
 		paddingVertical: 6,
 		paddingHorizontal: 10,
@@ -1215,9 +1219,7 @@ const styles = StyleSheet.create({
 		height: 90,
 		borderRadius: 10,
 		borderWidth: 1,
-		borderColor: '#3f4e57',
 		overflow: 'hidden',
-		backgroundColor: '#0e161b',
 	},
 	itemImage: {
 		width: '100%',
@@ -1245,8 +1247,7 @@ const styles = StyleSheet.create({
 	},
 	itemPrice: {
 		color: '#8de4b7',
-		fontFamily: 'PublicSans_700Bold',
+		fontFamily: 'PublicSans_600SemiBold',
 		fontSize: 15,
-		textDecorationLine: 'underline',
 	},
 });
