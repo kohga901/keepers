@@ -265,7 +265,7 @@ def recommendations(req: RecommendationRequest) -> RecommendationResponse:
         return RecommendationResponse(recommendations=items)
 
     # If user already has an existing pref_vec fetch n items and return it to client.
-    results = get_recommendations(pref_vec, seen_item_ids, n=req.n*5)
+    results = get_recommendations(pref_vec, seen_item_ids, n=req.n*5, batch_size=req.n)
 
     # Fetch the recommended items from the db.
     items = _fetch_clothing_items(results)

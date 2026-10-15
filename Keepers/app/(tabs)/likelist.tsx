@@ -5,17 +5,20 @@
  * Date: 2026-04-18
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Easing, StyleSheet, Text, View, Pressable, FlatList, Modal } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Easing, StyleSheet, View, Pressable, FlatList, Modal } from 'react-native';
+import { Text } from '../../components/Text';
 import { Image } from 'expo-image';
+import { useSafeAreaFrame, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { usePriceDisplay } from '../../contexts/PriceDisplayContext';
+import { useStackHeaderHeight } from '../../contexts/StackHeaderHeightContext';
 import { useAppTheme } from '../../hooks/useAppTheme';
 import { Item } from '../../models/Items';
 import { getPriceTierSymbol } from '../../utils/price';
 import { deleteLikedItem, getLikedItems, deleteDislikedItem as deleteDislikedItemRemote, getDislikedItems } from '@/services/dataServices';
-import { useFocusEffect } from "expo-router/react-navigation";
+import { getDefaultHeaderHeight, useFocusEffect } from "expo-router/react-navigation";
 import * as WebBrowser from 'expo-web-browser';
 
 const TOGGLE_OPTION_WIDTH = 130;
@@ -105,62 +108,106 @@ const App: React.FC = () => {
     outputRange: [0, TOGGLE_OPTION_WIDTH],
   });
 
+  // Collapsing header: slides up as the list scrolls down, and back in on scroll up.
+  const insets = useSafeAreaInsets();
+  const listRef = useRef<FlatList<Item>>(null);
+  const [scrollY] = useState(() => new Animated.Value(0));
+  const onListScroll = useMemo(
+    () => Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true }),
+    [scrollY],
+  );
+  const frame = useSafeAreaFrame();
+  // Match the real height of the "KEEPERS" header shown on the other tabs (e.g. Swiper).
+  const stackHeaderHeight = useStackHeaderHeight();
+  const headerHeight = stackHeaderHeight > 0 ? stackHeaderHeight : getDefaultHeaderHeight(frame, false, insets.top);
+  const headerBarHeight = headerHeight - insets.top;
+
+  const headerTranslate = useMemo(() => {
+    // Ignore iOS overscroll bounce so the header doesn't jitter at the top.
+    const clampedScroll = scrollY.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0, 1],
+      extrapolateLeft: 'clamp',
+    });
+    return Animated.diffClamp(clampedScroll, 0, headerHeight).interpolate({
+      inputRange: [0, headerHeight],
+      outputRange: [0, -headerHeight],
+    });
+  }, [scrollY, headerHeight]);
+
+  const switchTab = (tab: string) => {
+    setActiveTab(tab);
+    setFilterOpen(false);
+    listRef.current?.scrollToOffset({ offset: 0, animated: false });
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <View style={[styles.headerRow, { backgroundColor: theme.primary }]}>
-        <View style={styles.toggleWrapper}>
-          <View style={[styles.toggleContainer, { backgroundColor: theme.tabBg, borderColor: theme.border }]}>
-            <Animated.View
-              style={[
-                styles.toggleIndicator,
-                { width: TOGGLE_OPTION_WIDTH, backgroundColor: theme.primary, transform: [{ translateX: indicatorTranslate }] },
-              ]}
-            />
-            <Pressable style={[styles.toggleOption, { width: TOGGLE_OPTION_WIDTH }]} onPress={() => setActiveTab('liked')}>
-              <Text
+      <Animated.View
+        style={[
+          styles.headerContainer,
+          { backgroundColor: theme.primary, height: headerHeight, transform: [{ translateY: headerTranslate }] },
+        ]}
+      >
+        <View style={[styles.headerRow, { height: headerBarHeight }]}>
+          <View style={styles.toggleWrapper}>
+            <View style={[styles.toggleContainer, { backgroundColor: theme.tabBg, borderColor: theme.border }]}>
+              <Animated.View
                 style={[
-                  styles.toggleText,
-                  { color: activeTab === 'liked' ? '#fff' : theme.tabInactive },
+                  styles.toggleIndicator,
+                  { width: TOGGLE_OPTION_WIDTH, backgroundColor: theme.primary, transform: [{ translateX: indicatorTranslate }] },
                 ]}
-              >
-                Liked
-              </Text>
+              />
+              <Pressable style={[styles.toggleOption, { width: TOGGLE_OPTION_WIDTH }]} onPress={() => switchTab('liked')}>
+                <Text
+                  style={[
+                    styles.toggleText,
+                    { color: activeTab === 'liked' ? '#fff' : theme.tabInactive },
+                  ]}
+                >
+                  Liked
+                </Text>
+              </Pressable>
+
+              <Pressable style={[styles.toggleOption, { width: TOGGLE_OPTION_WIDTH }]} onPress={() => switchTab('disliked')}>
+                <Text
+                  style={[
+                    styles.toggleText,
+                    { color: activeTab === 'disliked' ? '#fff' : theme.tabInactive },
+                  ]}
+                >
+                  Disliked
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+
+          <View style={styles.filterWrapper}>
+            <Pressable
+              style={[styles.filterButton, { backgroundColor: theme.tabBg, borderColor: theme.border }]}
+              onPress={() => setFilterOpen((prev) => !prev)}
+            >
+              <Ionicons name="filter" size={20} color={theme.tabActive} />
             </Pressable>
 
-            <Pressable style={[styles.toggleOption, { width: TOGGLE_OPTION_WIDTH }]} onPress={() => setActiveTab('disliked')}>
-              <Text
-                style={[
-                  styles.toggleText,
-                  { color: activeTab === 'disliked' ? '#fff' : theme.tabInactive },
-                ]}
-              >
-                Disliked
-              </Text>
-            </Pressable>
+            {filterOpen && (
+              <View style={[styles.filterDropdown, { backgroundColor: theme.tabBg, borderColor: theme.border }]}>
+                <Text style={[styles.filterDropdownText, { color: theme.mutedText }]}>Coming soon!</Text>
+              </View>
+            )}
           </View>
         </View>
-
-        <View style={styles.filterWrapper}>
-          <Pressable
-            style={[styles.filterButton, { backgroundColor: theme.tabBg, borderColor: theme.border }]}
-            onPress={() => setFilterOpen((prev) => !prev)}
-          >
-            <Ionicons name="filter" size={20} color={theme.tabActive} />
-          </Pressable>
-
-          {filterOpen && (
-            <View style={[styles.filterDropdown, { backgroundColor: theme.tabBg, borderColor: theme.border }]}>
-              <Text style={[styles.filterDropdownText, { color: theme.mutedText }]}>Coming soon!</Text>
-            </View>
-          )}
-        </View>
-      </View>
+      </Animated.View>
 
       <View style={styles.content}>
-        <FlatList
+        <Animated.FlatList
+          ref={listRef}
           data={activeTab === 'liked' ? allLikedItems : allDislikedItems}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, { paddingTop: headerHeight + 16 }]}
+          scrollIndicatorInsets={{ top: headerHeight }}
+          onScroll={onListScroll}
+          scrollEventThrottle={16}
           renderItem={({ item }) => (
             <Swipeable
               renderRightActions={() => (
@@ -185,14 +232,14 @@ const App: React.FC = () => {
                     transition={1000}
                   />
                   <View style={styles.itemInfo}>
-                    <Text style={[styles.itemName, { color: theme.text }, { fontFamily: 'GeorgiaProSemiBold', fontSize: 18 }]}>
+                    <Text style={[styles.itemName, { color: theme.text }, { fontFamily: 'PublicSans_600SemiBold', fontSize: 18 }]}>
                       {item.name}
                     </Text>
                     <View style={styles.priceGenderRow}>
-                      <Text style={[styles.itemPrice, { color: theme.accentGold }, { fontFamily: 'GeorgiaProSemiBold' }]}>
+                      <Text style={[styles.itemPrice, { color: theme.accentGold }, { fontFamily: 'PublicSans_600SemiBold' }]}>
                         {showPriceAsTier ? getPriceTierSymbol(item.price) : item.price}
                       </Text>
-                      <Text style={[styles.itemGender, { color: theme.mutedText }, { fontFamily: 'GeorgiaProSemiBold' }]}>
+                      <Text style={[styles.itemGender, { color: theme.mutedText }, { fontFamily: 'PublicSans_600SemiBold' }]}>
                         {item.gender.toUpperCase()}
                       </Text>
                     </View>
@@ -217,15 +264,15 @@ const App: React.FC = () => {
                     source={{ uri: selectedItem.imageUrl }}
                   />
                   <View style={[styles.textAndButtonContainer, { backgroundColor: theme.primary }]}>
-                    <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '600', fontFamily: 'GeorgiaProSemiBold' }}>
+                    <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '600', fontFamily: 'PublicSans_600SemiBold' }}>
                       {selectedItem.name}
                     </Text>
                     <View style={{ height: 1, backgroundColor: '#FFFFFF', opacity: 0.4, width: '100%', marginVertical: 10 }} />
 
-                    <Text style={{ color: theme.accentGold, fontFamily: 'GeorgiaProSemiBold', alignSelf: 'flex-start' }}>
+                    <Text style={{ color: theme.accentGold, fontFamily: 'PublicSans_600SemiBold', alignSelf: 'flex-start' }}>
                       {showPriceAsTier ? getPriceTierSymbol(selectedItem.price) : selectedItem.price}
                     </Text>
-                    <Text style={{ color: '#FFFFFF', fontFamily: 'GeorgiaProSemiBold', alignSelf: 'flex-end' }}>
+                    <Text style={{ color: '#FFFFFF', fontFamily: 'PublicSans_600SemiBold', alignSelf: 'flex-end' }}>
                       {selectedItem.gender.toUpperCase()}
                     </Text>
 
@@ -252,14 +299,18 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  headerContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 20,
+    justifyContent: 'flex-end',
+  },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingTop: 134,
-    paddingBottom: 14,
-    position: 'relative',
-    zIndex: 20,
   },
   toggleWrapper: {
     flex: 1,
@@ -269,18 +320,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     borderRadius: 24,
     borderWidth: 1,
-    padding: 4,
+    padding: 3,
     position: 'relative',
   },
   toggleIndicator: {
     position: 'absolute',
-    left: 4,
-    top: 4,
-    bottom: 4,
+    left: 3,
+    top: 3,
+    bottom: 3,
     borderRadius: 20,
   },
   toggleOption: {
-    paddingVertical: 10,
+    paddingVertical: 6,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 20,
@@ -288,22 +339,23 @@ const styles = StyleSheet.create({
   toggleText: {
     fontSize: 16,
     fontWeight: '700',
-    fontFamily: 'GeorgiaProSemiBold',
+    fontFamily: 'PublicSans_700Bold',
+    textTransform: 'uppercase',
   },
   filterWrapper: {
     position: 'relative',
   },
   filterButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   filterDropdown: {
     position: 'absolute',
-    top: 48,
+    top: 42,
     right: 0,
     borderWidth: 1,
     borderRadius: 12,
@@ -314,7 +366,7 @@ const styles = StyleSheet.create({
   filterDropdownText: {
     fontSize: 14,
     fontWeight: '600',
-    fontFamily: 'GeorgiaProSemiBold',
+    fontFamily: 'PublicSans_600SemiBold',
   },
   content: {
     flex: 1,
@@ -347,17 +399,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginBottom: 3,
-    fontFamily: 'GeorgiaProSemiBold',
+    fontFamily: 'PublicSans_600SemiBold',
   },
   itemPrice: {
     fontSize: 14,
     fontWeight: '500',
-    fontFamily: 'GeorgiaProRegular',
+    fontFamily: 'PublicSans_400Regular',
   },
   itemGender: {
     fontSize: 12,
     fontWeight: '400',
-    fontFamily: 'GeorgiaProRegular',
+    fontFamily: 'PublicSans_400Regular',
   },
   priceGenderRow: {
     flexDirection: 'row',
@@ -368,7 +420,7 @@ const styles = StyleSheet.create({
   text: {
     fontSize: 18,
     fontWeight: '600',
-    fontFamily: 'GeorgiaProRegular',
+    fontFamily: 'PublicSans_400Regular',
   },
   imageContainer: {
     flexDirection: 'row',
@@ -411,7 +463,7 @@ const styles = StyleSheet.create({
   closeButtonText: {
     fontSize: 16,
     fontWeight: 'bold',
-    fontFamily: 'GeorgiaProSemiBold',
+    fontFamily: 'PublicSans_600SemiBold',
   },
   deleteAction: {
     backgroundColor: 'red',

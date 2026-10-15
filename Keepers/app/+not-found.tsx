@@ -1,6 +1,8 @@
 import { View, StyleSheet } from 'react-native';
 import { Link, Stack } from 'expo-router';
 
+import { Fonts } from '../constants/fonts';
+
 export default function NotFoundScreen() {
   return (
     <>
@@ -23,6 +25,7 @@ const styles = StyleSheet.create({
   },
 
   button: {
+    fontFamily: Fonts.regular,
     fontSize: 20,
     textDecorationLine: 'underline',
     color: '#fff',

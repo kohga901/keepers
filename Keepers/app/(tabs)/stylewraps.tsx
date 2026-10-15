@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import * as WebBrowser from 'expo-web-browser';
 import { ImageLookupModal } from '../../components/ai/ImageLookupModal';
+
 import { useAppTheme } from '../../hooks/useAppTheme';
 import type { AppTheme } from '../../constants/theme';
 import type { Item } from '../../models/Items';
