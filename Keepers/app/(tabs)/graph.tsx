@@ -1,14 +1,16 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { useFocusEffect, useHeaderHeight, useIsFocused } from 'expo-router/react-navigation';
+import { getDefaultHeaderHeight, useFocusEffect, useIsFocused } from 'expo-router/react-navigation';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Switch, View } from 'react-native';
+import { useSafeAreaFrame, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as WebBrowser from 'expo-web-browser';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import { Text } from '../../components/Text';
 import { ImageLookupModal } from '../../components/ai/ImageLookupModal';
 import { usePriceDisplay } from '../../contexts/PriceDisplayContext';
+import { useStackHeaderHeight } from '../../contexts/StackHeaderHeightContext';
 import { useAppTheme } from '../../hooks/useAppTheme';
 import type { Item } from '../../models/Items';
 import { lookupPurchasableItem, toAiLookupError, type AiLookupErrorCode, type ImageLookupResult } from '../../services/ai';
@@ -36,7 +38,7 @@ function ClothingPhoto({ item }: { item: Item | null | undefined }) {
   const usable = !!item?.imageUrl && remoteUrl(item.imageUrl) && !failed;
   return <View style={[styles.photo, { backgroundColor: theme.background }]}>
     <Ionicons name={failed || !usable ? 'shirt-outline' : 'image-outline'} size={23} color={theme.text} />
-    {usable && <Image source={{ uri: item.imageUrl }} contentFit="contain" cachePolicy="memory-disk"
+    {usable && <Image source={{ uri: item.imageUrl }} contentFit="cover" cachePolicy="memory-disk"
       recyclingKey={item.id} style={[StyleSheet.absoluteFill, { opacity: loaded ? 1 : 0 }]}
       onLoad={() => setLoaded(true)} onError={() => setFailed(true)} accessible={false} />}
     {usable && !loaded && <ActivityIndicator style={StyleSheet.absoluteFill} size="small" color={theme.text} />}
@@ -46,7 +48,10 @@ function ClothingPhoto({ item }: { item: Item | null | undefined }) {
 export default function GraphTab() {
   const { theme } = useAppTheme();
   const { showPriceAsTier } = usePriceDisplay();
-  const headerHeight = useHeaderHeight();
+  const insets = useSafeAreaInsets();
+  const safeFrame = useSafeAreaFrame();
+  const stackHeaderHeight = useStackHeaderHeight();
+  const headerHeight = stackHeaderHeight || getDefaultHeaderHeight(safeFrame, false, insets.top);
   const isFocused = useIsFocused();
   const web = useRef<WebView>(null);
   const ready = useRef(false);
@@ -66,14 +71,16 @@ export default function GraphTab() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [preference, setPreference] = useState<Position | null>(null);
   const [frame, setFrame] = useState<MapFrame>(EMPTY_FRAME);
+  const [showPreviews, setShowPreviews] = useState(true);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [top, setTop] = useState(180);
   const [dockHeight, setDockHeight] = useState(100);
+  const visibleDockHeight = selectedId === null ? 0 : dockHeight;
   const [mapError, setMapError] = useState(false);
   const [rendered, setRendered] = useState(false);
   const [webKey, setWebKey] = useState(0);
-  const layout = useMemo<MapLayout>(() => ({ ...size, top, bottom: dockHeight + 74 }), [size, top, dockHeight]);
+  const layout = useMemo<MapLayout>(() => ({ ...size, top, bottom: visibleDockHeight + 74 }), [size, top, visibleDockHeight]);
   const [lookupItem, setLookupItem] = useState<Item | null>(null);
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupResult, setLookupResult] = useState<ImageLookupResult | null>(null);
@@ -156,7 +163,7 @@ export default function GraphTab() {
       if (session.current === controller) ids.forEach((id) => pendingItems.current.delete(id));
     }
   }, []);
-  const candidateKey = frame.previews.map((p) => p.clothesId).join(',');
+  const candidateKey = showPreviews ? frame.previews.map((p) => p.clothesId).join(',') : '';
   useEffect(() => {
     if (!isFocused) return;
     const ids = candidateKey ? candidateKey.split(',').map(Number) : [];
@@ -220,7 +227,7 @@ export default function GraphTab() {
     } finally { if (request === lookupId.current) { setLookupLoading(false); lookupRequest.current = null; } }
   }
   function retryItems() {
-    const ids = frame.previews.map((p) => p.clothesId);
+    const ids = showPreviews ? frame.previews.map((p) => p.clothesId) : [];
     if (selectedId !== null) ids.push(selectedId);
     for (const id of ids) { failedItems.current.delete(id); if (cached.current.get(id) === null) cached.current.delete(id); }
     setItemErrors(new Set(failedItems.current)); setItems(new Map(cached.current)); void loadItems(ids);
@@ -234,7 +241,20 @@ export default function GraphTab() {
   const canLike = status === 'new' && reactions.pending === null && !!selectedItem;
   if (!POINTS.length) return <View style={[styles.empty, { backgroundColor: theme.background, paddingTop: headerHeight }]}><Text style={textColor}>No clothing positions are available yet.</Text></View>;
 
-  return <View style={[styles.screen, { backgroundColor: theme.background, paddingTop: headerHeight }]}>
+  return <View style={[styles.screen, { backgroundColor: theme.background }]}>
+    <View style={[styles.header, { backgroundColor: theme.primary, height: headerHeight }]}>
+      <View style={[styles.headerRow, { height: headerHeight - insets.top }]}>
+        <View style={styles.modeWrapper}>
+        <View style={[styles.modes, { backgroundColor: theme.tabBg, borderColor: theme.border }]}>{(['focus', 'whole'] as const).map((mode) => <Pressable key={mode} accessibilityRole="button" hitSlop={{ top: 6, bottom: 6 }}
+          accessibilityState={{ selected: frame.mode === mode }} onPress={() => command({ type: 'mode', mode })}
+          style={[styles.mode, { backgroundColor: frame.mode === mode ? theme.primary : theme.tabBg }]}>
+          <Text style={[styles.modeText, { color: frame.mode === mode ? theme.headerText : theme.tabInactive }]}>{mode === 'focus' ? 'Focus area' : 'Whole graph'}</Text>
+        </Pressable>)}</View>
+        </View>
+        <Switch style={styles.previewSwitch} accessibilityLabel="Image previews" value={showPreviews} onValueChange={setShowPreviews}
+          trackColor={{ false: theme.border, true: theme.tabBg }} thumbColor={showPreviews ? theme.tabActive : theme.surface} />
+      </View>
+    </View>
     <View style={styles.graph} onLayout={({ nativeEvent: { layout: next } }) => setSize({ width: next.width, height: next.height })}>
       <WebView key={webKey} ref={web} source={SOURCE} originWhitelist={['*']} javaScriptEnabled
         style={styles.webview} onMessage={onMessage} scrollEnabled={false} bounces={false}
@@ -244,7 +264,7 @@ export default function GraphTab() {
         onContentProcessDidTerminate={() => { ready.current = false; setMapError(true); }}
         onRenderProcessGone={() => { ready.current = false; setMapError(true); }} />
       <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
-        {frame.previews.map((p) => {
+        {showPreviews && frame.previews.map((p) => {
           const item = items.get(p.clothesId);
           return <Pressable key={p.clothesId} accessibilityRole="button" accessibilityLabel={`Open ${item?.name ?? 'clothing item'}`}
             accessibilityState={{ selected: selectedId === p.clothesId }} onPress={() => select(p.clothesId)}
@@ -255,37 +275,22 @@ export default function GraphTab() {
         {frame.taste && preference && <View pointerEvents="none" style={[styles.tasteLabel, surface, { left: frame.taste.x + 13, top: frame.taste.y - 12 }]}><Text style={[styles.small, textColor]}>Your taste</Text></View>}
       </View>
       <View style={styles.topPanel} onLayout={(event) => setTop(event.nativeEvent.layout.height + 24)}>
-        <View style={styles.row}><Text accessibilityRole="header" style={[styles.title, textColor]}>Your style map</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="How does the style map work?" style={[styles.help, surface]}
-            onPress={() => Alert.alert('Your style map', 'Each dot is a clothing item. Similar looks tend to sit together. The lens shows real pieces at their positions. Drag to explore, zoom out to widen the area, or tap My taste to return.')}>
-            <Ionicons name="help-circle-outline" size={21} color={theme.text} />
-          </Pressable>
-        </View>
-        <Text style={[styles.subtitle, textColor]}>{preference ? 'Explore nearby looks. Tap a piece to see more.' : 'Explore clothing. Your likes help find your starting point.'}</Text>
-        <View style={[styles.modes, surface]}>{(['focus', 'whole'] as const).map((mode) => <Pressable key={mode} accessibilityRole="button"
-          accessibilityState={{ selected: frame.mode === mode }} onPress={() => command({ type: 'mode', mode })}
-          style={[styles.mode, { backgroundColor: frame.mode === mode ? theme.primary : theme.surface }]}>
-          <Ionicons name={mode === 'focus' ? 'scan-outline' : 'expand-outline'} size={16} color={theme.text} />
-          <Text style={[styles.buttonText, textColor]}>{mode === 'focus' ? 'Focus area' : 'Whole graph'}</Text>
-        </Pressable>)}</View>
         <View style={styles.row}><Text accessibilityLiveRegion="polite" style={[styles.small, styles.flex, textColor]}>
           {frame.mode === 'whole' ? 'All clothing' : frame.nearTaste ? 'Around your taste' : 'Exploring this area'} · {frame.count.toLocaleString()} pieces
-        </Text>{frame.mode === 'focus' && <Pressable accessibilityRole="button" onPress={() => command({ type: 'zoom', factor: 1 / 1.4 })} style={[styles.widen, surface]}><Text style={[styles.small, textColor]}>Widen area</Text></Pressable>}</View>
+        </Text></View>
         {profileError && <View style={[styles.notice, surface]}><Text style={[styles.small, styles.flex, textColor]}>{profileError}</Text><Pressable accessibilityRole="button" onPress={() => setProfileRetry((n) => n + 1)} style={styles.retry}><Text style={[styles.buttonText, textColor]}>Retry</Text></Pressable></View>}
+        {selectedId === null && actionError && <Text accessibilityRole="alert" style={[styles.hint, textColor]}>{actionError}</Text>}
+        {showPreviews && itemErrors.size > 0 && selectedId === null && <Pressable accessibilityRole="button" onPress={retryItems} style={styles.retry}><Text style={[styles.small, textColor]}>Some previews could not load. Retry</Text></Pressable>}
       </View>
       <View style={[styles.zoomControls, { top: top + 10 }]}>{[{ name: 'add' as const, label: 'Zoom in', factor: 1.4 }, { name: 'remove' as const, label: 'Zoom out', factor: 1 / 1.4 }].map((button) => <Pressable key={button.label} accessibilityRole="button" accessibilityLabel={button.label}
         style={[styles.iconButton, surface]} onPress={() => command({ type: 'zoom', factor: button.factor })}><Ionicons name={button.name} size={23} color={theme.text} /></Pressable>)}</View>
-      <View pointerEvents="box-none" style={[styles.legendRow, { bottom: dockHeight + 25 }]}>
+      <View pointerEvents="box-none" style={[styles.legendRow, { bottom: visibleDockHeight + 25 }]}>
         <View style={styles.legend}><View style={[styles.dot, { backgroundColor: theme.primary }]} /><Text style={[styles.small, textColor]}>Clothing</Text>
           {preference && <><View style={[styles.tasteDot, { backgroundColor: TASTE_BLUE, borderColor: theme.surface }]} /><Text style={[styles.small, textColor]}>Your taste</Text></>}
         </View>
         {preference && <Pressable accessibilityRole="button" onPress={() => command({ type: 'taste' })} style={[styles.return, surface]}><Ionicons name="locate-outline" size={17} color={theme.text} /><Text style={[styles.small, textColor]}>My taste</Text></Pressable>}
       </View>
-      <View accessibilityLiveRegion="polite" style={[styles.dock, surface]} onLayout={(event) => setDockHeight(event.nativeEvent.layout.height)}>
-        {selectedId === null ? <>
-          <View style={styles.row}><Text style={[styles.dockTitle, styles.flex, textColor]}>{frame.mode === 'focus' ? 'A closer look at this area' : 'The whole catalog, connected'}</Text><Pressable accessibilityRole="button" style={[styles.pick, { backgroundColor: theme.background }]} onPress={() => command({ type: 'next' })}><Text style={[styles.small, textColor]}>Show a piece</Text><Ionicons name="arrow-up-right-box" size={15} color={theme.text} /></Pressable></View>
-          <Text style={[styles.hint, textColor]}>Drag to explore a new area. Zoom out to see more.</Text>
-        </> : <>
+      {selectedId !== null && <View accessibilityLiveRegion="polite" style={[styles.dock, surface]} onLayout={(event) => setDockHeight(event.nativeEvent.layout.height)}>
           <View style={styles.itemRow}>
             <View style={styles.itemPhoto}><ClothingPhoto key={selectedItem?.imageUrl || String(selectedId)} item={selectedItem} /></View>
             <View style={styles.flex}>{selectedItem ? <>
@@ -307,10 +312,8 @@ export default function GraphTab() {
               onPress={() => selectedItem && void startLookup(selectedItem)} style={[styles.action, styles.flex, { backgroundColor: theme.accentGold, opacity: selectedItem?.imageUrl ? 1 : .55 }]}><Ionicons name="search" size={16} color={theme.text} /><Text style={[styles.buttonText, textColor]}>Find it</Text></Pressable>
             <Pressable accessibilityRole="button" accessibilityLabel="Next piece in this area" onPress={() => command({ type: 'next' })} style={[styles.action, { backgroundColor: theme.background }]}><Ionicons name="chevron-forward" size={19} color={theme.text} /></Pressable>
           </View>
-        </>}
         {actionError && <Text accessibilityRole="alert" style={[styles.hint, textColor]}>{actionError}</Text>}
-        {itemErrors.size > 0 && selectedId === null && <Pressable accessibilityRole="button" onPress={retryItems} style={styles.retry}><Text style={[styles.small, textColor]}>Some previews could not load. Retry</Text></Pressable>}
-      </View>
+      </View>}
       {(!profileReady || !rendered) && !mapError && <View pointerEvents="none" style={styles.loading}><ActivityIndicator size="large" color={theme.text} /></View>}
       {mapError && <View style={[styles.empty, StyleSheet.absoluteFill, { backgroundColor: theme.background }]}><Text style={textColor}>Your style map could not load.</Text><Pressable accessibilityRole="button" style={[styles.pick, surface]} onPress={() => { ready.current = false; setMapError(false); setRendered(false); setWebKey((key) => key + 1); }}><Text style={textColor}>Reload map</Text></Pressable></View>}
     </View>
@@ -328,9 +331,13 @@ const styles = StyleSheet.create({
   flex: { flex: 1, minWidth: 0 }, title: { fontSize: 19, fontWeight: '700', flex: 1 },
   subtitle: { fontSize: 12, lineHeight: 18 }, small: { fontSize: 11, lineHeight: 16 }, buttonText: { fontSize: 12, fontWeight: '500', flexShrink: 1 },
   help: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  modes: { padding: 4, borderWidth: 1, borderRadius: 11, flexDirection: 'row', gap: 4 },
-  mode: { flex: 1, minHeight: 44, borderRadius: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingHorizontal: 5 },
-  widen: { minHeight: 44, paddingHorizontal: 10, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  header: { justifyContent: 'flex-end' },
+  headerRow: { paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  modeWrapper: { flex: 1, minWidth: 0, alignItems: 'center' },
+  previewSwitch: { alignSelf: 'center', flexShrink: 0 },
+  modes: { width: 268, maxWidth: '100%', padding: 3, borderWidth: 1, borderRadius: 24, flexDirection: 'row' },
+  mode: { width: 130, flexShrink: 1, paddingVertical: 6, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  modeText: { fontSize: 16, fontWeight: '700', fontFamily: 'PublicSans_700Bold', textTransform: 'uppercase', textAlign: 'center' },
   notice: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderWidth: 1, borderRadius: 9 },
   zoomControls: { position: 'absolute', right: 12, gap: 7 },
   iconButton: { width: 44, height: 44, borderWidth: 1, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
@@ -342,7 +349,6 @@ const styles = StyleSheet.create({
   dot: { width: 7, height: 7, borderRadius: 4 }, tasteDot: { width: 10, height: 10, borderRadius: 5, borderWidth: 2, marginLeft: 5 },
   return: { minHeight: 44, paddingHorizontal: 9, borderWidth: 1, borderRadius: 9, flexDirection: 'row', alignItems: 'center', gap: 5 },
   dock: { position: 'absolute', left: 12, right: 12, bottom: 12, padding: 13, minHeight: 100, borderWidth: 1, borderRadius: 13 },
-  dockTitle: { fontSize: 13, fontWeight: '500', lineHeight: 18 },
   pick: { minHeight: 44, borderRadius: 8, paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
   hint: { fontSize: 11, lineHeight: 17, marginTop: 7 }, itemRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
   itemPhoto: { width: 49, height: 56, borderRadius: 8, overflow: 'hidden' }, itemName: { fontSize: 12, lineHeight: 17, fontWeight: '500' },
@@ -389,8 +395,10 @@ export function buildPlotHtml(points: MapPoint[]) {
     function select(id){if(!byId.has(id))return;selected=id;seen.add(id);post({type:'select',id:id});schedule();}
     window.keepersMap=function(message){
       if(message.type==='configure'){
+        var oldOrigin=camera&&layout?G.origin(layout,mode):null;
         layout=message.layout;preference=G.validPosition(message.preference)?message.preference:null;colors=message.colors;
         if(!layout||layout.width<=0||layout.height<=0)return;configureSize();
+        if(oldOrigin){var newOrigin=G.origin(layout,mode);camera.x+=(newOrigin.x-oldOrigin.x)/camera.scale;camera.y+=(oldOrigin.y-newOrigin.y)/camera.scale;}
         if(!camera&&message.initialize){if(preference)focus(preference);else{mode='whole';fit();}}
       }else if(message.type==='reset'){camera=null;selected=null;seen.clear();}
       else if(!camera)return;

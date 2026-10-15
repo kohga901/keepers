@@ -166,7 +166,43 @@ test('actual WebView next selection and pinch do not reset the camera or acciden
   app.command({ type: 'mode', mode: 'whole' }); assert.equal(app.frame().count, catalog.length);
 });
 
-test('Show a piece remains keyboard-usable when the taste badge excludes every thumbnail', () => {
+test('opening and closing the dock preserves graph positions as its usable area changes', () => {
+  for (const mode of ['focus', 'whole']) {
+    const app = renderer({ x: 0, y: 0 });
+    app.command({ type: 'mode', mode });
+    const before = app.frame().taste;
+    app.command({ ...app.config, layout: { ...layout, bottom: layout.bottom + 100 } });
+    close(app.frame().taste.x, before.x); close(app.frame().taste.y, before.y);
+    app.command(app.config);
+    close(app.frame().taste.x, before.x); close(app.frame().taste.y, before.y);
+  }
+});
+
+test('preview and dot selection keep the focus lens fixed through dock and notice changes', () => {
+  for (const height of [440, 660]) {
+    const app = renderer({ x: 0, y: 0 });
+    const bounds = { width: 320, height, top: 40, bottom: 74 };
+    app.command({ ...app.config, layout: bounds });
+    const lens = () => Array.from(app.arcs.filter((arc) => arc[2] > 20).at(-1));
+    const original = lens(), count = app.frame().count;
+    app.command({ type: 'select', id: 1 });
+    for (const bottom of [174, 274, 224]) {
+      app.command({ ...app.config, layout: { ...bounds, bottom } });
+      assert.deepEqual(lens(), original);
+      assert.equal(app.frame().count, count);
+    }
+    app.event('pointerdown', { pointerId: 1, clientX: original[0], clientY: original[1] });
+    app.event('pointerup', { pointerId: 1, clientX: original[0], clientY: original[1] });
+    app.command({ ...app.config, layout: { ...bounds, top: 100, bottom: 274 } });
+    assert.deepEqual(lens(), original);
+    app.command({ type: 'clear' });
+    app.command({ ...app.config, layout: bounds });
+    assert.deepEqual(lens(), original);
+    assert.equal(app.frame().count, count);
+  }
+});
+
+test('Next can select a piece when the taste badge excludes every thumbnail', () => {
   const app = renderer({ x: 0, y: 0 }, [{ clothesId: 1, x: 0, y: 0 }]);
   assert.equal(app.frame().previews.length, 0);
   app.command({ type: 'next' }); assert.equal(app.messages.filter((m) => m.type === 'select').at(-1).id, 1);
@@ -214,15 +250,17 @@ function nativeScreen(overrides = {}) {
   const theme = load('constants/theme.ts').lightTheme;
   const stubs = {
     react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'Fragment' },
-    'react-native': { View: 'View', Pressable: 'Pressable', ActivityIndicator: 'Spinner', Alert: { alert() {} }, StyleSheet: { create: (x) => x, absoluteFill: {} } },
+    'react-native': { View: 'View', Pressable: 'Pressable', Switch: 'Switch', ActivityIndicator: 'Spinner', Alert: { alert() {} }, StyleSheet: { create: (x) => x, absoluteFill: {} } },
     '@expo/vector-icons/Ionicons': 'Icon', 'expo-image': { Image: 'Image' },
     'expo-router': { router: { push() {} } }, 'expo-web-browser': { openBrowserAsync: async () => {} },
     'react-native-webview': { WebView: 'WebView' },
-    'expo-router/react-navigation': { useHeaderHeight: () => 80, useIsFocused: () => focused,
+    'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 24 }), useSafeAreaFrame: () => ({ width: 390, height: 844 }) },
+    'expo-router/react-navigation': { getDefaultHeaderHeight: () => 80, useIsFocused: () => focused,
       useFocusEffect: (fn) => hooks.useEffect(() => focused ? fn() : undefined, [focused, fn]) },
     '../../components/Text': { Text: 'Text' }, '../../components/ai/ImageLookupModal': { ImageLookupModal: 'LookupModal' },
     '../../hooks/useAppTheme': { useAppTheme: () => ({ theme }) },
     '../../contexts/PriceDisplayContext': { usePriceDisplay: () => ({ showPriceAsTier: false }) },
+    '../../contexts/StackHeaderHeightContext': { useStackHeaderHeight: () => 80 },
     '../../utils/supabase': { supabase: { auth: { getUser: async () => ({ data: { user: { id: 'test-user' } }, error: null }) } } },
     '../../services/dataServices': {
       getUserCoordinates: async () => null,
@@ -258,6 +296,69 @@ function nativeScreen(overrides = {}) {
     },
   };
 }
+
+test('screen puts working graph mode controls in its safe-area header', async () => {
+  const app = nativeScreen(); await app.flush();
+  const screen = app.nodes()[0], header = screen.props.children[0];
+  assert.equal(Object.assign({}, ...screen.props.style).paddingTop, undefined);
+  assert.equal(Object.assign({}, ...header.props.style).height, 80);
+  const headerChildren = header.props.children.props.children;
+  const modes = headerChildren[0].props.children.props.children;
+  assert.equal(headerChildren[1].type, 'Switch');
+  assert.equal(headerChildren[1].props.accessibilityLabel, 'Image previews');
+  assert.equal(headerChildren[1].props.style.alignSelf, 'center');
+  assert.deepEqual(Array.from(modes, (button) => button.props.children.props.children), ['Focus area', 'Whole graph']);
+  app.find((n) => n.type === 'WebView').props.onMessage({ nativeEvent: { data: '{"type":"ready"}' } });
+  for (const [i, mode] of ['focus', 'whole'].entries()) {
+    assert.equal(modes[i].props.style[0].width, 130);
+    assert.equal(modes[i].props.style[0].paddingVertical, 6);
+    assert.equal(modes[i].props.children.props.style[0].fontSize, 16);
+    modes[i].props.onPress();
+    assert.ok(app.calls.scripts.at(-1).includes(JSON.stringify({ type: 'mode', mode })));
+  }
+});
+
+test('details dock appears only after selection and disappears when closed', async () => {
+  const app = nativeScreen(); await app.flush();
+  const docks = () => app.nodes().filter((n) => n.type === 'View' && n.props.onLayout && n.props.accessibilityLiveRegion === 'polite');
+  assert.equal(docks().length, 0);
+  assert.ok(!app.text().includes('A closer look at this area'));
+  assert.ok(!app.nodes().some((n) => n.props.accessibilityLabel === 'Show a piece'));
+  await app.select(1); assert.equal(docks().length, 1);
+  assert.ok(app.text().includes('Piece 1'));
+  docks()[0].props.onLayout({ nativeEvent: { layout: { height: 160 } } }); await app.flush();
+  await app.press('Close selected item'); assert.equal(docks().length, 0);
+  assert.ok(!app.text().includes('Piece 1'));
+  assert.ok(!app.nodes().some((n) => n.props.accessibilityLabel === 'Show a piece'));
+});
+
+test('preview toggle hides and restores thumbnails without resetting the map or selected dock', async () => {
+  const app = nativeScreen(); await app.flush();
+  app.find((n) => n.type === 'View' && n.props.onLayout).props.onLayout({ nativeEvent: { layout: { width: 390, height: 660 } } });
+  await app.flush();
+  const message = (payload) => app.find((n) => n.type === 'WebView').props.onMessage({ nativeEvent: { data: JSON.stringify(payload) } });
+  message({ type: 'ready' });
+  const source = app.find((n) => n.type === 'WebView').props.source;
+  const frame = (id) => ({ type: 'frame', mode: 'focus', count: 4, nearTaste: false, previews: [{ clothesId: id, x: 50, y: 240 }], taste: null });
+  message(frame(1)); await app.flush();
+  assert.ok(app.nodes().some((n) => n.props.accessibilityLabel === 'Open Piece 1'));
+  await app.select(1);
+  const scripts = app.calls.scripts.length, requests = app.calls.metadata.length;
+  const toggle = () => app.find((n) => n.type === 'Switch' && n.props.accessibilityLabel === 'Image previews');
+  toggle().props.onValueChange(false); await app.flush();
+  assert.equal(toggle().props.value, false);
+  assert.ok(!app.nodes().some((n) => n.props.accessibilityLabel === 'Open Piece 1'));
+  assert.ok(app.text().includes('Piece 1'));
+  assert.equal(app.nodes().filter((n) => n.type?.name === 'ClothingPhoto').length, 1);
+  message(frame(2)); await app.flush();
+  assert.equal(app.calls.metadata.length, requests);
+  toggle().props.onValueChange(true); await app.flush();
+  assert.ok(app.nodes().some((n) => n.props.accessibilityLabel === 'Open Piece 2'));
+  assert.ok(app.text().includes('Piece 1'));
+  assert.equal(app.calls.scripts.length, scripts);
+  assert.equal(app.find((n) => n.type === 'WebView').props.source, source);
+  assert.ok(!app.text().includes('Widen area'));
+});
 
 test('screen batches metadata, ignores stale selection results and reuses cached pieces', async () => {
   const first = deferred(), second = deferred();

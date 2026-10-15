@@ -52,10 +52,11 @@ export const MAP_GEOMETRY_SOURCE = String.raw`function createMapGeometry() {
     }
     function origin(layout, mode) {
         return { x: mode === 'focus' ? (layout.width - 38) / 2 : layout.width / 2,
-            y: (layout.top + layout.height - layout.bottom) / 2 };
+            y: mode === 'focus' ? layout.height / 2 : (layout.top + layout.height - layout.bottom) / 2 };
     }
     function radius(layout) {
-        return Math.max(12, Math.min(118, (layout.width - 70) / 2, (layout.height - layout.top - layout.bottom - 16) / 2));
+        // Dock and notice insets only exclude previews; they must not move or resize the lens.
+        return Math.max(12, Math.min(118, (layout.width - 70) / 2, (layout.height - 16) / 2));
     }
     function project(p, camera, layout, mode) {
         const o = origin(layout, mode);
