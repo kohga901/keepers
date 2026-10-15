@@ -6,11 +6,10 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, RefreshControl, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useFocusEffect, useHeaderHeight } from 'expo-router/react-navigation';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import * as WebBrowser from 'expo-web-browser';
 import { ImageLookupModal } from '../../components/ai/ImageLookupModal';
@@ -33,12 +32,9 @@ export default function StyleWraps() {
   const { theme } = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const headerHeight = useHeaderHeight();
-  const insets = useSafeAreaInsets();
   const [data, setData] = useState<WrapData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [storyIndex, setStoryIndex] = useState<number | null>(null);
-  const [shareError, setShareError] = useState<string | null>(null);
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
   const request = useRef<AbortController | null>(null);
   const lookupAbortController = useRef<AbortController | null>(null);
@@ -69,7 +65,6 @@ export default function StyleWraps() {
     void load();
     return () => {
       request.current?.abort();
-      setStoryIndex(null);
     };
   }, [load]));
 
@@ -80,26 +75,6 @@ export default function StyleWraps() {
   const surface = { backgroundColor: theme.surface, borderColor: theme.border };
   const topGarment = wrap?.garments[0];
   const topFit = wrap?.fits[0];
-  const storyPages = wrap ? [
-    { eyebrow: '01 / EVERY YES. EVERY NO.', title: `${wrap.total.toLocaleString()} little decisions.`, body: 'One saved reaction at a time.', detail: `${wrap.likes.length} likes · ${wrap.dislikeCount} passes`, color: theme.background, icon: 'person' as const },
-    { eyebrow: '02 / THE KEEPER TEST', title: `${wrap.likeRate}% made the cut.`, body: 'That is your like rate across your currently saved reactions.', detail: `${wrap.dislikeRate}% you passed on.`, color: theme.background, icon: 'heart-outline' as const },
-    { eyebrow: '03 / YOUR STYLE DNA', title: wrap.styles.length ? tagLabel(wrap.styles[0].name) : 'Still taking shape.', body: wrap.styles.length ? `Your leading style tags: ${wrap.styles.slice(0, 3).map((tag) => tagLabel(tag.name)).join(' / ')}.` : 'Likes with style tags will reveal the looks you keep coming back to.', detail: wrap.styles.length ? `Based on ${wrap.styleTaggedCount} likes with style tags. Tied tags share their rank.` : 'Keep exploring. Your next keeper could start a whole new chapter.', color: theme.background, icon: 'shirt-outline' as const },
-    { eyebrow: '04 / YOUR PERSONAL EDIT', title: wrap.personality.title, body: wrap.personality.description, detail: 'A playful snapshot of your saved likes. Always room to change your mind.', color: theme.background, icon: 'finger-print-outline' as const },
-  ] : [];
-  const story = storyIndex === null ? null : storyPages[storyIndex];
-
-  async function shareWrap() {
-    if (!wrap) return;
-    setShareError(null);
-    try {
-      await Share.share({
-        title: 'My Keepers Style Wrapped',
-        message: `My Keepers Style Wrapped\n${wrap.personality.title}\n${wrap.likes.length} keepers · ${wrap.likeRate}% like rate\n${wrap.styles.length ? `Top styles: ${wrap.styles.slice(0, 3).map((tag) => tagLabel(tag.name)).join(', ')}\n` : ''}Based on my currently saved reactions.`,
-      });
-    } catch {
-      setShareError('Sharing is unavailable right now. You can still replay your wrap.');
-    }
-  }
 
   async function openStorePage(itemUrl: string) {
     setPurchaseError(null);
@@ -175,15 +150,6 @@ export default function StyleWraps() {
         contentContainerStyle={[styles.content, { paddingTop: headerHeight + 24 }]}
         refreshControl={<RefreshControl refreshing={loading && !!data} onRefresh={() => void load()} tintColor={theme.text} progressViewOffset={headerHeight} />}
       >
-        <View style={styles.headingRow}>
-          <View style={styles.flex}>
-            <Text style={[styles.eyebrow, { color: theme.text }]}>YOUR STYLE</Text>
-            <Text style={[styles.pageTitle, { color: theme.text }]}>Style Wrapped</Text>
-          </View>
-          <View style={[styles.periodPill, { borderColor: theme.border }]}><Text style={[styles.small, { color: theme.text }]}>All saved</Text></View>
-        </View>
-        <Text style={[styles.intro, { color: theme.text }]}>Here’s your story so far…</Text>
-
         {loading && !data ? (
           <View style={styles.stateCard} accessibilityRole="progressbar" accessibilityLabel="Loading your style recap">
             <ActivityIndicator color={theme.text} size="large" />
@@ -205,20 +171,6 @@ export default function StyleWraps() {
           </View>
         ) : wrap && data ? (
           <>
-            <View style={[styles.hero, { backgroundColor: theme.text }]}>
-              <View style={styles.headingRow}><Text style={[styles.eyebrow, { color: theme.accentGold }]}>YOUR RECAP</Text><Ionicons name="person" size={25} color={theme.accentGold} /></View>
-              <Text style={[styles.heroTitle, { color: theme.headerText }]}>Your style so far</Text>
-              <View style={styles.heroCountRow}>
-                <Text style={styles.heroCount} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>
-                  {wrap.likes.length.toLocaleString()}
-                </Text>
-                <Text style={styles.heroCountLabel}>liked pieces</Text>
-              </View>
-              <Pressable accessibilityRole="button" onPress={() => { setStoryIndex(0); setShareError(null); }} style={[styles.button, { backgroundColor: theme.accentGold}]}><Ionicons name="play" size={18} color={BUTTON_TEXT} /><Text style={styles.buttonText}>Unwrap my style</Text><Ionicons name="arrow-forward" size={18} color={BUTTON_TEXT} /></Pressable>
-              <Text style={styles.heroFootnote}>Your likes, styles, and favorite details.</Text>
-            </View>
-
-            <View style={styles.sectionDivider} />
             <View style={styles.sectionHeader}><Text style={[styles.sectionTitle, { color: theme.text }]}>Your Reactions</Text><Ionicons name="stats-chart-outline" size={20} color={theme.text} /></View>
             <View style={styles.statRow}>
               {[
@@ -245,7 +197,6 @@ export default function StyleWraps() {
                   <Text style={[styles.rankNumber, { color: theme.text }]}>{String(wrap.styles.findIndex((entry) => entry.count === tag.count) + 1).padStart(2, '0')}</Text>
                   <View style={styles.flex}><View style={styles.headingRow}><Text style={[styles.tagName, { color: theme.text }]}>{tagLabel(tag.name)}</Text><Text style={[styles.small, { color: theme.text }]}>{tag.percent}%</Text></View><View style={[styles.rankTrack, { backgroundColor: theme.background }]}><View style={[styles.rankFill, { width: `${tag.percent}%`, backgroundColor: [theme.text, theme.primary, theme.accentGold][index] }]} /></View></View>
                 </View>)}
-                <Text style={[styles.small, { color: theme.text }]}>Share of your {wrap.styleTaggedCount} likes with style tags. One piece can have several styles, so percentages can overlap.</Text>
               </> : <><Text style={[styles.tagName, { color: theme.text }]}>Your signature is still taking shape.</Text><Text style={[styles.body, { color: theme.text }]}>{data.tagsUnavailable ? 'Retry the style insights to reveal your favorites.' : 'As you like tagged pieces, your favorite styles will appear here.'}</Text></>}
             </View>
 
@@ -254,7 +205,6 @@ export default function StyleWraps() {
               <View style={styles.headingRow}><Text style={styles.eyebrow}>YOUR STYLE PERSONA</Text><Ionicons name="finger-print-outline" size={28} color={theme.text} /></View>
               <Text style={styles.personaTitle}>{wrap.personality.title}</Text>
               <Text style={styles.heroBody}>{wrap.personality.description}</Text>
-              <Text style={styles.small}>Just for fun, based on your saved likes.{wrap.likes.length < 5 ? ' Like at least 5 pieces to start your edit.' : ''}</Text>
             </View>
 
             <View style={styles.sectionDivider} />
@@ -266,7 +216,6 @@ export default function StyleWraps() {
               <View style={styles.detailRow}><Ionicons name="shirt-outline" size={25} color={theme.text} /><View style={styles.flex}><Text style={[styles.small, { color: theme.text }]}>GO-TO PIECE{topGarment && wrap.garments[1]?.count === topGarment.count ? ' · TIED FAVORITE' : ''}</Text><Text style={[styles.tagName, { color: theme.text }]}>{topGarment ? tagLabel(topGarment.name) : 'Still discovering'}</Text></View>{topGarment && <Text style={[styles.small, { color: theme.text }]}>{topGarment.count} liked</Text>}</View>
               <View style={[styles.divider, { backgroundColor: theme.border }]} />
               <View style={styles.detailRow}><Ionicons name="resize-outline" size={25} color={theme.text} /><View style={styles.flex}><Text style={[styles.small, { color: theme.text }]}>SIGNATURE FIT{topFit && wrap.fits[1]?.count === topFit.count ? ' · TIED FAVORITE' : ''}</Text><Text style={[styles.tagName, { color: theme.text }]}>{topFit ? tagLabel(topFit.name) : 'Still discovering'}</Text></View>{topFit && <Text style={[styles.small, { color: theme.text }]}>{topFit.count} liked</Text>}</View>
-              <Text style={[styles.small, { color: theme.text }]}>Using available tags from {wrap.taggedLikeCount} of your {wrap.likes.length} likes.</Text>
             </View>
 
             {featuredKeepers.length > 0 && <>
@@ -299,25 +248,6 @@ export default function StyleWraps() {
         ) : null}
       </ScrollView>
 
-      <Modal visible={story !== null} animationType="slide" onRequestClose={() => setStoryIndex(null)}>
-        {story && storyIndex !== null && <View style={[styles.storyScreen, { backgroundColor: story.color, paddingTop: insets.top + 12, paddingBottom: insets.bottom + 16 }]}>
-          <View style={styles.storyProgress}>{storyPages.map((_, index) => <View key={index} style={[styles.storySegment, { backgroundColor: index <= storyIndex ? theme.text : theme.border }]} />)}</View>
-          <View style={styles.headingRow}><Text style={styles.eyebrow}>KEEPERS / STYLE WRAPPED</Text><Pressable accessibilityRole="button" accessibilityLabel="Close recap" onPress={() => setStoryIndex(null)} style={styles.iconButton}><Ionicons name="close" size={28} color={theme.text} /></Pressable></View>
-          <ScrollView key={storyIndex} contentContainerStyle={styles.storyContent}>
-            <Ionicons name={story.icon} size={72} color={theme.text} />
-            <Text style={styles.eyebrow}>{story.eyebrow}</Text>
-            <Text accessibilityRole="header" style={styles.storyTitle}>{story.title}</Text>
-            <Text style={styles.storyBody}>{story.body}</Text>
-            <Text style={styles.heroBody}>{story.detail}</Text>
-          </ScrollView>
-          {shareError && <Text accessibilityRole="alert" style={styles.shareError}>{shareError}</Text>}
-          <View style={styles.storyControls}>
-            <Pressable accessibilityRole="button" accessibilityLabel="Previous card" disabled={storyIndex === 0} onPress={() => setStoryIndex(storyIndex - 1)} style={[styles.backButton, { opacity: storyIndex === 0 ? 0.3 : 1 }]}><Ionicons name="arrow-back" size={22} color={theme.text} /></Pressable>
-            <Text style={styles.small}>{storyIndex + 1} / {storyPages.length}</Text>
-            <Pressable accessibilityRole="button" onPress={() => storyIndex === storyPages.length - 1 ? void shareWrap() : setStoryIndex(storyIndex + 1)} style={styles.darkButton}><Text style={styles.lightButtonText}>{storyIndex === storyPages.length - 1 ? 'Share my wrap' : 'Next'}</Text><Ionicons name={storyIndex === storyPages.length - 1 ? 'share-outline' : 'arrow-forward'} size={20} color={BUTTON_TEXT} /></Pressable>
-          </View>
-        </View>}
-      </Modal>
       <ImageLookupModal
         errorCode={lookupError?.code ?? null}
         errorMessage={lookupError?.message ?? null}
@@ -349,12 +279,6 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
   hero: { borderRadius: 12, padding: 24, gap: 22, overflow: 'hidden' },
   heroTitle: { fontFamily: 'GeorgiaProBold', fontSize: 30, lineHeight: 38, color: theme.text },
   heroBody: { fontSize: 15, lineHeight: 23, color: theme.text },
-  heroCountRow: { width: '100%', flexDirection: 'row', gap: 12, alignItems: 'center' },
-  heroCount: { flexShrink: 1, minWidth: 0, fontFamily: 'GeorgiaProBold', fontSize: 60, fontWeight: '800', letterSpacing: -3, color: theme.accentGold },
-  heroCountLabel: { flexShrink: 0, fontSize: 16, lineHeight: 23, color: theme.headerText },
-  heroFootnote: { fontSize: 11, color: theme.headerText, textAlign: 'center', marginTop: -10 },
-  button: { minHeight: 48, paddingHorizontal: 18, paddingVertical: 14, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
-  buttonText: { fontWeight: '700', fontSize: 15, color: BUTTON_TEXT, flexShrink: 1 },
   darkButton: { minHeight: 48, paddingHorizontal: 20, paddingVertical: 14, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: theme.primary },
   lightButtonText: { fontWeight: '700', fontSize: 14, color: BUTTON_TEXT, flexShrink: 1 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
@@ -390,14 +314,4 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
   textButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44, gap: 10 },
   linkText: { fontWeight: '700', fontSize: 14 },
   footer: { textAlign: 'center', fontSize: 12, lineHeight: 20, marginTop: 8 },
-  storyScreen: { flex: 1, paddingHorizontal: 24 },
-  storyProgress: { flexDirection: 'row', gap: 6, marginBottom: 12 },
-  storySegment: { flex: 1, height: 4, borderRadius: 2 },
-  iconButton: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-  storyContent: { flexGrow: 1, justifyContent: 'center', gap: 24, paddingVertical: 28, maxWidth: 640, width: '100%', alignSelf: 'center' },
-  storyTitle: { fontFamily: 'GeorgiaProBold', fontSize: 46, lineHeight: 54, color: theme.text },
-  storyBody: { fontSize: 20, lineHeight: 29, color: theme.text },
-  storyControls: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, paddingTop: 16 },
-  backButton: { borderWidth: 1, borderColor: theme.text, borderRadius: 28, width: 50, height: 50, alignItems: 'center', justifyContent: 'center' },
-  shareError: { color: theme.text, fontSize: 13, lineHeight: 19, paddingTop: 12 },
 });
