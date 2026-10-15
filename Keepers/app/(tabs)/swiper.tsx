@@ -330,7 +330,7 @@ const App: React.FC = () => {
               <View style={styles.cardInfo}>
                 <View style={styles.cardDetails}>
                   <Text numberOfLines={2} style={styles.cardName}>{card.name}</Text>
-                  <Text style={styles.cardPrice}>
+                  <Text style={[styles.cardPrice, { color: theme.accentBrown }]}>
                     {showPriceAsTier ? getPriceTierSymbol(card.price) : card.price}
                   </Text>
                 </View>
@@ -551,7 +551,6 @@ const styles = StyleSheet.create({
   cardPrice: {
     fontSize: 18,
     fontWeight: "500",
-    color: "#007AFF",
   },
   lookupButton: {
     alignItems: 'center',

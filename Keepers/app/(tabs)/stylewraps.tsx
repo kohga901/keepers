@@ -184,7 +184,7 @@ export default function StyleWraps() {
             <View style={[styles.card, surface]}>
               <View style={styles.headingRow}><Text style={[styles.body, { color: theme.text }]}>{wrap.likes.length} liked</Text><Text style={[styles.body, { color: theme.text }]}>{wrap.dislikeCount} passed</Text></View>
               <View style={styles.verdictTrack} accessible accessibilityLabel={`${wrap.likeRate} percent liked, ${wrap.dislikeRate} percent passed`}>
-                <View style={{ flex: wrap.likes.length, backgroundColor: theme.text }} /><View style={{ flex: wrap.dislikeCount, backgroundColor: theme.primary }} />
+                <View style={{ flex: wrap.likes.length, backgroundColor: theme.text }} /><View style={{ flex: wrap.dislikeCount, backgroundColor: theme.accentBrown }} />
               </View>
             </View>
 
@@ -214,8 +214,7 @@ export default function StyleWraps() {
 
             {(featuredKeepers.length > 0 || loading) && <>
               <View style={styles.sectionDivider} />
-              <View style={[styles.card, surface]}>
-              <View style={styles.headingRow}>
+              <View style={styles.sectionHeader}>
                 <Text style={[styles.sectionTitle, { color: theme.text }]}>A few of your Keepers</Text>
                 {loading ? (
                   <ActivityIndicator color={theme.text} size="small" accessibilityLabel="Refreshing your Keepers" />
@@ -223,6 +222,7 @@ export default function StyleWraps() {
                   <Ionicons name="heart" size={20} color={theme.text} />
                 )}
               </View>
+              <View style={[styles.card, surface]}>
               <View style={styles.gallery}>{featuredKeepers.map((item) => <View key={item.id} style={styles.galleryItem}>
                 <Pressable accessibilityRole="link" accessibilityLabel={`Open the store page for ${item.name ?? 'this liked item'}`} onPress={() => void openStorePage(item.itemUrl!)} style={({ pressed }) => pressed && styles.galleryItemPressed}>
                   <Image source={{ uri: item.imageUrl! }} style={[styles.itemImage, { backgroundColor: theme.background }]} contentFit="cover" accessibilityLabel={item.name ?? 'Liked clothing item'} />

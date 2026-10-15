@@ -1247,8 +1247,7 @@ const styles = StyleSheet.create({
 	},
 	itemPrice: {
 		color: '#8de4b7',
-		fontFamily: 'PublicSans_700Bold',
+		fontFamily: 'PublicSans_600SemiBold',
 		fontSize: 15,
-		textDecorationLine: 'underline',
 	},
 });
