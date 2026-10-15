@@ -1090,13 +1090,6 @@ export default function GraphTab() {
 					</View>
 				) : null}
 			</View>
-
-			{/* Small overlay explains how to use the graph. */}
-			<View style={[styles.overlayTop, { borderColor: theme.border }]}> 
-				<Text style={styles.overlayTitle}>Interactive Style Map</Text>
-				<Text style={styles.overlaySubtitle}>Pinch to zoom, drag to pan, tap a node for item details. Blue ring = your coordinates.</Text>
-			</View>
-
 		</View>
 	);
 }

@@ -150,7 +150,7 @@ export function AiKeySettings() {
   if (Platform.OS === 'web') {
     return (
       <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-        <Text style={[styles.title, { color: theme.text }]}>AI item lookup</Text>
+        <Text style={[styles.title, { color: theme.text }]}>Reverse image search</Text>
         <Text style={[styles.body, { color: theme.mutedText }]}>
           API keys are disabled on the web build because a browser cannot protect them. Use the
           native iOS or Android app.
@@ -165,8 +165,7 @@ export function AiKeySettings() {
   return (
     <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
       <View style={styles.titleRow}>
-        <Ionicons name="sparkles-outline" size={22} color={theme.primary} />
-        <Text style={[styles.title, { color: theme.text }]}>AI item lookup</Text>
+        <Text style={[styles.title, { color: theme.text }]}>Reverse image search</Text>
       </View>
       <Text style={[styles.body, { color: theme.mutedText }]}>
         Choose a provider and store your own key for image-based shopping searches.
