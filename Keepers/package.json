@@ -10,7 +10,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "test:stylewrap": "node --test tests/styleWrap.test.cjs"
+    "test:stylewrap": "node --test tests/styleWrap.test.cjs",
+    "test:graph": "node --test tests/graph.test.cjs"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.61",
