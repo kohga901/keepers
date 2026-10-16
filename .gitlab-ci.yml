@@ -38,9 +38,6 @@ frontend_lint:
   stage: validate
   script:
     - npm run lint
-  # The repository currently has known React hook lint errors. Keep the
-  # report visible without blocking merges until those are fixed.
-  allow_failure: true
 
 backend_syntax:
   image: python:3.14-slim

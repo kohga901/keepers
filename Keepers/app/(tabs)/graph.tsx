@@ -316,7 +316,10 @@ export default function GraphTab() {
           </View>
         {actionError && <Text accessibilityRole="alert" style={[styles.hint, textColor]}>{actionError}</Text>}
       </View>}
-      {(!profileReady || !rendered) && !mapError && <View pointerEvents="none" style={styles.loading}><ActivityIndicator size="large" color={theme.text} /></View>}
+      {(!profileReady || !rendered) && !mapError && <View pointerEvents="none" style={styles.loading} accessibilityRole="progressbar" accessibilityLabel="Loading your style map">
+        <ActivityIndicator size="large" color={theme.text} />
+        <Text style={[styles.loadingText, textColor]}>Loading your style map...</Text>
+      </View>}
       {mapError && <View style={[styles.empty, StyleSheet.absoluteFill, { backgroundColor: theme.background }]}><Text style={textColor}>Your style map could not load.</Text><Pressable accessibilityRole="button" style={[styles.pick, surface]} onPress={() => { ready.current = false; setMapError(false); setRendered(false); setWebKey((key) => key + 1); }}><Text style={textColor}>Reload map</Text></Pressable></View>}
     </View>
     <ImageLookupModal item={lookupItem} loading={lookupLoading} result={lookupResult} errorCode={lookupError?.code ?? null} errorMessage={lookupError?.message ?? null}
@@ -327,7 +330,8 @@ export default function GraphTab() {
 const styles = StyleSheet.create({
   screen: { flex: 1 }, graph: { flex: 1 }, webview: { flex: 1, backgroundColor: 'transparent' },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 16 },
-  loading: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
+  loading: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center', gap: 16 },
+  loadingText: { fontSize: 16, fontWeight: '600' },
   topPanel: { position: 'absolute', top: 12, left: 16, right: 16, gap: 7 },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 9 },
   flex: { flex: 1, minWidth: 0 }, title: { fontSize: 19, fontWeight: '700', flex: 1 },

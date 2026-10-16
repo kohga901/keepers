@@ -101,7 +101,7 @@ const App: React.FC = () => {
 
   const [activeTab, setActiveTab] = React.useState('liked');
   const [filterOpen, setFilterOpen] = useState(false);
-  const toggleAnim = useRef(new Animated.Value(0)).current;
+  const [toggleAnim] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     Animated.timing(toggleAnim, {
