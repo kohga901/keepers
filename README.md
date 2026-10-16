@@ -97,34 +97,48 @@ dev.bat
 
 ## GitLab CI/CD
 
-GitLab CI/CD runs the instructions in [`.gitlab-ci.yml`](.gitlab-ci.yml) on a
-GitLab Runner whenever code is pushed or a merge request is opened.
+Capstone GitLab remains the source of truth for code and merge requests. Set up
+an outbound **push mirror** to a private GitLab.com project, including feature
+branches. Push changes only to capstone; GitLab.com runs the instructions in
+[`.gitlab-ci.yml`](.gitlab-ci.yml) using its hosted runners.
 
-The initial pipeline has two stages:
+The workflow creates branch pipelines only on `gitlab.com`. It does not create
+runner jobs on capstone, and it does not copy cloud pipeline results back to
+capstone merge requests. Pipeline logs are available under **Build > Pipelines**
+in the GitLab.com mirror.
 
-1. **Validate** checks the frontend's TypeScript types, reports lint problems,
-   and compiles the Python source to catch syntax errors.
-2. **Build** exports the Expo web app and saves it as a downloadable pipeline
-   artifact for one week.
+The pipeline has one **Validate** stage on every mirrored branch:
+
+- `frontend_typecheck` checks the frontend's TypeScript types.
+- `frontend_lint` reports frontend lint problems.
+- `backend_syntax` compiles the Python source to catch syntax errors.
+
+Application builds and deployment are not enabled. No Expo account, EAS
+configuration, or application credentials are needed for these checks. The
+GitLab.com project must have hosted runners enabled, available compute minutes,
+and any required account verification completed.
 
 Frontend lint is temporarily non-blocking because the current app has known
 React hook lint errors. The lint job will still show the errors in GitLab and
 should become blocking after they are fixed by removing `allow_failure: true`
 from the job.
 
-No credentials are required by this pipeline. If a future deployment needs
-tokens or keys, add them under **Settings > CI/CD > Variables** in GitLab; do
-not commit them to this repository.
+### Returning results to capstone
 
-### Continuous delivery versus deployment
+Repository mirroring transfers Git branches, tags, and commits, not pipeline
+results. GitLab supports
+[external commit statuses](https://docs.gitlab.com/ci/ci_cd_for_external_repos/external_commit_statuses/)
+on its Free tier. A reporting service can post a status for the same commit SHA
+and source branch to capstone's
+[commit status API](https://docs.gitlab.com/api/commits/#set-commit-pipeline-status),
+with a link to the GitLab.com pipeline. That status can appear in capstone's
+pipeline and merge-request views; detailed logs remain on GitLab.com.
 
-The successful web artifact is a basic continuous-delivery result: every
-validated commit produces something ready to deploy. Automatic deployment is
-not enabled yet because each part of this project needs a destination:
+The reporting service must reach both GitLab.com and capstone's private API.
+One option is a small, approved campus service that polls the cloud pipeline
+status and reports it to capstone. Another is university-approved network access
+from the cloud reporter to capstone. A cloud CI job alone cannot report through
+the existing firewall just by adding an API token.
 
-- The Expo web build can be hosted on GitLab Pages or another static host.
-- The FastAPI server needs a Python-capable host.
-- Android and iOS releases normally use Expo EAS and the app stores.
-
-After choosing those destinations, add a `deploy` stage and keep production
-credentials in protected GitLab CI/CD variables.
+Automatic reporting is not configured. Until it is, check the matching commit's
+pipeline in GitLab.com before merging on capstone.
