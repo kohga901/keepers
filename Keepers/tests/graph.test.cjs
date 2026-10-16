@@ -304,9 +304,9 @@ test('screen puts working graph mode controls in its safe-area header', async ()
   assert.equal(Object.assign({}, ...header.props.style).height, 80);
   const headerChildren = header.props.children.props.children;
   const modes = headerChildren[0].props.children.props.children;
-  assert.equal(headerChildren[1].type, 'Switch');
-  assert.equal(headerChildren[1].props.accessibilityLabel, 'Image previews');
-  assert.equal(headerChildren[1].props.style.alignSelf, 'center');
+  assert.equal(headerChildren[1].props.children.type, 'Switch');
+  assert.equal(headerChildren[1].props.children.props.accessibilityLabel, 'Image previews');
+  assert.equal(headerChildren[1].props.children.props.style.alignSelf, 'center');
   assert.deepEqual(Array.from(modes, (button) => button.props.children.props.children), ['Focus area', 'Whole graph']);
   app.find((n) => n.type === 'WebView').props.onMessage({ nativeEvent: { data: '{"type":"ready"}' } });
   for (const [i, mode] of ['focus', 'whole'].entries()) {

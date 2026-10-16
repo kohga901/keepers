@@ -251,8 +251,10 @@ export default function GraphTab() {
           <Text style={[styles.modeText, { color: frame.mode === mode ? theme.headerText : theme.tabInactive }]}>{mode === 'focus' ? 'Focus area' : 'Whole graph'}</Text>
         </Pressable>)}</View>
         </View>
-        <Switch style={styles.previewSwitch} accessibilityLabel="Image previews" value={showPreviews} onValueChange={setShowPreviews}
-          trackColor={{ false: theme.border, true: theme.tabBg }} thumbColor={showPreviews ? theme.tabActive : theme.surface} />
+        <View style={styles.previewControl}>
+          <Switch style={styles.previewSwitch} accessibilityLabel="Image previews" value={showPreviews} onValueChange={setShowPreviews}
+            trackColor={{ false: theme.border, true: theme.tabBg }} thumbColor={showPreviews ? theme.tabActive : theme.surface} />
+        </View>
       </View>
     </View>
     <View style={styles.graph} onLayout={({ nativeEvent: { layout: next } }) => setSize({ width: next.width, height: next.height })}>
@@ -332,8 +334,9 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 12, lineHeight: 18 }, small: { fontSize: 11, lineHeight: 16 }, buttonText: { fontSize: 12, fontWeight: '500', flexShrink: 1 },
   help: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   header: { justifyContent: 'flex-end' },
-  headerRow: { paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerRow: { paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center' },
   modeWrapper: { flex: 1, minWidth: 0, alignItems: 'center' },
+  previewControl: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   previewSwitch: { alignSelf: 'center', flexShrink: 0 },
   modes: { width: 268, maxWidth: '100%', padding: 3, borderWidth: 1, borderRadius: 24, flexDirection: 'row' },
   mode: { width: 130, flexShrink: 1, paddingVertical: 6, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
