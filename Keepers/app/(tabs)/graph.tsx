@@ -1,4 +1,5 @@
 // Test to see if vpn connection is required to push
+// Test to see if mirror sends info back to capstone gitlab
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
 	ActivityIndicator,
