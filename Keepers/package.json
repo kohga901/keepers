@@ -10,6 +10,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
+    "typecheck": "tsc --noEmit",
     "test:stylewrap": "node --test tests/styleWrap.test.cjs",
     "test:graph": "node --test tests/graph.test.cjs"
   },
