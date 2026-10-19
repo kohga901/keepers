@@ -91,10 +91,10 @@ export default function GraphTab() {
   const command = useCallback((payload: object) => {
     if (ready.current) web.current?.injectJavaScript(`window.keepersMap && window.keepersMap(${JSON.stringify(payload).replace(/</g, '\\u003c')}); true;`);
   }, []);
-  const config = useMemo(() => ({ type: 'configure', layout, preference, initialize: profileReady,
+  const config = useMemo(() => ({ type: 'configure', layout, preference, initialize: profileReady, showPreviews,
     colors: { background: theme.background, grid: theme.border, point: theme.primary,
       selected: theme.accentGold, preference: TASTE_BLUE, text: theme.text, surface: theme.surface } }),
-  [layout, preference, profileReady, theme]);
+  [layout, preference, profileReady, showPreviews, theme]);
   useEffect(() => { command(config); }, [command, config]);
 
   const closeLookup = useCallback(() => {
@@ -265,7 +265,8 @@ export default function GraphTab() {
         onError={() => { ready.current = false; setMapError(true); }}
         onContentProcessDidTerminate={() => { ready.current = false; setMapError(true); }}
         onRenderProcessGone={() => { ready.current = false; setMapError(true); }} />
-      <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+      {/* Keep every finger on the WebView; it handles thumbnail taps as well as graph gestures. */}
+      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
         {showPreviews && frame.previews.map((p) => {
           const item = items.get(p.clothesId);
           return <Pressable key={p.clothesId} accessibilityRole="button" accessibilityLabel={`Open ${item?.name ?? 'clothing item'}`}
@@ -373,7 +374,7 @@ export function buildPlotHtml(points: MapPoint[]) {
     var POINTS = ${JSON.stringify(points).replace(/</g, '\\u003c')};
     var byId = new Map(POINTS.map(function(p){return [p.clothesId,p];}));
     var canvas=document.getElementById('plot'), ctx=canvas.getContext('2d');
-    var layout=null, camera=null, preference=null, colors=null, mode='whole', selected=null;
+    var layout=null, camera=null, preference=null, colors=null, mode='whole', selected=null, showPreviews=true;
     var raf=false, lastFrame='', lastPost=0, postTimer=null, seen=new Set(), pointers=new Map(), moved=0, multi=false;
     function post(message){if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage(JSON.stringify(message));}
     function configureSize(){var dpr=Math.min(window.devicePixelRatio||1,2);canvas.width=Math.round(layout.width*dpr);canvas.height=Math.round(layout.height*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);}
@@ -403,7 +404,7 @@ export function buildPlotHtml(points: MapPoint[]) {
     window.keepersMap=function(message){
       if(message.type==='configure'){
         var oldOrigin=camera&&layout?G.origin(layout,mode):null;
-        layout=message.layout;preference=G.validPosition(message.preference)?message.preference:null;colors=message.colors;
+        layout=message.layout;preference=G.validPosition(message.preference)?message.preference:null;colors=message.colors;showPreviews=message.showPreviews!==false;
         if(!layout||layout.width<=0||layout.height<=0)return;configureSize();
         if(oldOrigin){var newOrigin=G.origin(layout,mode);camera.x+=(newOrigin.x-oldOrigin.x)/camera.scale;camera.y+=(oldOrigin.y-newOrigin.y)/camera.scale;}
         if(!camera&&message.initialize){if(preference)focus(preference);else{mode='whole';fit();}}
@@ -434,7 +435,13 @@ export function buildPlotHtml(points: MapPoint[]) {
     });
     canvas.addEventListener('pointerup',function(event){
       if(!pointers.has(event.pointerId))return;
-      if(pointers.size===1&&!multi&&moved<8){var tap=local(event),winner=null,best=23;for(var i=0;i<POINTS.length;i++){var q=G.project(POINTS[i],camera,layout,mode),distance=Math.hypot(q.x-tap.x,q.y-tap.y);if(distance<best){winner=POINTS[i];best=distance;}}if(winner)select(winner.clothesId);}
+      if(pointers.size===1&&!multi&&moved<8){
+        var tap=local(event),winner=null,best=23;
+        var thumbnails=showPreviews?G.previews(POINTS,camera,layout,mode,selected,preference):[];
+        for(var j=0;j<thumbnails.length;j++){var thumbnail=thumbnails[j];if(Math.abs(thumbnail.x-tap.x)<=23&&Math.abs(thumbnail.y-tap.y)<=26){winner=byId.get(thumbnail.clothesId);break;}}
+        if(!winner)for(var i=0;i<POINTS.length;i++){var q=G.project(POINTS[i],camera,layout,mode),distance=Math.hypot(q.x-tap.x,q.y-tap.y);if(distance<best){winner=POINTS[i];best=distance;}}
+        if(winner)select(winner.clothesId);
+      }
       pointers.delete(event.pointerId);schedule();
     });
     canvas.addEventListener('pointercancel',function(event){pointers.delete(event.pointerId);});

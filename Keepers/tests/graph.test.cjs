@@ -166,6 +166,41 @@ test('actual WebView next selection and pinch do not reset the camera or acciden
   app.command({ type: 'mode', mode: 'whole' }); assert.equal(app.frame().count, catalog.length);
 });
 
+test('thumbnail corners open the piece only while previews are visible', () => {
+  const app = renderer(null, [{ clothesId: 1, x: 0, y: 0 }]);
+  const preview = app.frame().previews[0];
+  const tap = (x, y) => {
+    app.event('pointerdown', { pointerId: 1, clientX: x, clientY: y });
+    app.event('pointerup', { pointerId: 1, clientX: x, clientY: y });
+  };
+  for (const x of [-22, 22]) for (const y of [-25, 25]) tap(preview.x + x, preview.y + y);
+  assert.equal(app.messages.filter((m) => m.type === 'select').length, 4);
+  app.command({ ...app.config, showPreviews: false });
+  tap(preview.x + 22, preview.y + 25);
+  assert.equal(app.messages.filter((m) => m.type === 'select').length, 4);
+  tap(preview.x, preview.y);
+  assert.equal(app.messages.filter((m) => m.type === 'select').length, 5);
+});
+
+test('pinching and panning from thumbnails works immediately without selecting a piece', () => {
+  const app = renderer({ x: 0, y: 0 });
+  const preview = app.frame().previews[0], initialCount = app.frame().count;
+  app.event('pointerdown', { pointerId: 1, clientX: preview.x, clientY: preview.y });
+  app.event('pointerdown', { pointerId: 2, clientX: preview.x + 60, clientY: preview.y });
+  app.event('pointermove', { pointerId: 2, clientX: preview.x + 120, clientY: preview.y });
+  assert.ok(app.frame().count < initialCount);
+  app.event('pointermove', { pointerId: 2, clientX: preview.x + 60, clientY: preview.y });
+  assert.equal(app.frame().count, initialCount);
+  app.event('pointerup', { pointerId: 2, clientX: preview.x + 60, clientY: preview.y });
+  app.event('pointerup', { pointerId: 1, clientX: preview.x, clientY: preview.y });
+  const before = app.frame().taste;
+  app.event('pointerdown', { pointerId: 1, clientX: preview.x, clientY: preview.y });
+  app.event('pointermove', { pointerId: 1, clientX: preview.x + 15, clientY: preview.y + 10 });
+  app.event('pointerup', { pointerId: 1, clientX: preview.x + 15, clientY: preview.y + 10 });
+  close(app.frame().taste.x, before.x + 15); close(app.frame().taste.y, before.y + 10);
+  assert.equal(app.messages.filter((m) => m.type === 'select').length, 0);
+});
+
 test('opening and closing the dock preserves graph positions as its usable area changes', () => {
   for (const mode of ['focus', 'whole']) {
     const app = renderer({ x: 0, y: 0 });
@@ -342,7 +377,10 @@ test('preview toggle hides and restores thumbnails without resetting the map or 
   const frame = (id) => ({ type: 'frame', mode: 'focus', count: 4, nearTaste: false, previews: [{ clothesId: id, x: 50, y: 240 }], taste: null });
   message(frame(1)); await app.flush();
   assert.ok(app.nodes().some((n) => n.props.accessibilityLabel === 'Open Piece 1'));
-  await app.select(1);
+  const overlay = app.find((n) => n.type === 'View' && n.props.children?.[0]?.some?.((child) => child.props.accessibilityLabel === 'Open Piece 1'));
+  assert.equal(overlay.props.pointerEvents, 'none');
+  await app.press('Open Piece 1');
+  assert.ok(app.text().includes('Piece 1'));
   const scripts = app.calls.scripts.length, requests = app.calls.metadata.length;
   const toggle = () => app.find((n) => n.type === 'Switch' && n.props.accessibilityLabel === 'Image previews');
   toggle().props.onValueChange(false); await app.flush();
@@ -355,7 +393,9 @@ test('preview toggle hides and restores thumbnails without resetting the map or 
   toggle().props.onValueChange(true); await app.flush();
   assert.ok(app.nodes().some((n) => n.props.accessibilityLabel === 'Open Piece 2'));
   assert.ok(app.text().includes('Piece 1'));
-  assert.equal(app.calls.scripts.length, scripts);
+  assert.equal(app.calls.scripts.length, scripts + 2);
+  assert.ok(app.calls.scripts.at(-2).includes('"showPreviews":false'));
+  assert.ok(app.calls.scripts.at(-1).includes('"showPreviews":true'));
   assert.equal(app.find((n) => n.type === 'WebView').props.source, source);
   assert.ok(!app.text().includes('Widen area'));
 });
