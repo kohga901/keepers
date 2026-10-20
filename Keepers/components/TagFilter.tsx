@@ -1,6 +1,6 @@
 /**
  * File: TagFilter.tsx
- * Description: Filter button and tag picker for the swiper. The sheet edits a draft selection and
+ * Description: Filter button (shown in the header) and tag picker for the swiper. The sheet edits a draft selection and
  *              reports it through `onChange` once, when it closes, so choosing several tags
  *              costs one reload of the feed instead of one per tag.
  * Author: Derek Tinoco
@@ -108,11 +108,6 @@ export const TagFilter: React.FC<Props> = ({ tags, selected, onChange }) => {
 
 const styles = StyleSheet.create({
   button: {
-    position: 'absolute',
-    top: 8,
-    right: 16,
-    zIndex: 20,
-    elevation: 20,
     width: 40,
     height: 40,
     borderRadius: 20,

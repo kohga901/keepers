@@ -6,8 +6,8 @@
  */
 
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Dimensions, Pressable, StyleSheet, View } from 'react-native';
 import { Text } from '../../components/Text';
 import Swiper from 'react-native-deck-swiper';
@@ -164,6 +164,23 @@ const App: React.FC = () => {
     markOutOfCards();
     void refreshDeck();
   };
+
+  // The filter button lives in the root stack's header, because the swipe deck draws over anything
+  // placed on top of it. It's only shown while this tab is focused.
+  const navigation = useNavigation();
+  useFocusEffect(
+    useCallback(() => {
+      const stack = navigation.getParent();
+      if (!stack || !isAuthenticated) return;
+
+      stack.setOptions({
+        headerRight: () => <TagFilter tags={tags} selected={selectedTags} onChange={applyFilter} />,
+      });
+      return () => stack.setOptions({ headerRight: undefined });
+      // applyFilter only reads refs and state setters, so the copy captured here never goes stale.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [navigation, isAuthenticated, tags, selectedTags])
+  );
 
   // The filter options, loaded once the user is signed in.
   useEffect(() => {
@@ -331,7 +348,6 @@ const App: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <TagFilter tags={tags} selected={selectedTags} onChange={applyFilter} />
       {outOfCards ? (
         <View style={styles.messageContainer}>
           <Text style={styles.messageText}>
