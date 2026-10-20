@@ -165,14 +165,11 @@ export function AiKeySettings() {
   return (
     <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
       <View style={styles.titleRow}>
-        <Text style={[styles.title, { color: theme.text }]}>Reverse image search</Text>
+        <Text style={[styles.title, { color: theme.text }]}>Reverse Image Search</Text>
       </View>
-      <Text style={[styles.body, { color: theme.mutedText }]}>
-        Choose a provider and store your own key for image-based shopping searches.
-      </Text>
 
       <View accessibilityRole="radiogroup" style={styles.providerRow}>
-        {(Object.keys(PROVIDER_DETAILS) as AiProvider[]).map((value) => {
+        {(['google', 'openai'] as AiProvider[]).map((value) => {
           const selected = value === provider;
           return (
             <Pressable
