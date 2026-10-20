@@ -6,6 +6,7 @@ Defines the API routes for clothing-related operations in the Keepers app.
 Endpoints:
     - POST /clothes/swipe           — record a like or dislike swipe for a clothing item
     - POST /clothes/recommendations — return personalised recommendations based on the user's preference vector
+    - GET    /clothes/tags                         — list the tags (with category) the feed can be filtered by
     - GET    /clothes/liked/{user_id}              — list the items a user has liked
     - GET    /clothes/disliked/{user_id}           — list the items a user has disliked
     - DELETE /clothes/liked/{user_id}/{item_id}    — remove an item from a user's likes
@@ -21,6 +22,7 @@ from pydantic import BaseModel, Field
 import numpy as np
 
 from db import supabase, supabase_execute as _supabase_execute
+from routers.admin import _fetch_existing_tags
 from services import Startup, user_state
 from services.recommendation_service import compute_pref_vec, estimate_coordinates, get_recommendations
 
@@ -62,18 +64,6 @@ class History(BaseModel):
 
 
 # --- Helpers ---
-def _matches_filters(item: dict, req: RecommendationRequest) -> bool:
-    # No categories requested means every item matches.
-    if req.categories == []:
-        return True
-
-    # Tags of the item.
-    item_tags = item.get("item_tags") or []
-
-    # The item matches if any of its tags is a requested category.
-    return any(tag in req.categories for tag in item_tags)
-
-
 def _fetch_clothing_items(item_ids: list[int]) -> list[dict]:
     """
     DB function. Fetch clothing items based on item_id's and then return a dictionary
@@ -247,26 +237,31 @@ def recommendations(req: RecommendationRequest) -> RecommendationResponse:
         # Build the pref_vec of the user from their swipe history.
         pref_vec = compute_pref_vec(liked_ids, disliked_ids)
 
+        # The items the user's tag filter allows: any item with at least one of the tags. None means no filter.
+        allowed_ids = Startup.items_with_any_tag(req.categories) if req.categories else None
+
         # If the pref_vec of a user is 0, get random unseen items.
         if not np.any(pref_vec):
             with Startup._index_lock:
-                unseen_ids = [i for i in Startup._item_ids if i not in excluded_ids]
+                unseen_ids = [i for i in Startup._item_ids
+                              if i not in excluded_ids and (allowed_ids is None or i in allowed_ids)]
             results = random.sample(unseen_ids, k=min(n * 5, len(unseen_ids)))
 
             # Drop later copies of the same product from the sample.
             results = Startup.drop_duplicates(results)
         # Otherwise get the items recommended for the pref_vec.
         else:
-            results = get_recommendations(pref_vec, excluded_ids, n=n*5, batch_size=n)
+            results = get_recommendations(pref_vec, excluded_ids, n=n*5, batch_size=n, allowed_ids=allowed_ids)
 
         # Fetch the recommended items from the db.
         items = _fetch_clothing_items(results) if results else []
 
-        # Drop the items that don't match the requested categories.
-        items = [i for i in items if _matches_filters(i, req)]
-
         # Keep the first n items.
         items = items[:n]
+
+        # Attach each item's tags.
+        for item in items:
+            item["item_tags"] = Startup.tags_of(item["item_id"])
 
         # Remember what was sent so it is never sent to this user again.
         user_state.mark_served(req.user_id, [i["item_id"] for i in items])
@@ -299,6 +294,12 @@ def recommendations_debug(req: RecommendationRequest):
 
     # Return each item_id with its score.
     return {"recommendations": [{"item_id": r[0], "score": r[1]} for r in results]}
+
+@router.get("/tags")
+def get_tags() -> dict[str, list[dict]]:
+    """The tags (with their category) that /recommendations can filter by."""
+    return {"tags": _fetch_existing_tags()}
+
 
 @router.get("/liked/{user_id}")
 def get_liked_items(user_id: str) -> History:

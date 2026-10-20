@@ -2,8 +2,8 @@
 Startup.py
 
 Builds the FAISS index on server boot by fetching embeddings from Supabase.
-Exposes `index`, `_item_ids`, `item_id_to_embedding`, `item_coordinates`, and
-`EMBEDDING_DIM` for use by recommendation_service.py and clothes.py.
+Exposes `index`, `_item_ids`, `item_id_to_embedding`, `item_coordinates`, `item_tags`,
+and `EMBEDDING_DIM` for use by recommendation_service.py and clothes.py.
 
 initialize() is called once, in a background thread, from main.py's startup event.
 It used to run at import time, which blocked uvicorn from binding a port before
@@ -61,6 +61,9 @@ catalog_mean = None
 # item_id → every item_id of the same product, itself included. Only items that
 # have at least one duplicate are in here.
 duplicate_groups: dict[int, frozenset[int]] = {}
+
+# item_id → the item's tags, from the Tagged_Clothing table. Items with no tags are not in here.
+item_tags: dict[int, frozenset[str]] = {}
 
 # True once everything above is loaded and requests can be answered.
 ready = False
@@ -205,6 +208,44 @@ def _fetch_embeddings() -> tuple[list[int], np.ndarray]:
     return item_ids, np.concatenate(pages)
 
 
+def _fetch_item_tags() -> dict[int, frozenset[str]]:
+    """DB function. Fetches every item's tags from the Tagged_Clothing join table."""
+    from db import supabase, supabase_fetch_all
+
+    # Tags collected so far for each item.
+    tags: dict[int, set[str]] = {}
+
+    # SELECT clothes_id, "Tag" FROM "Tagged_Clothing" ORDER BY clothes_id, "Tag"
+    query = lambda: supabase.table("Tagged_Clothing").select("clothes_id, Tag").order("clothes_id").order("Tag")
+
+    # Fetch one page of rows at a time.
+    for rows in supabase_fetch_all(query):
+        for row in rows:
+            tags.setdefault(int(row["clothes_id"]), set()).add(row["Tag"])
+
+    return {item_id: frozenset(item_tag_set) for item_id, item_tag_set in tags.items()}
+
+
+def tags_of(item_id: int) -> list[str]:
+    """The item's tags, sorted by name."""
+    return sorted(item_tags.get(item_id, ()))
+
+
+def items_with_any_tag(tags: list[str]) -> set[int]:
+    """item_ids of the items that have at least one of the given tags."""
+    wanted = set(tags)
+    with _index_lock:
+        return {item_id for item_id, item_tag_set in item_tags.items() if item_tag_set & wanted}
+
+
+def add_item_tags(item_id: int, tags: list[str]) -> None:
+    """Records a freshly-uploaded item's tags so it can be filtered on without a server restart."""
+    if not tags:
+        return
+    with _index_lock:
+        item_tags[item_id] = frozenset(tags)
+
+
 def _load_item_coordinates() -> dict[int, tuple[float, float]]:
     """Loads item_id → (x, y) map positions. Missing file just disables user map positions."""
     # Without the file, return an empty lookup.
@@ -218,7 +259,7 @@ def _load_item_coordinates() -> dict[int, tuple[float, float]]:
 
 
 def initialize():
-    global index, _item_ids, item_id_to_embedding, item_coordinates, catalog_mean, duplicate_groups, ready
+    global index, _item_ids, item_id_to_embedding, item_coordinates, catalog_mean, duplicate_groups, item_tags, ready
 
     try:
         # Fetch all embeddings from Supabase.
@@ -246,15 +287,21 @@ def initialize():
         # Load the map position of each item.
         coordinates = _load_item_coordinates()
 
+        # Load the tags of each item, used to filter recommendations.
+        log.info("Fetching item tags from Supabase")
+        tags = _fetch_item_tags()
+
         # Set the global variables, with ready last so nothing is read half-built.
         _item_ids = item_ids_local
         item_id_to_embedding = mapping
         item_coordinates = coordinates
         catalog_mean = mean
         duplicate_groups = groups
+        item_tags = tags
         index = idx
         ready = True
-        log.info("Startup complete: index has %d items, %d have map coordinates", idx.ntotal, len(coordinates))
+        log.info("Startup complete: index has %d items, %d have map coordinates, %d have tags",
+                 idx.ntotal, len(coordinates), len(tags))
         log.info("=== SERVER READY: you can run expo now ===")
     except Exception:
         # This runs in a background thread, so without this the failure would be

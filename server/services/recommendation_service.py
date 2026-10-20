@@ -208,6 +208,7 @@ def get_recommendations(
     seen_item_ids: list[int],
     n: int = 20,
     batch_size: int | None = None,
+    allowed_ids: set[int] | None = None,
 ) -> list[int]:
     """
     Returns n unseen item_ids mixing three kinds of items:
@@ -223,6 +224,7 @@ def get_recommendations(
         seen_item_ids:  item_ids the user has already swiped on (liked or disliked).
         n:              number of recommendations to return.
         batch_size:     size of one client-facing batch. Defaults to n.
+        allowed_ids:    if given, only these item_ids can be recommended (the user's tag filter).
 
     Returns:
         List of item_ids, seen items removed.
@@ -239,20 +241,29 @@ def get_recommendations(
     # Seen set of items.
     seen_set = set(seen_item_ids)
 
+    # Whether an item can be recommended: unseen, and allowed by the filter if there is one.
+    def eligible(item_id: int) -> bool:
+        return item_id not in seen_set and (allowed_ids is None or item_id in allowed_ids)
+
     # Snapshot under the lock so an admin upload can't resize things mid-read.
     with Startup._index_lock:
         # Search far enough to still have ADJACENT_POOL_SIZE items after removing seen ones.
-        k = min(ADJACENT_POOL_SIZE + len(seen_set), Startup.index.ntotal)
+        # With a filter the matching items can be anywhere in the ranking, so rank the whole catalog.
+        k = Startup.index.ntotal if allowed_ids is not None else min(ADJACENT_POOL_SIZE + len(seen_set), Startup.index.ntotal)
 
         # Get the k nearest items by cosine similarity.
         _, indices = Startup.index.search(pref, k=k)
         item_ids = Startup._item_ids
 
-        # Unseen items, nearest first.
-        ranked = [item_ids[idx] for idx in indices[0] if item_ids[idx] not in seen_set]
+        # Eligible items, nearest first.
+        ranked = [item_ids[idx] for idx in indices[0] if eligible(item_ids[idx])]
 
-        # Every unseen item in the catalog.
-        all_unseen = [i for i in item_ids if i not in seen_set]
+        # A filtered search ranked the whole catalog, so cut it to the depth of an unfiltered one.
+        if allowed_ids is not None:
+            ranked = ranked[:ADJACENT_POOL_SIZE]
+
+        # Every eligible item in the catalog.
+        all_unseen = [i for i in item_ids if eligible(i)]
         embeddings = Startup.item_id_to_embedding
 
         # The nearest unseen items, and their embeddings, for MMR to choose from.

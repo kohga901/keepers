@@ -192,6 +192,7 @@ def upload_items(req: UploadRequest) -> UploadResponse:
 
             # 5. Make it immediately recommendable.
             Startup.add_item_embedding(item_id, raw_embedding)
+            Startup.add_item_tags(item_id, item.item_tags)
 
             # Record the item as uploaded.
             results.append(UploadResult(item_name=item.item_name, status="ok", item_id=item_id))
