@@ -2,40 +2,67 @@
 Startup.py
 
 Builds the FAISS index on server boot by fetching embeddings from Supabase.
-Exposes `index`, `_item_ids`, `item_id_to_embedding`, and `EMBEDDING_DIM`
-for use by recommendation_service.py and clothes.py.
+Exposes `index`, `_item_ids`, `item_id_to_embedding`, `item_coordinates`, and
+`EMBEDDING_DIM` for use by recommendation_service.py and clothes.py.
 
 initialize() is called once, in a background thread, from main.py's startup event.
 It used to run at import time, which blocked uvicorn from binding a port before
 Render's port-scan timeout killed the deploy.
+
+Memory matters here: the server runs on 512 MB. Nothing heavy (UMAP, torch) is
+imported, and embeddings are fetched a page at a time so the whole catalog is
+never held as parsed JSON at once.
 """
 
-import faiss
-import joblib
-import numpy as np
-from dotenv import load_dotenv
-from pathlib import Path
-from supabase import create_client, ClientOptions
-import os
+import csv
+import json
+import logging
 import threading
-import time
+from pathlib import Path
 
-print(f"[{time.time()}] Startup.py: imports done, about to load env vars")
+import faiss
+import numpy as np
 
-load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
+log = logging.getLogger(__name__)
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-
+# Length of a CLIP embedding.
 EMBEDDING_DIM = 512
 
-MAX_RETRIES = 3
-RETRY_DELAY = 5  # seconds
+# Rows per request when fetching embeddings. Each row is ~12 KB of JSON.
+EMBEDDING_PAGE_SIZE = 500
 
+# Two items whose embeddings are at least this similar are treated as the same
+# product. The catalog holds some products under more than one item_id (same
+# photo, name and listing), and a user must never be shown both copies.
+# Identical photos give a similarity of 1.0; the margin only absorbs rounding.
+DUPLICATE_SIMILARITY = 0.999
+
+# How many nearest items are checked when looking for an item's duplicates.
+DUPLICATE_NEIGHBOURS = 10
+
+# 2D map position of each catalog item, the same file the app's map tab draws.
+ITEM_COORDINATES_PATH = Path(__file__).resolve().parents[1] / "data" / "item_coordinates.csv"
+
+# FAISS index over every item's embedding.
 index = None
+
+# item_id of each row in the index, in the same order.
 _item_ids = None
+
+# item_id → embedding lookup.
 item_id_to_embedding = None
-umap_reducer = None
+
+# item_id → (x, y) map position lookup.
+item_coordinates = None
+
+# Mean embedding of the catalog, subtracted from every embedding.
+catalog_mean = None
+
+# item_id → every item_id of the same product, itself included. Only items that
+# have at least one duplicate are in here.
+duplicate_groups: dict[int, frozenset[int]] = {}
+
+# True once everything above is loaded and requests can be answered.
 ready = False
 
 # Guards mutation of index / _item_ids / item_id_to_embedding so a newly
@@ -44,73 +71,203 @@ ready = False
 _index_lock = threading.Lock()
 
 
+def center_embeddings(raw: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """
+    CLIP embeddings of clothing photos all share one large common component
+    (two random items have a cosine similarity of ~0.7), which drowns out the
+    differences between items. Subtracting the catalog mean removes it.
+
+    Args:
+        raw: (N, 512) float32 array of raw embeddings. Normalized in place.
+
+    Returns:
+        (centered unit-length embeddings, the mean that was subtracted)
+    """
+    # Normalize so every embedding has magnitude 1.
+    faiss.normalize_L2(raw)
+
+    # Mean embedding of the whole catalog.
+    mean = raw.mean(axis=0)
+
+    # Subtract the mean from every embedding.
+    centered = raw - mean
+
+    # Normalize again so inner product is cosine similarity.
+    faiss.normalize_L2(centered)
+    return centered, mean
+
+
+def find_duplicate_groups(idx, embeddings: np.ndarray, item_ids: list[int]) -> dict[int, frozenset[int]]:
+    """
+    Groups items whose embeddings are near-identical (see DUPLICATE_SIMILARITY).
+
+    Args:
+        idx:        FAISS index holding `embeddings`.
+        embeddings: (N, 512) unit-length embeddings, in the same order as item_ids.
+        item_ids:   item_id of each row.
+
+    Returns:
+        item_id → every item_id in its group, for items that have a duplicate.
+    """
+    # Get the nearest items of every item, and their similarity scores.
+    k = min(DUPLICATE_NEIGHBOURS, idx.ntotal)
+    scores, indices = idx.search(embeddings, k=k)
+
+    # Each row starts as its own group. parent[row] points towards the group's first row.
+    parent = list(range(len(item_ids)))
+
+    def find(row: int) -> int:
+        # Follow the pointers up to the first row of the group.
+        while parent[row] != row:
+            parent[row] = parent[parent[row]]
+            row = parent[row]
+        return row
+
+    # Join every pair of rows that are similar enough into one group.
+    rows, cols = np.nonzero(scores >= DUPLICATE_SIMILARITY)
+    for row, col in zip(rows, cols):
+        a, b = find(int(row)), find(int(indices[row, col]))
+        if a != b:
+            parent[max(a, b)] = min(a, b)
+
+    # Collect the item_ids of each group.
+    members: dict[int, list[int]] = {}
+    for row, item_id in enumerate(item_ids):
+        members.setdefault(find(row), []).append(item_id)
+
+    # Keep only groups with more than one item, and look them up by any member.
+    groups: dict[int, frozenset[int]] = {}
+    for ids in members.values():
+        if len(ids) > 1:
+            group = frozenset(ids)
+            for item_id in ids:
+                groups[item_id] = group
+
+    return groups
+
+
+def duplicates_of(item_id: int) -> frozenset[int] | tuple[int]:
+    """Every item_id of the same product as item_id, itself included."""
+    return duplicate_groups.get(item_id, (item_id,))
+
+
+def drop_duplicates(item_ids: list[int]) -> list[int]:
+    """Keeps the first item of each product and drops later copies of it, preserving order."""
+    # item_ids already covered by an item that was kept.
+    covered: set[int] = set()
+    kept: list[int] = []
+
+    for item_id in item_ids:
+        if item_id not in covered:
+            kept.append(item_id)
+            covered.update(duplicates_of(item_id))
+
+    return kept
+
+
+def _fetch_embeddings() -> tuple[list[int], np.ndarray]:
+    """
+    DB function. Fetches every item's embedding, one page at a time, converting
+    each page to float32 straight away.
+    """
+    # Imported here so this module can be used without Supabase credentials
+    # (see tools/simulate_recommendations.py).
+    from db import supabase, supabase_fetch_all
+
+    # item_ids and embeddings fetched so far, in the same order.
+    item_ids: list[int] = []
+    pages: list[np.ndarray] = []
+
+    # SELECT item_id, embedding FROM "Embeddings" ORDER BY item_id
+    query = lambda: supabase.table("Embeddings").select("item_id, embedding").order("item_id")
+
+    # Fetch one page of rows at a time.
+    for rows in supabase_fetch_all(query, page_size=EMBEDDING_PAGE_SIZE):
+        # Skip empty pages.
+        if not rows:
+            continue
+
+        # Add the item_ids of this page.
+        item_ids.extend(int(row["item_id"]) for row in rows)
+
+        # Add the embeddings of this page as a float32 array. An embedding may arrive as a JSON string.
+        pages.append(np.array(
+            [json.loads(row["embedding"]) if isinstance(row["embedding"], str) else row["embedding"] for row in rows],
+            dtype=np.float32,
+        ))
+        log.info("Fetched %d embeddings so far", len(item_ids))
+
+    # Without embeddings there is nothing to recommend.
+    if not pages:
+        raise RuntimeError("No embeddings found in Supabase. Server cannot start.")
+
+    # Join the pages into one (N, 512) array.
+    return item_ids, np.concatenate(pages)
+
+
+def _load_item_coordinates() -> dict[int, tuple[float, float]]:
+    """Loads item_id → (x, y) map positions. Missing file just disables user map positions."""
+    # Without the file, return an empty lookup.
+    if not ITEM_COORDINATES_PATH.exists():
+        log.warning("%s not found, user map coordinates will not be updated", ITEM_COORDINATES_PATH)
+        return {}
+
+    # Read each row of the CSV into the lookup.
+    with open(ITEM_COORDINATES_PATH, newline="", encoding="utf-8-sig") as f:
+        return {int(row["item_id"]): (float(row["x"]), float(row["y"])) for row in csv.DictReader(f)}
+
+
 def initialize():
-    print(f"[{time.time()}] Startup.initialize(): importing umap")
-    import umap
-    print(f"[{time.time()}] Startup.initialize(): imported umap finsihed")
+    global index, _item_ids, item_id_to_embedding, item_coordinates, catalog_mean, duplicate_groups, ready
 
-    global index, _item_ids, item_id_to_embedding, umap_reducer, ready
+    try:
+        # Fetch all embeddings from Supabase.
+        log.info("Fetching embeddings from Supabase")
+        item_ids_local, raw = _fetch_embeddings()
 
-    # Fetch all embeddings from Supabase
-    client = create_client(SUPABASE_URL, SUPABASE_KEY, options=ClientOptions(postgrest_client_timeout=10))
+        # Center and normalize the embeddings.
+        embeddings, mean = center_embeddings(raw)
 
-    print(f"[{time.time()}] Startup.initialize(): fetching embeddings from Supabase")
+        # Free the raw embeddings.
+        del raw
 
-    for attempt in range(MAX_RETRIES):
-        try:
-            response = client.table("Embeddings").select("item_id, embedding").execute()
-            if response.data:
-                break
-        except Exception as e:
-            print(f"Attempt {attempt + 1} failed: {e}")
-            if attempt < MAX_RETRIES - 1:
-                print(f"Retrying in {RETRY_DELAY} seconds...")
-                time.sleep(RETRY_DELAY)
-    else:
-        raise RuntimeError("Failed to fetch embeddings from Supabase after 3 attempts. Server cannot start.")
+        # Build index. Inner product on unit vectors is cosine similarity.
+        idx = faiss.IndexFlatIP(EMBEDDING_DIM)
+        idx.add(embeddings)
 
-    print(f"[{time.time()}] Startup.initialize(): fetched {len(response.data)} embeddings")
-    print(f"[{time.time()}] Startup.initialize(): building FAISS index")
-    
-    # Parse into aligned lists
-    item_ids_local = [int(row["item_id"]) for row in response.data]
-    embeddings = np.array([row["embedding"] for row in response.data], dtype=np.float32)
+        # item_id → embedding lookup for building pref vecs
+        mapping = {item_id: embeddings[i] for i, item_id in enumerate(item_ids_local)}
 
-    print(f"[{time.time()}] Startup.initialize(): parsed embeddings into numpy array of shape {embeddings.shape}")
-    # Normalize for cosine similarity via IndexFlatIP
-    faiss.normalize_L2(embeddings)
-    print(f"[{time.time()}] Startup.initialize(): normalized embeddings")
+        # Find the items that are copies of the same product.
+        groups = find_duplicate_groups(idx, embeddings, item_ids_local)
+        log.info("Found %d items that are copies of another item (%d products stored more than once)",
+                 len(groups), len(set(groups.values())))
 
+        # Load the map position of each item.
+        coordinates = _load_item_coordinates()
 
-    print(f"[{time.time()}] Startup.initialize(): loading pretrained UMAP reducer from Supabase")
-    import io
-    umap_bytes = client.storage.from_("ml-models").download("umap_model.pkl")
-    reducer = joblib.load(io.BytesIO(umap_bytes))
-    print(f"[{time.time()}] Startup.initialize(): loaded UMAP reducer")
-
-    print(f"[{time.time()}] Startup.initialize(): building FAISS index")
-    # Build index
-    idx = faiss.IndexFlatIP(EMBEDDING_DIM)
-    idx.add(embeddings)
-    print(f"[{time.time()}] Startup.initialize(): built FAISS index with {idx.ntotal} items")
-
-    print(f"[{time.time()}] Startup.initialize(): setting global variables for index, item_ids, and item_id_to_embedding")
-    # item_id → embedding lookup for pref vec updates
-    mapping = {item_id: embeddings[i] for i, item_id in enumerate(item_ids_local)}
-
-    _item_ids = item_ids_local
-    item_id_to_embedding = mapping
-    umap_reducer = reducer
-    index = idx
-    ready = True
-    print("Startup.initialize() complete — index and UMAP model ready.")
+        # Set the global variables, with ready last so nothing is read half-built.
+        _item_ids = item_ids_local
+        item_id_to_embedding = mapping
+        item_coordinates = coordinates
+        catalog_mean = mean
+        duplicate_groups = groups
+        index = idx
+        ready = True
+        log.info("Startup complete: index has %d items, %d have map coordinates", idx.ntotal, len(coordinates))
+        log.info("=== SERVER READY: you can run expo now ===")
+    except Exception:
+        # This runs in a background thread, so without this the failure would be
+        # silent and every request would return 503 forever.
+        log.exception("Startup failed, server will keep answering 503")
+        raise
 
 
 def add_item_embedding(item_id: int, raw_embedding: np.ndarray) -> None:
     """
     Adds a freshly-uploaded item's embedding to the in-memory FAISS index so it
     is immediately eligible for recommendations, without waiting for a server
-    restart. Mirrors the normalization done in initialize().
+    restart. Mirrors the normalization and centering done in initialize().
 
     Args:
         item_id:       The item's id, already inserted into the Clothing/Embeddings tables.
@@ -121,11 +278,26 @@ def add_item_embedding(item_id: int, raw_embedding: np.ndarray) -> None:
         # item up from Supabase anyway.
         return
 
+    # FAISS requires a 2D array. Reshape the 1D embedding.
     vec = np.array(raw_embedding, dtype=np.float32).reshape(1, EMBEDDING_DIM)
-    normalized = vec.copy()
-    faiss.normalize_L2(normalized)
 
+    # Normalize, subtract the catalog mean, and normalize again.
+    faiss.normalize_L2(vec)
+    centered = vec - catalog_mean
+    faiss.normalize_L2(centered)
+
+    # Add the item to the index and both lookups.
     with _index_lock:
-        index.add(normalized)
+        # Look for existing items that are the same product as the new one.
+        scores, indices = index.search(centered, k=min(DUPLICATE_NEIGHBOURS, index.ntotal))
+        same = [_item_ids[idx] for idx, score in zip(indices[0], scores[0]) if score >= DUPLICATE_SIMILARITY]
+
+        # Put the new item and everything it matches into one group.
+        if same:
+            group = frozenset({item_id}).union(*(duplicates_of(i) for i in same))
+            for member in group:
+                duplicate_groups[member] = group
+
+        index.add(centered)
         _item_ids.append(item_id)
-        item_id_to_embedding[item_id] = normalized[0]
+        item_id_to_embedding[item_id] = centered[0]
