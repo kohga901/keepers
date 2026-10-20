@@ -74,7 +74,6 @@ const App: React.FC = () => {
     message: string;
   } | null>(null);
   const [lookupLoading, setLookupLoading] = useState(false);
-  const { showPriceAsTier } = usePriceDisplay();
   const { theme } = useAppTheme();
 
   // Deck refill state. Only one recommendations request runs at a time; callers share it.
@@ -330,9 +329,7 @@ const App: React.FC = () => {
               <View style={styles.cardInfo}>
                 <View style={styles.cardDetails}>
                   <Text numberOfLines={2} style={styles.cardName}>{card.name}</Text>
-                  <Text style={styles.cardPrice}>
-                    {showPriceAsTier ? getPriceTierSymbol(card.price) : card.price}
-                  </Text>
+                  <CardPrice price={card.price} />
                 </View>
                 <Pressable
                   accessibilityHint="Uses your selected AI provider to search for purchase listings"
@@ -429,6 +426,18 @@ const App: React.FC = () => {
 };
 
 export default App;
+
+// The deck only re-renders cards when `cards` changes, so the price reads the setting and theme
+// itself to pick up changes from the Settings tab.
+function CardPrice({ price }: { price: string }) {
+  const { showPriceAsTier } = usePriceDisplay();
+  const { theme } = useAppTheme();
+  return (
+    <Text style={[styles.cardPrice, { color: theme.accentGold }]}>
+      {showPriceAsTier ? getPriceTierSymbol(price) : price}
+    </Text>
+  );
+}
 
 const blurhash =
   '|rF?hV%2WCj[ayj[a|j[az_NaeWBj@ayfRayfQfQM{M|azj[azf6fQfQfQIpWXofj[ayj[j[fQayWCoeoeaya}j[ayfQa{oLj?j[WVj[ayayj[fQoff7azayj[ayj[j[ayofayayayj[fQj[ayayj[ayfjj[j[ayjuayj[';
@@ -551,7 +560,6 @@ const styles = StyleSheet.create({
   cardPrice: {
     fontSize: 18,
     fontWeight: "500",
-    color: "#007AFF",
   },
   lookupButton: {
     alignItems: 'center',

@@ -113,7 +113,16 @@ export default function Settings() {
               Turn off to see exact prices instead.
             </Text>
           </View>
-          <Switch value={showPriceAsTier} onValueChange={setShowPriceAsTier} />
+          <Switch
+            value={showPriceAsTier}
+            onValueChange={setShowPriceAsTier}
+            // Explicit colors: the platform default off-track is near-transparent and the thumb is white,
+            // so the switch disappears against the white card.
+            trackColor={{ false: theme.border, true: theme.primary }}
+            thumbColor="#FFFFFF"
+            ios_backgroundColor={theme.border}
+            style={styles.switch}
+          />
         </View>
 
         <Pressable onPress={() => setShowRangeGuide((prev) => !prev)}>
@@ -191,6 +200,9 @@ const styles = StyleSheet.create({
   settingText: {
     flex: 1,
     gap: 2,
+  },
+  switch: {
+    flexShrink: 0,
   },
   hint: {
     fontSize: 12,
