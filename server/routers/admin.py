@@ -189,6 +189,7 @@ def upload_items(req: UploadRequest) -> UploadResponse:
 
             # 4. Link the item to its tags (if any) in the join table.
             _tag_clothing_item(item_id, item.item_tags)
+            Startup.add_item_tags(item_id, item.item_tags)
 
             # 5. Make it immediately recommendable.
             Startup.add_item_embedding(item_id, raw_embedding)
