@@ -6,7 +6,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, StyleSheet, View, Pressable, FlatList, Modal } from 'react-native';
+import { ActivityIndicator, Animated, Easing, StyleSheet, View, Pressable, FlatList, Modal } from 'react-native';
 import { Text } from '../../components/Text';
 import { Image } from 'expo-image';
 import { useSafeAreaFrame, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,6 +26,7 @@ const TOGGLE_OPTION_WIDTH = 130;
 const App: React.FC = () => {
   const [allLikedItems, setAllLikedItems] = useState<Item[]>([]);
   const [allDislikedItems, setAllDislikedItems] = useState<Item[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
 
@@ -42,6 +43,8 @@ const App: React.FC = () => {
 
   useFocusEffect(
     useCallback(() => {
+      let active = true;
+
       const aquireLikedItems = async () => {
         const data = await getLikedItems();
 
@@ -59,7 +62,7 @@ const App: React.FC = () => {
             gender: row.Clothing.item_gender,
           }));
 
-        setAllLikedItems(parsedCards);
+        if (active) setAllLikedItems(parsedCards);
       };
 
       const aquireDislikedItems = async () => {
@@ -79,12 +82,18 @@ const App: React.FC = () => {
             gender: row.Clothing.item_gender,
           }));
 
-        setAllDislikedItems(parsedCards);
+        if (active) setAllDislikedItems(parsedCards);
       };
 
-      aquireLikedItems();
-      aquireDislikedItems();
+      void Promise.allSettled([aquireLikedItems(), aquireDislikedItems()]).then((results) => {
+        if (!active) return;
+        results.forEach((result) => {
+          if (result.status === 'rejected') console.error('Failed to load history', result.reason);
+        });
+        setIsLoadingHistory(false);
+      });
 
+      return () => { active = false; };
     }, [])
   );
   const { theme } = useAppTheme();
@@ -92,7 +101,7 @@ const App: React.FC = () => {
 
   const [activeTab, setActiveTab] = React.useState('liked');
   const [filterOpen, setFilterOpen] = useState(false);
-  const toggleAnim = useRef(new Animated.Value(0)).current;
+  const [toggleAnim] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     Animated.timing(toggleAnim, {
@@ -200,7 +209,12 @@ const App: React.FC = () => {
       </Animated.View>
 
       <View style={styles.content}>
-        <Animated.FlatList
+        {isLoadingHistory ? (
+          <View style={[styles.loadingState, { paddingTop: headerHeight }]} accessibilityRole="progressbar" accessibilityLabel="Loading your history">
+            <ActivityIndicator size="large" color={theme.text} />
+            <Text style={[styles.loadingText, { color: theme.text }]}>Loading your history...</Text>
+          </View>
+        ) : <Animated.FlatList
           ref={listRef}
           data={activeTab === 'liked' ? allLikedItems : allDislikedItems}
           keyExtractor={(item) => item.id}
@@ -248,7 +262,7 @@ const App: React.FC = () => {
               </Pressable>
             </Swipeable>
           )}
-        />
+        />}
 
         <Modal
           visible={modalVisible}
@@ -370,6 +384,16 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  loadingState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+  },
+  loadingText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
   list: {
     paddingHorizontal: 16,

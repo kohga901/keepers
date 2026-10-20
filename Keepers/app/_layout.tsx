@@ -93,8 +93,8 @@ export default function RootLayout() {
               options={({ route }) => {
                 const focusedTab = getFocusedRouteNameFromRoute(route);
                 return {
-                  // Liked History renders its own collapsing header instead.
-                  headerShown: focusedTab !== 'likelist',
+                  // History and Graph render their own controls in the header.
+                  headerShown: focusedTab !== 'likelist' && focusedTab !== 'graph',
                   headerTransparent: true,
                   title: focusedTab === 'settings' ? 'S E T T I N G S' : 'K E E P E R S',
                   headerTintColor: theme.headerText,

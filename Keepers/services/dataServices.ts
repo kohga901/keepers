@@ -33,7 +33,7 @@ export const getUserCoordinates = async (userId: string): Promise<UserCoordinate
     return null;
   }
 
-  if (!data) {
+  if (!data || data.x == null || data.y == null || String(data.x).trim() === '' || String(data.y).trim() === '') {
     return null;
   }
 
@@ -132,6 +132,34 @@ export const getClothingById = async (itemId: string) => {
   }
 
   return null;
+}
+
+export async function getGraphItems(itemIds: number[], signal: AbortSignal) {
+  const ids = [...new Set(itemIds)].filter((id) => Number.isSafeInteger(id) && id > 0);
+  if (!ids.length) return [];
+  const { data, error } = await supabase.from('Clothing')
+    .select('item_id, item_name, item_price, item_img, item_web_listing, item_gender')
+    .in('item_id', ids).abortSignal(signal);
+  if (error) throw new Error('Clothing details could not be loaded. Please try again.');
+  return data ?? [];
+}
+
+export async function getGraphHistory(userId: string, signal: AbortSignal) {
+  async function read(table: 'Likes' | 'Dislikes') {
+    const ids = new Set<number>();
+    for (let offset = 0; ; offset += 500) {
+      const { data, error } = await supabase.from(table).select('clothes_id')
+        .eq('user_id', userId).order('clothes_id').range(offset, offset + 499).abortSignal(signal);
+      if (error) throw new Error('Your reactions could not be checked. Retry before liking a piece.');
+      for (const row of data ?? []) {
+        const id = Number(row.clothes_id);
+        if (Number.isSafeInteger(id) && id > 0) ids.add(id);
+      }
+      if ((data ?? []).length < 500) return ids;
+    }
+  }
+  const [liked, passed] = await Promise.all([read('Likes'), read('Dislikes')]);
+  return { liked, passed };
 }
 
 export const saveLikedItem = async (clothesId: string) => {
