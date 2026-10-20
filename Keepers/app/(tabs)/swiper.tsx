@@ -6,16 +6,18 @@
  */
 
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Dimensions, Pressable, StyleSheet, View } from 'react-native';
 import { Text } from '../../components/Text';
 import Swiper from 'react-native-deck-swiper';
-import {getRecommendationsFromServer, sendSwipeToServer} from '../../services/serverApi';
+import {getRecommendationsFromServer, getTagsFromServer, sendSwipeToServer} from '../../services/serverApi';
 
 import { Image } from 'expo-image';
 import * as WebBrowser from 'expo-web-browser';
 import { ImageLookupModal } from '../../components/ai/ImageLookupModal';
+import { TagFilter } from '../../components/TagFilter';
+import { emptyDeckMessage, sameSelection, type Tag } from '../../utils/tagFilter';
 import { usePriceDisplay } from '../../contexts/PriceDisplayContext';
 import { useAppTheme } from '../../hooks/useAppTheme';
 import { supabase } from '../../utils/supabase';
@@ -87,6 +89,13 @@ const App: React.FC = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshFailed, setRefreshFailed] = useState(false);
 
+  // Tag filter. The ref mirrors the state so fetches already in flight read the current filter, and
+  // the generation counts filter changes so a response for an older filter can be thrown away.
+  const [tags, setTags] = useState<readonly Tag[]>([]);
+  const [selectedTags, setSelectedTags] = useState<readonly string[]>([]);
+  const selectedTagsRef = useRef<readonly string[]>([]);
+  const fetchGeneration = useRef(0);
+
   const markOutOfCards = () => {
     outOfCardsRef.current = true;
     setOutOfCards(true);
@@ -96,9 +105,15 @@ const App: React.FC = () => {
   const loadMoreCards = () => {
     if (pendingFetch.current) return pendingFetch.current;
 
+    const generation = fetchGeneration.current;
+
     const request = (async () => {
       try {
-        const data = await getRecommendationsFromServer(amountOfItemsToFetch);
+        const data = await getRecommendationsFromServer(amountOfItemsToFetch, selectedTagsRef.current);
+
+        // The filter changed while this was loading, so these cards are for the old filter.
+        if (generation !== fetchGeneration.current) return false;
+
         const newCards: Item[] = data ? data.map(toItem) : [];
         if (newCards.length === 0) return false;
 
@@ -116,7 +131,8 @@ const App: React.FC = () => {
         console.error('Failed to load more recommendations', error);
         return false;
       } finally {
-        pendingFetch.current = null;
+        // After a filter change a newer request owns pendingFetch, and must not be cleared by this one.
+        if (generation === fetchGeneration.current) pendingFetch.current = null;
       }
     })();
 
@@ -125,12 +141,60 @@ const App: React.FC = () => {
   };
 
   const refreshDeck = async () => {
+    const generation = fetchGeneration.current;
     setIsRefreshing(true);
     setRefreshFailed(false);
     const loaded = await loadMoreCards();
+
+    // The filter changed meanwhile, and the refresh for the new one owns this state now.
+    if (generation !== fetchGeneration.current) return;
     setRefreshFailed(!loaded);
     setIsRefreshing(false);
   };
+
+  // Swaps the filter and starts a fresh deck for it. Cards already loaded for the old filter are dropped.
+  const applyFilter = (next: readonly string[]) => {
+    if (sameSelection(next, selectedTagsRef.current)) return;
+
+    selectedTagsRef.current = next;
+    setSelectedTags(next);
+    fetchGeneration.current += 1;
+    pendingFetch.current = null;
+
+    // Marking the deck as empty makes the next load start a new deck instead of appending to the old one.
+    markOutOfCards();
+    void refreshDeck();
+  };
+
+  // The filter button lives in the root stack's header, because the swipe deck draws over anything
+  // placed on top of it. It's only shown while this tab is focused.
+  const navigation = useNavigation();
+  useFocusEffect(
+    useCallback(() => {
+      const stack = navigation.getParent();
+      if (!stack || !isAuthenticated) return;
+
+      stack.setOptions({
+        headerRight: () => <TagFilter tags={tags} selected={selectedTags} onChange={applyFilter} />,
+      });
+      return () => stack.setOptions({ headerRight: undefined });
+      // applyFilter only reads refs and state setters, so the copy captured here never goes stale.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [navigation, isAuthenticated, tags, selectedTags])
+  );
+
+  // The filter options, loaded once the user is signed in.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    let cancelled = false;
+    void getTagsFromServer().then((loaded) => {
+      if (!cancelled) setTags(loaded);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated]);
 
   useEffect(() => {
 
@@ -298,9 +362,7 @@ const App: React.FC = () => {
       {outOfCards ? (
         <View style={styles.messageContainer}>
           <Text style={styles.messageText}>
-            {refreshFailed
-              ? "We still couldn't load more items. Check your connection and try again."
-              : "You're swiping faster than we can keep up! Tap refresh to load more items."}
+            {emptyDeckMessage(selectedTags.length > 0, refreshFailed)}
           </Text>
           <Pressable
             accessibilityLabel="Load more items"
