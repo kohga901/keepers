@@ -9,6 +9,7 @@
 
 import { supabase } from '../utils/supabase';
 import { getClothing } from './dataServices';
+import type { Tag } from '../utils/tagFilter';
 
 const SERVER_BASE_URL = process.env.EXPO_PUBLIC_SERVER_URL ?? 'https://trial-exact-usable.ngrok-free.dev';
 
@@ -18,23 +19,29 @@ type SwipePayload = {
   liked: boolean;
 };
 
-export const getRecommendationsFromServer = async (n: number) => {
+// What to show when the server can't answer. The unfiltered catalog would ignore the user's filter,
+// so while a filter is active the answer is "nothing" instead.
+const fallbackItems = (categories: readonly string[]) =>
+  categories.length === 0 ? getClothing() : Promise.resolve([]);
+
+export const getRecommendationsFromServer = async (n: number, categories: readonly string[] = []) => {
   const { data: userData, error: userError } = await supabase.auth.getUser();
 
   if (userError || !userData.user) {
     console.error('No user found');
-    return await getClothing(); // fallback
+    return await fallbackItems(categories); // fallback
   }
 
   const payload = {
     user_id: userData.user.id,
     n,
+    categories,
   };
 
   // if server URL not set
   if (!SERVER_BASE_URL) {
     console.log('No server URL → fallback');
-    return await getClothing();
+    return await fallbackItems(categories);
   }
 
   try {
@@ -47,7 +54,7 @@ export const getRecommendationsFromServer = async (n: number) => {
     // bad response
     if (!response.ok) {
       console.log('Server failed → fallback');
-      return await getClothing();
+      return await fallbackItems(categories);
     }
 
     const result = await response.json();
@@ -59,14 +66,28 @@ export const getRecommendationsFromServer = async (n: number) => {
 
     if (data.length === 0) {
       console.log('Empty → fallback');
-      return await getClothing();
+      return await fallbackItems(categories);
     }
 
     return data;
 
   } catch (error) {
     console.log('Error → fallback', error);
-    return await getClothing();
+    return await fallbackItems(categories);
+  }
+};
+
+// The tags the feed can be filtered by. An empty list (server down) just means no filter options.
+export const getTagsFromServer = async (): Promise<readonly Tag[]> => {
+  try {
+    const response = await fetch(`${SERVER_BASE_URL}/clothes/tags`);
+    if (!response.ok) return [];
+
+    const result = await response.json();
+    return Array.isArray(result.tags) ? result.tags : [];
+  } catch (error) {
+    console.log('Could not load filter tags', error);
+    return [];
   }
 };
 
