@@ -215,7 +215,7 @@ export default function Settings() {
             { backgroundColor: theme.primary, opacity: pressed ? 0.9 : 1 },
           ]}
         >
-          <Text style={styles.signOutText}>Replay app tutorial</Text>
+          <Text style={styles.signOutText}>Replay App Tutorial</Text>
         </Pressable>
         <Pressable
           accessibilityRole="button"
@@ -226,7 +226,7 @@ export default function Settings() {
             { backgroundColor: theme.primary, opacity: pressed ? 0.9 : 1 },
           ]}
         >
-          <Text style={styles.signOutText}>Replay History tutorial</Text>
+          <Text style={styles.signOutText}>Replay History Tutorial</Text>
         </Pressable>
         <Pressable
           accessibilityRole="button"
@@ -237,7 +237,7 @@ export default function Settings() {
             { backgroundColor: theme.primary, opacity: pressed ? 0.9 : 1 },
           ]}
         >
-          <Text style={styles.signOutText}>Replay Graph tutorial</Text>
+          <Text style={styles.signOutText}>Replay Graph Tutorial</Text>
         </Pressable>
       </View>
 
@@ -266,7 +266,7 @@ export default function Settings() {
           {clearing === 'all' ? (
             <ActivityIndicator color="#FFFFFF" />
           ) : (
-            <Text style={styles.dangerText}>Reset account</Text>
+            <Text style={styles.dangerText}>Reset Account</Text>
           )}
         </Pressable>
 
@@ -299,7 +299,7 @@ export default function Settings() {
                   <ActivityIndicator color={DANGER} />
                 ) : (
                   <Text style={[styles.dropdownButtonText, { color: DANGER }]}>
-                    {scope === 'liked' ? 'Clear liked items' : 'Clear disliked items'}
+                    {scope === 'liked' ? 'Clear Liked Items' : 'Clear Disliked Items'}
                   </Text>
                 )}
               </Pressable>

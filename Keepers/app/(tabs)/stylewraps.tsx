@@ -25,6 +25,7 @@ import {
 } from '../../services/ai';
 import { getStyleWrap } from '../../services/styleWrapService';
 import { buildStyleWrap, COLOR_SWATCHES, selectRandomKeepers, tagLabel, type WrapData, type WrapItem } from '../../utils/styleWrap';
+import { styleWrapDetailIcon } from '../../utils/styleWrapIcons';
 
 const BUTTON_TEXT = '#0F1418';
 
@@ -211,9 +212,9 @@ export default function StyleWraps() {
               <Text style={[styles.tagName, { color: theme.text }]}>Your Color Palette</Text>
               {wrap.colors.length ? <View style={styles.palette}>{wrap.colors.slice(0, 8).map((tag) => <View key={tag.name} style={styles.colorItem}><View style={[styles.swatch, { backgroundColor: COLOR_SWATCHES[tag.name] ?? theme.background, borderColor: theme.border }]}>{!COLOR_SWATCHES[tag.name] && <Ionicons name="color-palette-outline" size={22} color={theme.text} />}</View><Text style={[styles.small, styles.centerText, { color: theme.text }]}>{tagLabel(tag.name)}</Text><Text style={[styles.small, { color: theme.text }]}>{tag.count} liked</Text></View>)}</View> : <Text style={[styles.body, { color: theme.text }]}>Color tags on your liked pieces will build your palette here.</Text>}
               <View style={[styles.divider, { backgroundColor: theme.border }]} />
-              <View style={styles.detailRow}><Ionicons name="shirt-outline" size={25} color={theme.text} /><View style={styles.flex}><Text style={[styles.small, { color: theme.text }]}>GO-TO PIECE{topGarment && wrap.garments[1]?.count === topGarment.count ? ' · TIED FAVORITE' : ''}</Text><Text style={[styles.tagName, { color: theme.text }]}>{topGarment ? tagLabel(topGarment.name) : 'Still discovering'}</Text></View>{topGarment && <Text style={[styles.small, { color: theme.text }]}>{topGarment.count} liked</Text>}</View>
+              <View style={styles.detailRow}><Image source={{ uri: styleWrapDetailIcon('garment-type', topGarment?.name, theme.text) }} style={styles.detailIcon} contentFit="contain" /><View style={styles.flex}><Text style={[styles.small, { color: theme.text }]}>Go-To Piece{topGarment && wrap.garments[1]?.count === topGarment.count ? ' · TIED FAVORITE' : ''}</Text><Text style={[styles.tagName, { color: theme.text }]}>{topGarment ? tagLabel(topGarment.name) : 'Still discovering'}</Text></View>{topGarment && <Text style={[styles.small, { color: theme.text }]}>{topGarment.count} liked</Text>}</View>
               <View style={[styles.divider, { backgroundColor: theme.border }]} />
-              <View style={styles.detailRow}><Ionicons name="resize-outline" size={25} color={theme.text} /><View style={styles.flex}><Text style={[styles.small, { color: theme.text }]}>SIGNATURE FIT{topFit && wrap.fits[1]?.count === topFit.count ? ' · TIED FAVORITE' : ''}</Text><Text style={[styles.tagName, { color: theme.text }]}>{topFit ? tagLabel(topFit.name) : 'Still discovering'}</Text></View>{topFit && <Text style={[styles.small, { color: theme.text }]}>{topFit.count} liked</Text>}</View>
+              <View style={styles.detailRow}><Image source={{ uri: styleWrapDetailIcon('fit', topFit?.name, theme.text) }} style={styles.detailIcon} contentFit="contain" /><View style={styles.flex}><Text style={[styles.small, { color: theme.text }]}>Signature Fit{topFit && wrap.fits[1]?.count === topFit.count ? ' · TIED FAVORITE' : ''}</Text><Text style={[styles.tagName, { color: theme.text }]}>{topFit ? tagLabel(topFit.name).replace(/ Fit$/, '') : 'Still discovering'}</Text></View>{topFit && <Text style={[styles.small, { color: theme.text }]}>{topFit.count} liked</Text>}</View>
             </View>
 
             {(featuredKeepers.length > 0 || loading) && <>
@@ -309,6 +310,7 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
   divider: { height: 1 },
   sectionDivider: { height: 2, backgroundColor: theme.primary, marginVertical: 8 },
   detailRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  detailIcon: { width: 25, height: 25, flexShrink: 0 },
   gallery: { flexDirection: 'row', gap: 12 },
   galleryItem: { flex: 1, gap: 8 },
   galleryItemPressed: { opacity: 0.65 },
