@@ -53,7 +53,7 @@ export const getRecommendationsFromServer = async (n: number, categories: readon
 
     // bad response
     if (!response.ok) {
-      console.log('Server failed → fallback');
+      console.log(`Server failed → fallback (${explainServerFailure(response.status)})`);
       return await fallbackItems(categories);
     }
 
@@ -92,6 +92,55 @@ export const getTagsFromServer = async (): Promise<readonly Tag[]> => {
 };
 
 
+// Turns the HTTP status of a failed server call into "what is probably wrong, and what to do about it".
+// "Failed to send swipe" alone tells you nothing, but the status code tells you almost everything.
+// This only changes what we LOG. What the user sees (the fallback items, `return false`) is untouched.
+//
+// Quick map, from "your problem" to "server's problem" to "the tunnel's problem":
+//   4xx  → the request was wrong     (we sent something the server rejected)
+//   5xx  → the server broke          (we sent something fine, the server fell over)
+//   404/502 from ngrok → the tunnel  (the request never reached our server at all)
+const explainServerFailure = (status: number): string => {
+  switch (status) {
+    case 404:
+      // Our /clothes/... routes exist, so a 404 almost always means ngrok itself answered:
+      // the tunnel is offline or the URL changed (free ngrok URLs change when it restarts).
+      // → Check EXPO_PUBLIC_SERVER_URL and that `ngrok http 8000` is still running.
+      return '404: route not found. If this is ngrok, the tunnel is offline or the URL changed.';
+
+    case 422:
+      // FastAPI says the body didn't match the request model in server/routers/clothes.py
+      // (SwipeData for swipes, RecommendationRequest for the feed). For swipes, note that
+      // SwipePayload.item_id is a string here while the server wants an int. FastAPI
+      // converts "123" to 123 fine, but something like "abc" lands here.
+      // → Log `payload` and compare it to the model.
+      return '422: the server rejected the request data (wrong shape or type).';
+
+    case 502:
+    case 504:
+      // ngrok is up but nothing is answering behind it, or it took too long.
+      // → uvicorn is stopped or crashed. Restart it from the server/ folder.
+      return `${status}: the tunnel is up but the Python server is not responding. Is uvicorn running?`;
+
+    case 503:
+      // Our own deliberate answer from the /clothes/ routes while Startup.ready is false.
+      // The server is fetching every embedding from Supabase on boot, which takes a while.
+      // → Wait for "SERVER READY" in the uvicorn terminal. If it never shows up, look for
+      //   "Startup failed" higher up in that log: boot crashed and 503 will never go away.
+      return '503: the server is still warming up (or boot failed). Look for "SERVER READY" in its log.';
+
+    case 500:
+      // Python raised an exception, usually a Supabase call (bad item id, bad user id,
+      // Supabase down). FastAPI hides the details from the client.
+      // → The real error with its traceback is in the uvicorn terminal. Read that, not this.
+      return '500: the server crashed handling the request. The traceback is in the uvicorn terminal.';
+
+    default:
+      // Anything unexpected. At least show the number so it can be searched for.
+      return `${status}: unexpected response from the server.`;
+  }
+};
+
 export const sendSwipeToServer = async (itemId: string, liked: boolean) => {
   const { data: userData, error: userError } = await supabase.auth.getUser();
 
@@ -116,7 +165,7 @@ export const sendSwipeToServer = async (itemId: string, liked: boolean) => {
     });
 
     if (!response.ok) {
-      console.error('Failed to send swipe');
+      console.error(`Failed to send swipe → ${explainServerFailure(response.status)}`);
       return false;
     }
 

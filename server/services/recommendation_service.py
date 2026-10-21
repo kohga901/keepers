@@ -355,6 +355,27 @@ def _snapshot(
     return ranked, all_unseen, pool, cand_vecs
 
 
+def _plan_batch(size: int, explore_boost: float, rng=random) -> list[str]:
+    """
+    Decides which kind of item each slot of one batch gets: "exploit", "adjacent"
+    or "random". The kinds are shuffled so they are mixed through the batch.
+
+    Args:
+        size:          number of slots in the batch.
+        explore_boost: see get_recommendations().
+        rng:           anything with a shuffle() method; pass a seeded random.Random
+                       to get the same plan every time.
+    """
+    # How many adjacent and random items this batch gets. The rest are exploit.
+    n_adj = round(size * (ADJACENT_FRAC + explore_boost * FILTERED_BOOST_ADJACENT))
+    n_rand = round(size * (RANDOM_FRAC + explore_boost * FILTERED_BOOST_RANDOM))
+
+    # One slot per item in the batch.
+    slots = ["adjacent"] * n_adj + ["random"] * n_rand + ["exploit"] * (size - n_adj - n_rand)
+    rng.shuffle(slots)
+    return slots
+
+
 def _fill_results(pools: dict[str, list[int]], n: int, batch_size: int, explore_boost: float) -> list[int]:
     """
     Draws up to n item_ids from the pools one batch at a time, mixing the kinds
@@ -389,16 +410,8 @@ def _fill_results(pools: dict[str, list[int]], n: int, batch_size: int, explore_
         # Size of this batch. The last one may be smaller.
         size = min(batch_size, n - len(results))
 
-        # How many adjacent and random items this batch gets.
-        n_adj = round(size * (ADJACENT_FRAC + explore_boost * FILTERED_BOOST_ADJACENT))
-        n_rand = round(size * (RANDOM_FRAC + explore_boost * FILTERED_BOOST_RANDOM))
-
-        # One slot per item in the batch, shuffled so the kinds are mixed.
-        slots = ["adjacent"] * n_adj + ["random"] * n_rand + ["exploit"] * (size - n_adj - n_rand)
-        random.shuffle(slots)
-
         before = len(results)
-        for slot in slots:
+        for slot in _plan_batch(size, explore_boost):
             # If a pool runs dry, fall back to the others so the batch is still filled.
             for name in (slot, "exploit", "adjacent", "random"):
                 if take(pools[name]):
