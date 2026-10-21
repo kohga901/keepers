@@ -22,14 +22,26 @@ export const toggleTag = (selected: readonly string[], tag: string): readonly st
   selected.includes(tag) ? selected.filter((t) => t !== tag) : [...selected, tag];
 
 // Orders tags by category, then by name, so each category's tags sit together in the list.
+// `||` falls through to the name comparison only when the categories are equal (compare returns 0).
 const byCategoryThenName = (a: Tag, b: Tag): number =>
   a.Category.localeCompare(b.Category) || a.Tag.localeCompare(b.Tag);
 
 // Groups tags by category. Groups and the tags inside them are sorted by name.
-// Sorts once, then a tag that starts a new category starts a new group, so no group is copied per tag.
+//
+// Example:  [{Tag:'red',Category:'color'}, {Tag:'slim',Category:'fit'}, {Tag:'blue',Category:'color'}]
+//     →     [{category:'color', tags:[blue, red]}, {category:'fit', tags:[slim]}]
+//
+// The idea: sort once so every category forms one unbroken run, then
+//   1. keep only the first tag of each run (the one whose category differs from the tag before it), and
+//   2. for each of those, collect the tags that share its category.
+// Nothing is mutated and no group is rebuilt per tag (the old version copied the whole group each time).
 export const groupByCategory = (tags: readonly Tag[]): readonly TagGroup[] => {
+  // Copy before sorting, because sort() changes the array it is called on.
   const sorted = [...tags].sort(byCategoryThenName);
+
   return sorted
+    // i === 0 is the very first tag, which always starts a group. After that, a tag starts a
+    // new group exactly when its category differs from the previous tag's.
     .filter((tag, i) => i === 0 || tag.Category !== sorted[i - 1].Category)
     .map((first) => ({
       category: first.Category,
