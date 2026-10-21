@@ -63,11 +63,20 @@ _has_created_at = True
 
 
 def _with_duplicates(item_ids) -> set[int]:
-    """The given item_ids plus every other item_id that is the same product as one of them."""
-    expanded: set[int] = set()
-    for item_id in item_ids:
-        expanded.update(Startup.duplicates_of(item_id))
-    return expanded
+    """
+    The given item_ids plus every other item_id that is the same product as one of them.
+
+    Example, if items 1 and 2 are the same product and 5 has no copies:
+        _with_duplicates([1, 5])  →  {1, 2, 5}
+    """
+    # duplicates_of(item_id) is the set of every copy of that item, itself included. For an
+    # item with no copies it is just (item_id,), so such items stay in the result unchanged.
+    copies_of_each = map(Startup.duplicates_of, item_ids)
+
+    # The * unpacks the copy-sets into separate arguments, so this reads as
+    # set().union(copies_of_1, copies_of_5, ...). Starting from an empty set means an
+    # empty item_ids gives an empty set instead of an error.
+    return set().union(*copies_of_each)
 
 
 def _fetch_ids(table: str, user_id: str) -> dict[int, None]:
