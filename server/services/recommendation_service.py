@@ -42,6 +42,13 @@ ADJACENT_POOL_SIZE = 500
 ADJACENT_FRAC = 0.1
 RANDOM_FRAC = 0.1
 
+# Extra exploration, added to the fractions above when the user's recent likes came from
+# filtered feeds. A user who filtered to shirts and liked 40 of them has a pref_vec that
+# points at shirts, and without this the feed stays on shirts after the filter is cleared.
+# Scaled by the share of recent likes that were filtered, so it fades as they like other things.
+FILTERED_BOOST_ADJACENT = 0.3
+FILTERED_BOOST_RANDOM = 0.3
+
 
 def _recency_weighted_mean(item_ids: list[int]) -> np.ndarray | None:
     """
@@ -114,6 +121,17 @@ def compute_pref_vec(liked_ids: list[int], disliked_ids: list[int]) -> np.ndarra
 
     # Return the preference vector.
     return pref_vec.astype(np.float32)
+
+
+def filtered_like_share(liked_ids: list[int], filtered_ids: frozenset[int]) -> float:
+    """
+    Share of the user's most recent likes (the last RECENCY_HALF_LIFE, oldest to newest in
+    liked_ids) that were sent while a tag filter was active. 0.0 with no likes.
+    """
+    recent = liked_ids[-RECENCY_HALF_LIFE:]
+    if not recent:
+        return 0.0
+    return sum(item_id in filtered_ids for item_id in recent) / len(recent)
 
 
 def estimate_coordinates(pref_vec: np.ndarray) -> tuple[float, float] | None:
@@ -209,6 +227,7 @@ def get_recommendations(
     n: int = 20,
     batch_size: int | None = None,
     allowed_ids: set[int] | None = None,
+    explore_boost: float = 0.0,
 ) -> list[int]:
     """
     Returns n unseen item_ids mixing three kinds of items:
@@ -228,6 +247,8 @@ def get_recommendations(
         n:              number of recommendations to return.
         batch_size:     size of one client-facing batch. Defaults to n.
         allowed_ids:    if given, only these item_ids may be returned (a tag filter).
+        explore_boost:  0 to 1. How much to raise the adjacent and random shares, for users whose
+                        preferences were learned under a filter (see FILTERED_BOOST_*).
 
     Returns:
         List of item_ids, seen items removed.
@@ -308,8 +329,8 @@ def get_recommendations(
         size = min(batch_size, n - len(results))
 
         # How many adjacent and random items this batch gets.
-        n_adj = round(size * ADJACENT_FRAC)
-        n_rand = round(size * RANDOM_FRAC)
+        n_adj = round(size * (ADJACENT_FRAC + explore_boost * FILTERED_BOOST_ADJACENT))
+        n_rand = round(size * (RANDOM_FRAC + explore_boost * FILTERED_BOOST_RANDOM))
 
         # One slot per item in the batch, shuffled so the kinds are mixed.
         slots = ["adjacent"] * n_adj + ["random"] * n_rand + ["exploit"] * (size - n_adj - n_rand)

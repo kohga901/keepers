@@ -23,7 +23,7 @@ import numpy as np
 
 from db import supabase, supabase_execute as _supabase_execute
 from services import Startup, user_state
-from services.recommendation_service import compute_pref_vec, estimate_coordinates, get_recommendations
+from services.recommendation_service import compute_pref_vec, estimate_coordinates, filtered_like_share, get_recommendations
 
 log = logging.getLogger(__name__)
 
@@ -252,7 +252,10 @@ def recommendations(req: RecommendationRequest) -> RecommendationResponse:
             results = Startup.drop_duplicates(results)
         # Otherwise get the items recommended for the pref_vec.
         else:
-            results = get_recommendations(pref_vec, excluded_ids, n=n*5, batch_size=n, allowed_ids=allowed_ids)
+            # With no filter, explore more if the user's recent likes were made under one.
+            boost = 0.0 if allowed_ids is not None else filtered_like_share(liked_ids, user_state.filtered_ids(req.user_id))
+            results = get_recommendations(pref_vec, excluded_ids, n=n*5, batch_size=n,
+                                          allowed_ids=allowed_ids, explore_boost=boost)
 
         # Fetch the recommended items from the db.
         items = _fetch_clothing_items(results) if results else []
@@ -265,7 +268,7 @@ def recommendations(req: RecommendationRequest) -> RecommendationResponse:
             item["item_tags"] = sorted(Startup.item_tags.get(item["item_id"], ()))
 
         # Remember what was sent so it is never sent to this user again.
-        user_state.mark_served(req.user_id, [i["item_id"] for i in items])
+        user_state.mark_served(req.user_id, [i["item_id"] for i in items], filtered=allowed_ids is not None)
 
     # Log the request and how long it took.
     log.info("recommendations user=%s sent=%d/%d personalised=%s (likes=%d dislikes=%d) took=%dms",
