@@ -128,3 +128,36 @@ export const sendSwipeToServer = async (itemId: string, liked: boolean) => {
     return false;
   }
 };
+export type ClearHistoryScope = 'liked' | 'disliked' | 'all';
+
+// Wipes the signed-in user's likes, dislikes, or both. The server checks the access token,
+// so it only ever clears the caller's own history. Returns an error message, or null on success.
+export const clearHistoryOnServer = async (scope: ClearHistoryScope): Promise<string | null> => {
+  const { data, error } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+
+  if (error || !token) {
+    return 'Sign in again to clear your history.';
+  }
+
+  try {
+    const response = await fetch(`${SERVER_BASE_URL}/clothes/history/clear`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ scope }),
+    });
+
+    if (!response.ok) {
+      const result = await response.json().catch(() => null);
+      return typeof result?.detail === 'string' ? result.detail : 'Your history could not be cleared. Please try again.';
+    }
+
+    return null;
+  } catch (fetchError) {
+    console.error('Error clearing history:', fetchError);
+    return 'Could not reach the Keepers server. Check your connection and try again.';
+  }
+};
