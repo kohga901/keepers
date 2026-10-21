@@ -23,7 +23,7 @@ import numpy as np
 
 from db import supabase, supabase_execute as _supabase_execute
 from services import Startup, user_state
-from services.recommendation_service import compute_pref_vec, estimate_coordinates, get_recommendations
+from services.recommendation_service import compute_pref_vec, estimate_coordinates, filtered_like_share, get_recommendations
 
 log = logging.getLogger(__name__)
 
@@ -42,8 +42,8 @@ class SwipeData(BaseModel):
 class RecommendationRequest(BaseModel):
     user_id: str
     n: int = 10
-    # Tags to filter by. Tags of the same category are alternatives, different
-    # categories must all match (see Startup.resolve_filter). Empty means no filter.
+    # Tags to filter by. Items matching every category come first, then looser matches
+    # (see Startup.resolve_filter_tiers). Empty means no filter.
     categories: list[str] = Field(default_factory=list)
 
 
@@ -78,6 +78,37 @@ def _fetch_clothing_items(item_ids: list[int]) -> list[dict]:
 
     # Return the items in the same order as item_ids.
     return sorted(response.data, key=lambda x: order.get(x["item_id"], 999))
+
+def _recommend_ids(
+    pref_vec: np.ndarray,
+    excluded_ids: set[int],
+    n: int,
+    batch_size: int,
+    allowed_ids: set[int] | None,
+    liked_ids: list[int],
+    user_id: str,
+) -> list[int]:
+    """
+    Picks up to n item_ids from allowed_ids (or the whole catalog if None) for a user,
+    mixed so that every batch_size items contain the exploration slots.
+    """
+    # If the pref_vec of a user is 0, get random unseen items.
+    if not np.any(pref_vec):
+        with Startup._index_lock:
+            unseen_ids = [i for i in Startup._item_ids
+                          if i not in excluded_ids and (allowed_ids is None or i in allowed_ids)]
+        results = random.sample(unseen_ids, k=min(n, len(unseen_ids)))
+
+        # Drop later copies of the same product from the sample.
+        return Startup.drop_duplicates(results)
+
+    # With no filter, explore more if the user's recent likes were made under one.
+    boost = 0.0 if allowed_ids is not None else filtered_like_share(liked_ids, user_state.filtered_ids(user_id))
+
+    # Otherwise get the items recommended for the pref_vec.
+    return get_recommendations(pref_vec, excluded_ids, n=n, batch_size=batch_size,
+                               allowed_ids=allowed_ids, explore_boost=boost)
+
 
 def _save_pref_vec(user_id: str, pref_vec: np.ndarray) -> None:
     """
@@ -235,24 +266,22 @@ def recommendations(req: RecommendationRequest) -> RecommendationResponse:
         # Number of items the client asked for.
         n = req.n
 
-        # Items allowed by the tag filter, or None if there is no filter.
-        allowed_ids = Startup.resolve_filter(req.categories)
+        # The tiers of items allowed by the tag filter, or None if there is no filter.
+        tiers = Startup.resolve_filter_tiers(req.categories)
 
         # Build the pref_vec of the user from their swipe history.
         pref_vec = compute_pref_vec(liked_ids, disliked_ids)
 
-        # If the pref_vec of a user is 0, get random unseen items.
-        if not np.any(pref_vec):
-            with Startup._index_lock:
-                unseen_ids = [i for i in Startup._item_ids
-                              if i not in excluded_ids and (allowed_ids is None or i in allowed_ids)]
-            results = random.sample(unseen_ids, k=min(n * 5, len(unseen_ids)))
-
-            # Drop later copies of the same product from the sample.
-            results = Startup.drop_duplicates(results)
-        # Otherwise get the items recommended for the pref_vec.
-        else:
-            results = get_recommendations(pref_vec, excluded_ids, n=n*5, batch_size=n, allowed_ids=allowed_ids)
+        # Without a filter there is one stage covering the catalog. With one, start with the
+        # items matching every picked category and widen only if that can't fill the batch.
+        results: list[int] = []
+        for allowed_ids in ([None] if tiers is None else tiers):
+            # Items found by an earlier, stricter tier are not picked again.
+            more = _recommend_ids(pref_vec, excluded_ids | set(results), n * 5 - len(results), n,
+                                  allowed_ids, liked_ids, req.user_id)
+            results += more
+            if len(results) >= n:
+                break
 
         # Fetch the recommended items from the db.
         items = _fetch_clothing_items(results) if results else []
@@ -265,7 +294,7 @@ def recommendations(req: RecommendationRequest) -> RecommendationResponse:
             item["item_tags"] = sorted(Startup.item_tags.get(item["item_id"], ()))
 
         # Remember what was sent so it is never sent to this user again.
-        user_state.mark_served(req.user_id, [i["item_id"] for i in items])
+        user_state.mark_served(req.user_id, [i["item_id"] for i in items], filtered=tiers is not None)
 
     # Log the request and how long it took.
     log.info("recommendations user=%s sent=%d/%d personalised=%s (likes=%d dislikes=%d) took=%dms",

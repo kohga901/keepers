@@ -44,6 +44,9 @@ class _UserState:
         # the same product. It only ever grows, so a product is never recommended
         # twice, even after it is unliked.
         self.seen: set[int] = set()
+        # Items that were sent while a tag filter was active. Swipes on these say little about
+        # the user's taste outside the filter. Memory only: a restart forgets it.
+        self.filtered: set[int] = set()
         # When the state was last loaded from Supabase. None means never.
         self.loaded_at: float | None = None
 
@@ -217,8 +220,24 @@ def remove_swipe(user_id: str, item_id: int, liked: bool) -> tuple[list[int], li
         return list(state.liked), list(state.disliked)
 
 
-def mark_served(user_id: str, item_ids: list[int]) -> None:
+def filtered_ids(user_id: str) -> frozenset[int]:
+    """The items that were sent to the user while a tag filter was active."""
     state = _get(user_id)
     with state.lock:
+        return frozenset(state.filtered)
+
+
+def mark_served(user_id: str, item_ids: list[int], filtered: bool = False) -> None:
+    """
+    Records items as sent to the user, so they are never sent again.
+
+    Args:
+        filtered: whether a tag filter was active for this batch.
+    """
+    state = _get(user_id)
+    with state.lock:
+        if filtered:
+            state.filtered.update(item_ids)
+
         # A sent item counts as seen, and so do its copies, so the product is never sent again.
         state.seen.update(_with_duplicates(item_ids))
