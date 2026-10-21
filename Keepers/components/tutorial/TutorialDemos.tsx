@@ -15,13 +15,13 @@ import { useAppTheme } from '../../hooks/useAppTheme';
 import { Text } from '../Text';
 
 // The web build has no native animated module, so transforms run on the JS thread there.
-const NATIVE = Platform.OS !== 'web';
+export const NATIVE = Platform.OS !== 'web';
 
 const CARD_WIDTH = 150;
 const CARD_HEIGHT = 200;
 
 // Drives a 0 → 1 value over and over, with a pause at each end so the motion reads as a deliberate gesture.
-function useLoop(duration: number, pause = 500) {
+export function useLoop(duration: number, pause = 500) {
   const [progress] = useState(() => new Animated.Value(0));
 
   useEffect(() => {

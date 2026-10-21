@@ -13,6 +13,7 @@ import { useSafeAreaFrame, useSafeAreaInsets } from 'react-native-safe-area-cont
 import { Swipeable } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { usePriceDisplay } from '../../contexts/PriceDisplayContext';
+import { useTutorial } from '../../contexts/TutorialContext';
 import { useStackHeaderHeight } from '../../contexts/StackHeaderHeightContext';
 import { useAppTheme } from '../../hooks/useAppTheme';
 import { Item } from '../../models/Items';
@@ -29,6 +30,14 @@ const App: React.FC = () => {
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const { showTutorialOnce } = useTutorial();
+
+  // First visit to History walks through the toggle, item details, and swipe-to-remove.
+  useFocusEffect(
+    useCallback(() => {
+      showTutorialOnce('history');
+    }, [showTutorialOnce])
+  );
 
   const deleteItem = (id: string) => {
     setAllLikedItems(prev => prev.filter(item => item.id !== id));

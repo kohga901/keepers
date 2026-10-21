@@ -152,17 +152,27 @@ export default function Settings() {
       >
         <Text style={[styles.title, { color: theme.text }]}>Help</Text>
         <Text style={[styles.hint, { color: theme.mutedText }]}>
-          Walk through swiping, Find it, filters, and the tabs again.
+          Watch the walkthroughs again any time.
         </Text>
         <Pressable
           accessibilityRole="button"
-          onPress={showTutorial}
+          onPress={() => showTutorial('welcome')}
           style={({ pressed }) => [
             styles.signOutButton,
             { backgroundColor: theme.primary, opacity: pressed ? 0.9 : 1 },
           ]}
         >
-          <Text style={styles.signOutText}>Replay tutorial</Text>
+          <Text style={styles.signOutText}>Replay app tutorial</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => showTutorial('history')}
+          style={({ pressed }) => [
+            styles.signOutButton,
+            { backgroundColor: theme.primary, opacity: pressed ? 0.9 : 1 },
+          ]}
+        >
+          <Text style={styles.signOutText}>Replay History tutorial</Text>
         </Pressable>
       </View>
     </ScrollView>
