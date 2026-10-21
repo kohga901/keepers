@@ -201,18 +201,17 @@ export default function Settings() {
             backgroundColor: theme.surface,
             borderColor: theme.border,
             marginTop: 16,
+            gap: 12,
           },
         ]}
       >
         <Text style={[styles.title, { color: theme.text }]}>Help</Text>
-        <Text style={[styles.hint, { color: theme.mutedText }]}>
-          Watch the walkthroughs again any time.
-        </Text>
         <Pressable
           accessibilityRole="button"
           onPress={() => showTutorial('welcome')}
           style={({ pressed }) => [
             styles.signOutButton,
+            styles.sectionButton,
             { backgroundColor: theme.primary, opacity: pressed ? 0.9 : 1 },
           ]}
         >
@@ -223,6 +222,7 @@ export default function Settings() {
           onPress={() => showTutorial('history')}
           style={({ pressed }) => [
             styles.signOutButton,
+            styles.sectionButton,
             { backgroundColor: theme.primary, opacity: pressed ? 0.9 : 1 },
           ]}
         >
@@ -233,6 +233,7 @@ export default function Settings() {
           onPress={() => showTutorial('graph')}
           style={({ pressed }) => [
             styles.signOutButton,
+            styles.sectionButton,
             { backgroundColor: theme.primary, opacity: pressed ? 0.9 : 1 },
           ]}
         >
@@ -251,15 +252,13 @@ export default function Settings() {
         ]}
       >
         <Text style={[styles.title, { color: theme.text }]}>History</Text>
-        <Text style={[styles.hint, { color: theme.mutedText }]}>
-          Start over by erasing your likes, dislikes, and your taste on the graph.
-        </Text>
         <Pressable
           accessibilityRole="button"
           disabled={clearing !== null}
           onPress={() => void handleClear('all')}
           style={({ pressed }) => [
             styles.signOutButton,
+            styles.sectionButton,
             styles.dangerButton,
             { backgroundColor: DANGER, opacity: pressed || clearing !== null ? 0.8 : 1 },
           ]}
@@ -358,6 +357,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#0F1418',
   },
+  sectionButton: {
+    marginTop: 0,
+  },
   settingRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -409,6 +411,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    minHeight: 46,
   },
   dropdownLabel: {
     marginTop: 0,

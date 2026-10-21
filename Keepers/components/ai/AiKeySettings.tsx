@@ -169,7 +169,7 @@ export function AiKeySettings() {
       </View>
 
       <View accessibilityRole="radiogroup" style={styles.providerRow}>
-        {(['google', 'openai'] as AiProvider[]).map((value) => {
+        {(['google', 'openai', 'anthropic'] as AiProvider[]).map((value) => {
           const selected = value === provider;
           return (
             <Pressable
@@ -196,9 +196,6 @@ export function AiKeySettings() {
       </View>
       <Text style={[styles.modelHint, { color: theme.mutedText }]}>
         Model: {PROVIDER_DETAILS[provider].model}
-        {provider === 'anthropic'
-          ? ' · Web search must be enabled in your Anthropic Console settings.'
-          : ''}
       </Text>
 
       <View style={styles.statusRow}>

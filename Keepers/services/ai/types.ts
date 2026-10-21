@@ -14,7 +14,7 @@ export const PROVIDER_DETAILS: Record<
     keyLabel: 'Gemini API key',
   },
   openai: {
-    label: 'OpenAI',
+    label: 'OpenAI \nGPT',
     model: 'gpt-5-mini',
     keyLabel: 'OpenAI API key',
   },
