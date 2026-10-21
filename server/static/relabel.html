@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Keepers — Relabel</title>
+<style>
+  :root {
+    --bg: #f5f5f7;
+    --card: #ffffff;
+    --border: #e0e0e6;
+    --text: #1c1c1e;
+    --muted: #6e6e73;
+    --accent: #0a84ff;
+    --accent-hover: #0071e3;
+    --danger: #d92d20;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 32px 16px 80px;
+  }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  p.subtitle { color: var(--muted); margin: 0 0 20px; font-size: 14px; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+
+  .toggle { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; font-size: 14px; cursor: pointer; user-select: none; }
+  .toggle input { position: absolute; opacity: 0; }
+  .switch { width: 40px; height: 24px; border-radius: 999px; background: #c7c7cc; position: relative; transition: background .15s; flex-shrink: 0; }
+  .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: transform .15s; }
+  .toggle input:checked + .switch { background: var(--accent); }
+  .toggle input:checked + .switch::after { transform: translateX(16px); }
+  .toggle input:focus-visible + .switch { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+  .item-img { display: block; width: 100%; max-height: 420px; object-fit: contain; background: #fafafa; border-radius: 8px; margin-bottom: 14px; }
+  .item-name { font-weight: 600; margin-bottom: 2px; }
+  .item-meta { font-size: 12px; color: var(--muted); margin-bottom: 14px; }
+  .item-meta a { color: var(--accent); }
+  .badge { display: inline-block; background: #fff4d6; color: #8a5a00; border-radius: 999px; padding: 1px 8px; font-size: 11px; margin-left: 6px; }
+
+  label.field-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .hint { font-weight: 400; color: var(--muted); }
+  .tag-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; min-height: 4px; }
+  .tag-chip { background: #e8f2ff; color: var(--accent-hover); border-radius: 999px; padding: 3px 10px; font-size: 13px; cursor: pointer; }
+  .tag-chip:hover { background: #fdecea; color: var(--danger); }
+  .tag-search { width: 100%; padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; background: #fff; color: var(--text); }
+  .tag-search:focus { outline: none; border-color: var(--accent); }
+  .tag-options { display: none; max-height: 180px; overflow-y: auto; margin-top: 4px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+  .tag-options.open { display: block; }
+  .tag-option { padding: 7px 10px; font-size: 14px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
+  .tag-option .tag-category { color: var(--muted); font-size: 12px; }
+  .tag-option:hover { background: var(--bg); }
+  .tag-empty { padding: 7px 10px; font-size: 13px; color: var(--muted); }
+
+  .actions { display: flex; gap: 10px; margin-top: 18px; }
+  button { font-size: 14px; font-weight: 600; border-radius: 8px; padding: 11px 18px; cursor: pointer; border: 1px solid transparent; }
+  #skip-btn { background: #fff; border-color: var(--border); color: var(--text); }
+  #skip-btn:hover { border-color: var(--accent); color: var(--accent); }
+  #submit-btn { background: var(--accent); color: #fff; flex: 1; }
+  #submit-btn:hover { background: var(--accent-hover); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+
+  #status-line { font-size: 13px; color: var(--muted); margin-top: 12px; min-height: 18px; }
+  #status-line.error { color: var(--danger); }
+  .empty { text-align: center; color: var(--muted); padding: 40px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Relabel</h1>
+  <p class="subtitle">Fix the tags on one item at a time. Submitting saves the tags and the item won't be shown again.</p>
+
+  <label class="toggle">
+    <input type="checkbox" id="include-relabeled">
+    <span class="switch"></span>
+    <span>Include items that were already relabeled</span>
+  </label>
+
+  <div id="stage"></div>
+  <div id="status-line"></div>
+</div>
+
+<script>
+  const stage = document.getElementById('stage');
+  const statusLine = document.getElementById('status-line');
+  const includeToggle = document.getElementById('include-relabeled');
+
+  let existingTags = []; // [{ Tag, Category }, ...] from the master Tags table.
+  let current = null;    // The item being relabeled.
+  let chosen = [];       // Tags currently picked for it.
+
+  includeToggle.checked = localStorage.getItem('relabel-include') === '1';
+  includeToggle.addEventListener('change', () => {
+    localStorage.setItem('relabel-include', includeToggle.checked ? '1' : '0');
+    loadNext();
+  });
+
+  function setStatus(msg, isError = false) {
+    statusLine.textContent = msg;
+    statusLine.classList.toggle('error', isError);
+  }
+
+  async function loadNext() {
+    setStatus('Loading…');
+    stage.innerHTML = '';
+    try {
+      const r = await fetch(`/relabel/next?include_relabeled=${includeToggle.checked}`);
+      if (!r.ok) throw new Error(`Server responded ${r.status}: ${await r.text()}`);
+      current = (await r.json()).item;
+    } catch (err) {
+      setStatus(`Couldn't load an item: ${err.message}`, true);
+      return;
+    }
+    if (!current) {
+      stage.innerHTML = '<div class="empty">Nothing left to relabel 🎉</div>';
+      setStatus('');
+      return;
+    }
+    chosen = [...current.item_tags];
+    render();
+    setStatus('');
+  }
+
+  function render() {
+    stage.innerHTML = `
+      <div class="card">
+        <img class="item-img" alt="">
+        <div class="item-name"></div>
+        <div class="item-meta"></div>
+        <label class="field-label">Tags <span class="hint">(click a tag to remove it; search to add from existing tags)</span></label>
+        <div class="tag-chips"></div>
+        <input type="text" class="tag-search" placeholder="Search tags…" autocomplete="off">
+        <div class="tag-options"></div>
+        <div class="actions">
+          <button type="button" id="skip-btn">Skip</button>
+          <button type="button" id="submit-btn">Save &amp; next</button>
+        </div>
+      </div>`;
+    stage.querySelector('.item-img').src = current.item_img;
+    stage.querySelector('.item-name').textContent = current.item_name || '(unnamed)';
+    const meta = stage.querySelector('.item-meta');
+    meta.textContent = `item_id ${current.item_id}`;
+    if (current.item_web_listing) {
+      const a = document.createElement('a');
+      a.href = current.item_web_listing; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'listing';
+      meta.append(' · ', a);
+    }
+    if (current.relabeled) {
+      const b = document.createElement('span');
+      b.className = 'badge'; b.textContent = 'already relabeled';
+      meta.append(b);
+    }
+
+    const chips = stage.querySelector('.tag-chips');
+    const search = stage.querySelector('.tag-search');
+    const options = stage.querySelector('.tag-options');
+
+    function renderTags() {
+      chips.innerHTML = '';
+      chosen.forEach(tag => {
+        const chip = document.createElement('span');
+        chip.className = 'tag-chip';
+        chip.textContent = tag + ' ×';
+        chip.addEventListener('click', () => { chosen = chosen.filter(t => t !== tag); renderTags(); });
+        chips.appendChild(chip);
+      });
+      const q = search.value.trim().toLowerCase();
+      const matches = existingTags.filter(t => !chosen.includes(t.Tag) && t.Tag.toLowerCase().includes(q));
+      options.innerHTML = matches.length ? '' : '<div class="tag-empty">No matching existing tags</div>';
+      matches.slice(0, 50).forEach(({ Tag, Category }) => {
+        const opt = document.createElement('div');
+        opt.className = 'tag-option';
+        const name = document.createElement('span'); name.textContent = Tag;
+        const cat = document.createElement('span'); cat.className = 'tag-category'; cat.textContent = Category || '';
+        opt.append(name, cat);
+        opt.addEventListener('mousedown', e => {
+          e.preventDefault();
+          chosen.push(Tag);
+          search.value = '';
+          renderTags();
+        });
+        options.appendChild(opt);
+      });
+    }
+    search.addEventListener('focus', () => { options.classList.add('open'); renderTags(); });
+    search.addEventListener('blur', () => options.classList.remove('open'));
+    search.addEventListener('input', renderTags);
+    renderTags();
+
+    stage.querySelector('#skip-btn').addEventListener('click', loadNext);
+    stage.querySelector('#submit-btn').addEventListener('click', submit);
+  }
+
+  async function submit() {
+    const buttons = stage.querySelectorAll('button');
+    buttons.forEach(b => b.disabled = true);
+    setStatus('Saving…');
+    try {
+      const r = await fetch('/relabel/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item_id: current.item_id, item_tags: chosen }),
+      });
+      if (!r.ok) {
+        let detail = await r.text();
+        try { detail = JSON.parse(detail).detail || detail; } catch (_) {}
+        throw new Error(detail);
+      }
+      await loadNext();
+      setStatus('Saved.');
+    } catch (err) {
+      setStatus(`Save failed: ${err.message}`, true);
+      buttons.forEach(b => b.disabled = false);
+    }
+  }
+
+  fetch('/admin/tags')
+    .then(r => r.json())
+    .then(d => { existingTags = d.tags; })
+    .catch(() => setStatus('Could not load existing tags — tag search unavailable.', true))
+    .finally(loadNext);
+</script>
+</body>
+</html>

@@ -322,6 +322,23 @@ def add_item_tags(item_id: int, tags: list[str]) -> None:
             tag_items[tag] = bitset.with_bit(tag_items.get(tag, bitset.EMPTY), item_id)
 
 
+def set_item_tags(item_id: int, tags: list[str]) -> None:
+    """
+    Replaces an item's tags in the in-memory tag lookups (used when an item is
+    relabeled). Tags that aren't in the master Tags table are ignored.
+    """
+    with _index_lock:
+        # Drop the item from the tags it used to have.
+        for old_tag in item_tags.get(item_id, ()):
+            tag_items[old_tag] = bitset.without_bit(tag_items.get(old_tag, bitset.EMPTY), item_id)
+
+        # Add it under the new ones.
+        known = [tag for tag in tags if tag in tag_category]
+        item_tags[item_id] = frozenset(known)
+        for tag in known:
+            tag_items[tag] = bitset.with_bit(tag_items.get(tag, bitset.EMPTY), item_id)
+
+
 def initialize():
     global index, _item_ids, item_id_to_embedding, item_coordinates, catalog_mean, duplicate_groups, ready
     global item_tags, tag_items, tag_category
