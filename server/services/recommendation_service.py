@@ -265,7 +265,44 @@ def get_recommendations(
     # Seen set of items.
     seen_set = set(seen_item_ids)
 
-    # Snapshot under the lock so an admin upload can't resize things mid-read.
+    # Read what we need from the index in one go.
+    ranked, all_unseen, pool, cand_vecs = _snapshot(pref, seen_set, allowed_ids)
+
+    # Exploit pool: MMR over the nearest unseen items, in pick order.
+    exploit_pool = [pool[j] for j in _mmr_select(cand_vecs, pref[0], n, MMR_LAMBDA)]
+    exploit_set = set(exploit_pool)
+
+    # Adjacent pool: further down the ranking, shuffled.
+    adjacent_pool = ranked[MMR_POOL_SIZE:ADJACENT_POOL_SIZE]
+    random.shuffle(adjacent_pool)
+
+    # Random pool: anything unseen, shuffled.
+    random_pool = [i for i in all_unseen if i not in exploit_set]
+    random.shuffle(random_pool)
+
+    # Exploit pool is consumed best-first, so reverse it for pop().
+    exploit_pool.reverse()
+    pools = {"exploit": exploit_pool, "adjacent": adjacent_pool, "random": random_pool}
+
+    return _fill_results(pools, n, batch_size, explore_boost)
+
+
+def _snapshot(
+    pref: np.ndarray, seen_set: set[int], allowed_ids: set[int] | None
+) -> tuple[list[int], list[int], list[int], np.ndarray]:
+    """
+    Reads everything get_recommendations() needs from the index, under the lock so an
+    admin upload can't resize things mid-read.
+
+    Args:
+        pref:        (1, 512) unit-length preference vector.
+        seen_set:    item_ids the user has already swiped on.
+        allowed_ids: if given, only these item_ids are eligible (a tag filter).
+
+    Returns:
+        (unseen allowed items nearest first, every unseen allowed item in the catalog,
+         the nearest MMR_POOL_SIZE of them, and those items' embeddings)
+    """
     with Startup._index_lock:
         # Search far enough to still have ADJACENT_POOL_SIZE items after removing seen ones.
         # With a filter most of the nearest items may be dropped, so rank the whole catalog.
@@ -290,23 +327,7 @@ def get_recommendations(
         pool = ranked[:MMR_POOL_SIZE]
         cand_vecs = np.stack([embeddings[i] for i in pool]) if pool else np.empty((0, EMBEDDING_DIM), dtype=np.float32)
 
-    # Exploit pool: MMR over the nearest unseen items, in pick order.
-    exploit_pool = [pool[j] for j in _mmr_select(cand_vecs, pref[0], n, MMR_LAMBDA)]
-    exploit_set = set(exploit_pool)
-
-    # Adjacent pool: further down the ranking, shuffled.
-    adjacent_pool = ranked[MMR_POOL_SIZE:ADJACENT_POOL_SIZE]
-    random.shuffle(adjacent_pool)
-
-    # Random pool: anything unseen, shuffled.
-    random_pool = [i for i in all_unseen if i not in exploit_set]
-    random.shuffle(random_pool)
-
-    # Exploit pool is consumed best-first, so reverse it for pop().
-    exploit_pool.reverse()
-    pools = {"exploit": exploit_pool, "adjacent": adjacent_pool, "random": random_pool}
-
-    return _fill_results(pools, n, batch_size, explore_boost)
+    return ranked, all_unseen, pool, cand_vecs
 
 
 def _fill_results(pools: dict[str, list[int]], n: int, batch_size: int, explore_boost: float) -> list[int]:
