@@ -241,3 +241,13 @@ def mark_served(user_id: str, item_ids: list[int], filtered: bool = False) -> No
 
         # A sent item counts as seen, and so do its copies, so the product is never sent again.
         state.seen.update(_with_duplicates(item_ids))
+
+
+def forget(user_id: str) -> None:
+    """
+    Drops a user's in-memory state, so their next request reloads it from Supabase.
+    Call it after clearing their Likes/Dislikes, so cleared swipes stop counting
+    and cleared items can be recommended again.
+    """
+    with _states_lock:
+        _states.pop(user_id, None)

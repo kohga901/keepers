@@ -11,13 +11,14 @@ Endpoints:
     - GET    /clothes/disliked/{user_id}           — list the items a user has disliked
     - DELETE /clothes/liked/{user_id}/{item_id}    — remove an item from a user's likes
     - DELETE /clothes/disliked/{user_id}/{item_id} — remove an item from a user's dislikes
+    - POST   /clothes/history/clear                — wipe the signed-in user's likes, dislikes, or both
 """
-from typing import Any
+from typing import Any, Literal
 import logging
 import random
 import time
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Header, HTTPException
 from pydantic import BaseModel, Field
 import numpy as np
 
@@ -62,6 +63,10 @@ class RecommendationResponse(BaseModel):
 class History(BaseModel):
     user_id: str
     items: list[dict[Any,Any]]
+
+class ClearHistoryRequest(BaseModel):
+    # "liked" and "disliked" clear one list; "all" resets the account's swipe history and taste.
+    scope: Literal["liked", "disliked", "all"]
 
 
 # --- Helpers ---
@@ -177,6 +182,29 @@ def _undo_swipe(user_id: str, item_id: int, liked: bool, background_tasks: Backg
     # The swipe history changed, so save the new pref_vec and coordinates.
     background_tasks.add_task(_sync_user, user_id, liked_ids, disliked_ids)
 
+def _user_from_token(authorization: str | None) -> str:
+    """
+    Returns the id of the user who owns the Supabase access token in an
+    "Authorization: Bearer <token>" header, so a user can only change their own data.
+    """
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Sign in again to clear your history.")
+    try:
+        response = supabase.auth.get_user(authorization[7:].strip())
+    except Exception:
+        raise HTTPException(status_code=401, detail="Sign in again to clear your history.")
+    if not response or not response.user:
+        raise HTTPException(status_code=401, detail="Sign in again to clear your history.")
+    return response.user.id
+
+def _clear_taste(user_id: str) -> None:
+    """
+    DB function. Deletes a user's stored pref_vec and map coordinates. With no likes
+    left there is no taste to show, and the next swipes rebuild both.
+    """
+    _supabase_execute(supabase.table("User_Preferences").delete().eq("user_id", user_id))
+    _supabase_execute(supabase.table("Coordinates").delete().eq("user_id", user_id))
+
 # --- Endpoints ---
 
 
@@ -213,6 +241,34 @@ def swipe(req: SwipeData, background_tasks: BackgroundTasks):
         background_tasks.add_task(_sync_user, req.user_id, liked_ids, disliked_ids)
 
     # Return status to client.
+    return {"status": "ok"}
+
+@router.post("/history/clear")
+def clear_history(req: ClearHistoryRequest, authorization: str | None = Header(default=None)):
+    """
+    DB function. Wipes the signed-in user's likes, dislikes, or both, and updates
+    their stored taste to match.
+    """
+    user_id = _user_from_token(authorization)
+
+    # Hold the user's lock so a swipe or recommendation can't use the old history mid-clear.
+    with user_state.user_lock(user_id):
+        if req.scope in ("liked", "all"):
+            _supabase_execute(supabase.table("Likes").delete().eq("user_id", user_id))
+        if req.scope in ("disliked", "all"):
+            _supabase_execute(supabase.table("Dislikes").delete().eq("user_id", user_id))
+
+        # The in-memory history is now out of date, so reload it on the next request.
+        user_state.forget(user_id)
+
+    # Likes drive the taste, so without them there is nothing to keep. Clearing only
+    # dislikes keeps the likes, so rebuild the taste from them.
+    if req.scope in ("liked", "all"):
+        _clear_taste(user_id)
+    else:
+        _sync_user(user_id, _fetch_liked_item_ids(user_id), [])
+
+    log.info("clear history user=%s scope=%s", user_id, req.scope)
     return {"status": "ok"}
 
 @router.post("/recommendations")
