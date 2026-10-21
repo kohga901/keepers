@@ -296,6 +296,7 @@ function nativeScreen(overrides = {}) {
     '../../hooks/useAppTheme': { useAppTheme: () => ({ theme }) },
     '../../contexts/PriceDisplayContext': { usePriceDisplay: () => ({ showPriceAsTier: false }) },
     '../../contexts/StackHeaderHeightContext': { useStackHeaderHeight: () => 80 },
+    '../../contexts/TutorialContext': { useTutorial: () => ({ showTutorialOnce() {} }) },
     '../../utils/supabase': { supabase: { auth: { getUser: async () => ({ data: { user: { id: 'test-user' } }, error: null }) } } },
     '../../services/dataServices': {
       getUserCoordinates: async () => null,
