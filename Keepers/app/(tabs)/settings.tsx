@@ -12,6 +12,7 @@ import type { User } from '@supabase/supabase-js';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { usePriceDisplay } from '../../contexts/PriceDisplayContext';
+import { useTutorial } from '../../contexts/TutorialContext';
 import { AiKeySettings } from '../../components/ai/AiKeySettings';
 import { useAppTheme } from '../../hooks/useAppTheme';
 import { supabase } from '../../utils/supabase';
@@ -24,6 +25,7 @@ export default function Settings() {
   const [loading, setLoading] = useState(false);
   const { showPriceAsTier, setShowPriceAsTier } = usePriceDisplay();
   const [showRangeGuide, setShowRangeGuide] = useState(false);
+  const { showTutorial } = useTutorial();
 
   useEffect(() => {
     const loadUser = async () => {
@@ -136,6 +138,52 @@ export default function Settings() {
 
       <View style={styles.section}>
         <AiKeySettings />
+      </View>
+
+      <View
+        style={[
+          styles.card,
+          {
+            backgroundColor: theme.surface,
+            borderColor: theme.border,
+            marginTop: 16,
+          },
+        ]}
+      >
+        <Text style={[styles.title, { color: theme.text }]}>Help</Text>
+        <Text style={[styles.hint, { color: theme.mutedText }]}>
+          Watch the walkthroughs again any time.
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => showTutorial('welcome')}
+          style={({ pressed }) => [
+            styles.signOutButton,
+            { backgroundColor: theme.primary, opacity: pressed ? 0.9 : 1 },
+          ]}
+        >
+          <Text style={styles.signOutText}>Replay app tutorial</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => showTutorial('history')}
+          style={({ pressed }) => [
+            styles.signOutButton,
+            { backgroundColor: theme.primary, opacity: pressed ? 0.9 : 1 },
+          ]}
+        >
+          <Text style={styles.signOutText}>Replay History tutorial</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => showTutorial('graph')}
+          style={({ pressed }) => [
+            styles.signOutButton,
+            { backgroundColor: theme.primary, opacity: pressed ? 0.9 : 1 },
+          ]}
+        >
+          <Text style={styles.signOutText}>Replay Graph tutorial</Text>
+        </Pressable>
       </View>
     </ScrollView>
   );

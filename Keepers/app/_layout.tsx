@@ -17,6 +17,7 @@ import { useFonts } from 'expo-font';
 import Auth from '../components/Auth';
 import { Fonts, fontAssets } from '../constants/fonts';
 import { PriceDisplayProvider } from '../contexts/PriceDisplayContext';
+import { TutorialProvider } from '../contexts/TutorialContext';
 import { useAppTheme } from '../hooks/useAppTheme';
 import { supabase } from '../utils/supabase';
 
@@ -86,32 +87,34 @@ export default function RootLayout() {
   return (
     <PriceDisplayProvider>
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <View style={{ flex: 1, backgroundColor: theme.background }}>
-          <Stack screenOptions={{ headerTitleStyle: { fontFamily: Fonts.black } }}>
-            <Stack.Screen
-              name="(tabs)"
-              options={({ route }) => {
-                const focusedTab = getFocusedRouteNameFromRoute(route);
-                return {
-                  // History and Graph render their own controls in the header.
-                  headerShown: focusedTab !== 'likelist' && focusedTab !== 'graph',
-                  headerTransparent: true,
-                  title: focusedTab === 'settings' ? 'S E T T I N G S' : 'K E E P E R S',
-                  headerTintColor: theme.headerText,
-                  headerShadowVisible: true,
-                  headerStyle: {
-                    backgroundColor: theme.headerBg,
-                  },
-                  headerTitleStyle: {
-                    fontFamily: Fonts.black,
-                    fontSize: 24,
-                  },
-                };
-              }}
-            />
-          </Stack>
-          <StatusBar style="dark" />
-        </View>
+        <TutorialProvider user={session.user}>
+          <View style={{ flex: 1, backgroundColor: theme.background }}>
+            <Stack screenOptions={{ headerTitleStyle: { fontFamily: Fonts.black } }}>
+              <Stack.Screen
+                name="(tabs)"
+                options={({ route }) => {
+                  const focusedTab = getFocusedRouteNameFromRoute(route);
+                  return {
+                    // History and Graph render their own controls in the header.
+                    headerShown: focusedTab !== 'likelist' && focusedTab !== 'graph',
+                    headerTransparent: true,
+                    title: focusedTab === 'settings' ? 'S E T T I N G S' : 'K E E P E R S',
+                    headerTintColor: theme.headerText,
+                    headerShadowVisible: true,
+                    headerStyle: {
+                      backgroundColor: theme.headerBg,
+                    },
+                    headerTitleStyle: {
+                      fontFamily: Fonts.black,
+                      fontSize: 24,
+                    },
+                  };
+                }}
+              />
+            </Stack>
+            <StatusBar style="dark" />
+          </View>
+        </TutorialProvider>
       </GestureHandlerRootView>
     </PriceDisplayProvider>
   );

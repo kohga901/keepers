@@ -13,6 +13,7 @@ import { useSafeAreaFrame, useSafeAreaInsets } from 'react-native-safe-area-cont
 import { Swipeable } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { usePriceDisplay } from '../../contexts/PriceDisplayContext';
+import { useTutorial } from '../../contexts/TutorialContext';
 import { useStackHeaderHeight } from '../../contexts/StackHeaderHeightContext';
 import { useAppTheme } from '../../hooks/useAppTheme';
 import { Item } from '../../models/Items';
@@ -29,6 +30,14 @@ const App: React.FC = () => {
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const { showTutorialOnce } = useTutorial();
+
+  // First visit to History walks through the toggle, item details, and swipe-to-remove.
+  useFocusEffect(
+    useCallback(() => {
+      showTutorialOnce('history');
+    }, [showTutorialOnce])
+  );
 
   const deleteItem = (id: string) => {
     setAllLikedItems(prev => prev.filter(item => item.id !== id));
@@ -222,6 +231,23 @@ const App: React.FC = () => {
           scrollIndicatorInsets={{ top: headerHeight }}
           onScroll={onListScroll}
           scrollEventThrottle={16}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Ionicons
+                name={activeTab === 'liked' ? 'heart-outline' : 'heart-dislike-outline'}
+                size={48}
+                color={theme.mutedText}
+              />
+              <Text style={[styles.emptyTitle, { color: theme.text }]}>
+                {activeTab === 'liked' ? 'No liked items yet' : 'No disliked items yet'}
+              </Text>
+              <Text style={[styles.emptyText, { color: theme.mutedText }]}>
+                {activeTab === 'liked'
+                  ? 'Swipe right on items in the swiper to see your liked list here.'
+                  : 'Swipe left on items in the swiper to see your disliked list here.'}
+              </Text>
+            </View>
+          }
           renderItem={({ item }) => (
             <Swipeable
               renderRightActions={() => (
@@ -397,6 +423,25 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingHorizontal: 16,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingTop: 80,
+    paddingHorizontal: 24,
+    gap: 10,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    fontFamily: 'PublicSans_700Bold',
+    textAlign: 'center',
+  },
+  emptyText: {
+    fontSize: 15,
+    fontWeight: '500',
+    fontFamily: 'PublicSans_500Medium',
+    textAlign: 'center',
+    lineHeight: 21,
   },
   card: {
     borderRadius: 12,
