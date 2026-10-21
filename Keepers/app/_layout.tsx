@@ -87,7 +87,7 @@ export default function RootLayout() {
   return (
     <PriceDisplayProvider>
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <TutorialProvider userId={session.user.id}>
+        <TutorialProvider user={session.user}>
           <View style={{ flex: 1, backgroundColor: theme.background }}>
             <Stack screenOptions={{ headerTitleStyle: { fontFamily: Fonts.black } }}>
               <Stack.Screen
