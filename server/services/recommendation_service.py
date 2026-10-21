@@ -302,6 +302,25 @@ def get_recommendations(
     random_pool = [i for i in all_unseen if i not in exploit_set]
     random.shuffle(random_pool)
 
+    # Exploit pool is consumed best-first, so reverse it for pop().
+    exploit_pool.reverse()
+    pools = {"exploit": exploit_pool, "adjacent": adjacent_pool, "random": random_pool}
+
+    return _fill_results(pools, n, batch_size, explore_boost)
+
+
+def _fill_results(pools: dict[str, list[int]], n: int, batch_size: int, explore_boost: float) -> list[int]:
+    """
+    Draws up to n item_ids from the pools one batch at a time, mixing the kinds
+    within each batch. Items are popped off the end of each pool, which is
+    emptied as it is used.
+
+    Args:
+        pools:         "exploit", "adjacent" and "random" → item_ids, best last.
+        n:             number of item_ids to return.
+        batch_size:    size of one client-facing batch.
+        explore_boost: see get_recommendations().
+    """
     # Items already added to the results, and the results in order.
     used: set[int] = set()
     results: list[int] = []
@@ -318,10 +337,6 @@ def get_recommendations(
 
         # The pool is empty.
         return False
-
-    # Exploit pool is consumed best-first, so reverse it for pop().
-    exploit_pool.reverse()
-    pools = {"exploit": exploit_pool, "adjacent": adjacent_pool, "random": random_pool}
 
     # Fill the results one batch at a time.
     while len(results) < n:
@@ -346,6 +361,8 @@ def get_recommendations(
             break   # Nothing left to recommend.
 
     return results[:n]
+
+
 
 def get_recommendations_with_scores(
     pref_vec: np.ndarray,
