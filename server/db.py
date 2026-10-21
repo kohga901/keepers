@@ -1,6 +1,7 @@
 import logging
 import os
 import time
+from itertools import count
 from pathlib import Path
 
 import httpx
@@ -56,16 +57,11 @@ def supabase_fetch_all(build_query, page_size=PAGE_SIZE):
         build_query: function returning a fresh select query. It must have a
                      stable order, otherwise pages can overlap or skip rows.
     """
-    # Row number the next page starts at.
-    start = 0
-    while True:
-        # Fetch one page of rows.
-        response = supabase_execute(build_query().range(start, start + page_size - 1))
-        yield response.data
+    # Fetch the pages in order, starting at row 0.
+    for start in count(0, page_size):
+        page = supabase_execute(build_query().range(start, start + page_size - 1)).data
+        yield page
 
         # A page that isn't full is the last one.
-        if len(response.data) < page_size:
-            break
-
-        # Move on to the next page.
-        start += page_size
+        if len(page) < page_size:
+            return

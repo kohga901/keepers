@@ -28,7 +28,7 @@ import os
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from db import supabase, supabase_execute as _supabase_execute
+from db import supabase, supabase_execute as _supabase_execute, supabase_fetch_all
 from services import Startup, clip_service
 
 router = APIRouter(prefix="/admin")
@@ -90,26 +90,9 @@ def _fetch_existing_tags() -> list[dict]:
     pipeline — the upload page must only offer tags from here, never invent new ones.
     Pages through the table because Supabase caps a single select at 1000 rows.
     """
-    tags: list[dict] = []
-    page_size = 1000
-
-    # Row number the next page starts at.
-    start = 0
-    while True:
-        # Fetch one page of tags.
-        response = _supabase_execute(
-            supabase.table("Tags").select("Tag, Category").range(start, start + page_size - 1)
-        )
-        tags.extend(response.data)
-
-        # A page that isn't full is the last one.
-        if len(response.data) < page_size:
-            break
-        start += page_size
-
-    # Sort the tags by name.
-    tags.sort(key=lambda t: t["Tag"])
-    return tags
+    # SELECT Tag, Category FROM "Tags" ORDER BY Tag
+    query = lambda: supabase.table("Tags").select("Tag, Category").order("Tag")
+    return [row for page in supabase_fetch_all(query) for row in page]
 
 
 def _tag_clothing_item(item_id: int, tags: list[str]) -> None:
