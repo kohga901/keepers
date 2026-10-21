@@ -231,6 +231,23 @@ const App: React.FC = () => {
           scrollIndicatorInsets={{ top: headerHeight }}
           onScroll={onListScroll}
           scrollEventThrottle={16}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Ionicons
+                name={activeTab === 'liked' ? 'heart-outline' : 'heart-dislike-outline'}
+                size={48}
+                color={theme.mutedText}
+              />
+              <Text style={[styles.emptyTitle, { color: theme.text }]}>
+                {activeTab === 'liked' ? 'No liked items yet' : 'No disliked items yet'}
+              </Text>
+              <Text style={[styles.emptyText, { color: theme.mutedText }]}>
+                {activeTab === 'liked'
+                  ? 'Swipe right on items in the swiper to see your liked list here.'
+                  : 'Swipe left on items in the swiper to see your disliked list here.'}
+              </Text>
+            </View>
+          }
           renderItem={({ item }) => (
             <Swipeable
               renderRightActions={() => (
@@ -406,6 +423,25 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingHorizontal: 16,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingTop: 80,
+    paddingHorizontal: 24,
+    gap: 10,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    fontFamily: 'PublicSans_700Bold',
+    textAlign: 'center',
+  },
+  emptyText: {
+    fontSize: 15,
+    fontWeight: '500',
+    fontFamily: 'PublicSans_500Medium',
+    textAlign: 'center',
+    lineHeight: 21,
   },
   card: {
     borderRadius: 12,
