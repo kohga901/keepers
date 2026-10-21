@@ -2,7 +2,7 @@
 Startup.py
 
 Builds the FAISS index on server boot by fetching embeddings from Supabase.
-Exposes `index`, `_item_ids`, `item_id_to_embedding`, `item_coordinates`, and
+Exposes `index`, `_item_ids`, `item_id_to_embedding`, `item_coordinates`, the tag lookups, and
 `EMBEDDING_DIM` for use by recommendation_service.py and clothes.py.
 
 initialize() is called once, in a background thread, from main.py's startup event.
@@ -54,6 +54,15 @@ item_id_to_embedding = None
 
 # item_id → (x, y) map position lookup.
 item_coordinates = None
+
+# item_id → the tags of the item. Items without tags are not in here.
+item_tags: dict[int, frozenset[str]] = {}
+
+# tag → the item_ids carrying it.
+tag_items: dict[str, set[int]] = {}
+
+# tag → its category (e.g. "Jeans" → "category"), from the master Tags table.
+tag_category: dict[str, str] = {}
 
 # Mean embedding of the catalog, subtracted from every embedding.
 catalog_mean = None
@@ -217,8 +226,103 @@ def _load_item_coordinates() -> dict[int, tuple[float, float]]:
         return {int(row["item_id"]): (float(row["x"]), float(row["y"])) for row in csv.DictReader(f)}
 
 
+def build_tag_lookups(
+    tag_rows: list[dict], tagged_rows: list[dict]
+) -> tuple[dict[str, str], dict[int, frozenset[str]], dict[str, set[int]]]:
+    """
+    Turns the rows of the Tags and Tagged_Clothing tables into the lookups used for filtering.
+
+    Args:
+        tag_rows:    Rows of {"Tag": ..., "Category": ...}.
+        tagged_rows: Rows of {"clothes_id": ..., "Tag": ...}.
+
+    Returns:
+        (tag → category, item_id → tags, tag → item_ids)
+    """
+    # tag → category.
+    categories = {row["Tag"]: row["Category"] for row in tag_rows}
+
+    # item_id → tags, and tag → item_ids.
+    tags_of: dict[int, set[str]] = {}
+    items_of: dict[str, set[int]] = {}
+    for row in tagged_rows:
+        item_id, tag = int(row["clothes_id"]), row["Tag"]
+        tags_of.setdefault(item_id, set()).add(tag)
+        items_of.setdefault(tag, set()).add(item_id)
+
+    return categories, {i: frozenset(t) for i, t in tags_of.items()}, items_of
+
+
+def resolve_filter(selected_tags: list[str]) -> set[int] | None:
+    """
+    Works out which items satisfy a tag filter. Tags of the same category are
+    alternatives (OR), and different categories must all be satisfied (AND), so
+    ["Jeans", "Pants", "Black"] means (Jeans or Pants) and Black.
+
+    Args:
+        selected_tags: The tags the user picked. An empty list means no filter.
+
+    Returns:
+        The set of matching item_ids, or None if there is no filter. A tag that
+        doesn't exist matches nothing.
+    """
+    # No tags selected, so every item is allowed.
+    if not selected_tags:
+        return None
+
+    # Group the selected tags by category. A tag with no known category is its own group.
+    groups: dict[str, set[str]] = {}
+    for tag in selected_tags:
+        groups.setdefault(tag_category.get(tag, tag), set()).add(tag)
+
+    # Snapshot under the lock so an admin upload can't change the sets mid-read.
+    with _index_lock:
+        # Items matching at least one tag of each group...
+        per_group = [set().union(*(tag_items.get(tag, ()) for tag in tags)) for tags in groups.values()]
+
+    # ...and then items matching every group.
+    return set.intersection(*per_group)
+
+
+def _fetch_tags() -> tuple[list[dict], list[dict]]:
+    """
+    DB function. Fetches every row of the Tags and Tagged_Clothing tables.
+    """
+    # Imported here so this module can be used without Supabase credentials
+    # (see tools/simulate_recommendations.py).
+    from db import supabase, supabase_fetch_all
+
+    # SELECT Tag, Category FROM "Tags" ORDER BY Tag
+    tag_query = lambda: supabase.table("Tags").select("Tag, Category").order("Tag")
+
+    # SELECT clothes_id, Tag FROM "Tagged_Clothing" ORDER BY clothes_id, Tag
+    tagged_query = lambda: supabase.table("Tagged_Clothing").select("clothes_id, Tag").order("clothes_id").order("Tag")
+
+    tag_rows = [row for page in supabase_fetch_all(tag_query) for row in page]
+    tagged_rows = [row for page in supabase_fetch_all(tagged_query) for row in page]
+    return tag_rows, tagged_rows
+
+
+def add_item_tags(item_id: int, tags: list[str]) -> None:
+    """
+    Adds a freshly-uploaded item's tags to the in-memory tag lookups so the item
+    shows up under filters without a server restart. Tags that aren't in the
+    master Tags table are ignored (the upload rejects them anyway).
+    """
+    # Nothing to add.
+    if not tags:
+        return
+
+    with _index_lock:
+        known = [tag for tag in tags if tag in tag_category]
+        item_tags[item_id] = frozenset(known)
+        for tag in known:
+            tag_items.setdefault(tag, set()).add(item_id)
+
+
 def initialize():
     global index, _item_ids, item_id_to_embedding, item_coordinates, catalog_mean, duplicate_groups, ready
+    global item_tags, tag_items, tag_category
 
     try:
         # Fetch all embeddings from Supabase.
@@ -246,12 +350,24 @@ def initialize():
         # Load the map position of each item.
         coordinates = _load_item_coordinates()
 
+        # Load the tags, for filtering. Without them filters match nothing, but
+        # recommendations still work, so a failure here shouldn't stop the server.
+        try:
+            categories, tags_of, items_of = build_tag_lookups(*_fetch_tags())
+            log.info("Loaded %d tags covering %d items", len(categories), len(tags_of))
+        except Exception:
+            log.exception("Failed to load tags, filters will match nothing")
+            categories, tags_of, items_of = {}, {}, {}
+
         # Set the global variables, with ready last so nothing is read half-built.
         _item_ids = item_ids_local
         item_id_to_embedding = mapping
         item_coordinates = coordinates
         catalog_mean = mean
         duplicate_groups = groups
+        tag_category = categories
+        item_tags = tags_of
+        tag_items = items_of
         index = idx
         ready = True
         log.info("Startup complete: index has %d items, %d have map coordinates", idx.ntotal, len(coordinates))

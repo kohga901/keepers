@@ -5,7 +5,8 @@ Defines the API routes for clothing-related operations in the Keepers app.
 
 Endpoints:
     - POST /clothes/swipe           — record a like or dislike swipe for a clothing item
-    - POST /clothes/recommendations — return personalised recommendations based on the user's preference vector
+    - POST /clothes/recommendations — return personalised recommendations based on the user's preference vector, optionally filtered by tags
+    - GET  /clothes/tags            — list the tags (with category) recommendations can be filtered by
     - GET    /clothes/liked/{user_id}              — list the items a user has liked
     - GET    /clothes/disliked/{user_id}           — list the items a user has disliked
     - DELETE /clothes/liked/{user_id}/{item_id}    — remove an item from a user's likes
@@ -41,6 +42,8 @@ class SwipeData(BaseModel):
 class RecommendationRequest(BaseModel):
     user_id: str
     n: int = 10
+    # Tags to filter by. Tags of the same category are alternatives, different
+    # categories must all match (see Startup.resolve_filter). Empty means no filter.
     categories: list[str] = Field(default_factory=list)
 
 
@@ -62,18 +65,6 @@ class History(BaseModel):
 
 
 # --- Helpers ---
-def _matches_filters(item: dict, req: RecommendationRequest) -> bool:
-    # No categories requested means every item matches.
-    if req.categories == []:
-        return True
-
-    # Tags of the item.
-    item_tags = item.get("item_tags") or []
-
-    # The item matches if any of its tags is a requested category.
-    return any(tag in req.categories for tag in item_tags)
-
-
 def _fetch_clothing_items(item_ids: list[int]) -> list[dict]:
     """
     DB function. Fetch clothing items based on item_id's and then return a dictionary
@@ -244,29 +235,34 @@ def recommendations(req: RecommendationRequest) -> RecommendationResponse:
         # Number of items the client asked for.
         n = req.n
 
+        # Items allowed by the tag filter, or None if there is no filter.
+        allowed_ids = Startup.resolve_filter(req.categories)
+
         # Build the pref_vec of the user from their swipe history.
         pref_vec = compute_pref_vec(liked_ids, disliked_ids)
 
         # If the pref_vec of a user is 0, get random unseen items.
         if not np.any(pref_vec):
             with Startup._index_lock:
-                unseen_ids = [i for i in Startup._item_ids if i not in excluded_ids]
+                unseen_ids = [i for i in Startup._item_ids
+                              if i not in excluded_ids and (allowed_ids is None or i in allowed_ids)]
             results = random.sample(unseen_ids, k=min(n * 5, len(unseen_ids)))
 
             # Drop later copies of the same product from the sample.
             results = Startup.drop_duplicates(results)
         # Otherwise get the items recommended for the pref_vec.
         else:
-            results = get_recommendations(pref_vec, excluded_ids, n=n*5, batch_size=n)
+            results = get_recommendations(pref_vec, excluded_ids, n=n*5, batch_size=n, allowed_ids=allowed_ids)
 
         # Fetch the recommended items from the db.
         items = _fetch_clothing_items(results) if results else []
 
-        # Drop the items that don't match the requested categories.
-        items = [i for i in items if _matches_filters(i, req)]
-
-        # Keep the first n items.
+        # Keep the first n items. They all passed the tag filter already.
         items = items[:n]
+
+        # Attach each item's tags.
+        for item in items:
+            item["item_tags"] = sorted(Startup.item_tags.get(item["item_id"], ()))
 
         # Remember what was sent so it is never sent to this user again.
         user_state.mark_served(req.user_id, [i["item_id"] for i in items])
@@ -278,6 +274,20 @@ def recommendations(req: RecommendationRequest) -> RecommendationResponse:
 
     # Send HTTP POST response to client.
     return RecommendationResponse(recommendations=items)
+
+@router.get("/tags")
+def get_tags() -> dict[str, list[dict[str, str]]]:
+    """
+    Every tag the recommendations can be filtered by, with its category, for the app's filter picker.
+    """
+    # If the server is still warming up, return a 503 Service Unavailable error.
+    if not Startup.ready:
+        raise HTTPException(status_code=503, detail="Server still warming up, try again shortly")
+
+    # Only list tags that at least one item carries, since the others would filter everything out.
+    tags = [{"Tag": tag, "Category": category}
+            for tag, category in Startup.tag_category.items() if Startup.tag_items.get(tag)]
+    return {"tags": sorted(tags, key=lambda t: (t["Category"], t["Tag"]))}
 
 @router.post("/recommendations/debug")
 def recommendations_debug(req: RecommendationRequest):

@@ -208,12 +208,16 @@ def get_recommendations(
     seen_item_ids: list[int],
     n: int = 20,
     batch_size: int | None = None,
+    allowed_ids: set[int] | None = None,
 ) -> list[int]:
     """
     Returns n unseen item_ids mixing three kinds of items:
         - exploit:  nearest to pref_vec, re-ranked with MMR so they aren't near-duplicates.
         - adjacent: random picks from further down the similarity ranking.
         - random:   random picks from the whole unseen catalog.
+
+    All three pools only contain allowed items, so a tag filter doesn't remove the
+    exploration slots.
 
     Each consecutive `batch_size` items contain the exploit/adjacent/random mix (shuffled),
     so a caller that only uses the first batch_size items still gets the mix.
@@ -223,6 +227,7 @@ def get_recommendations(
         seen_item_ids:  item_ids the user has already swiped on (liked or disliked).
         n:              number of recommendations to return.
         batch_size:     size of one client-facing batch. Defaults to n.
+        allowed_ids:    if given, only these item_ids may be returned (a tag filter).
 
     Returns:
         List of item_ids, seen items removed.
@@ -242,17 +247,22 @@ def get_recommendations(
     # Snapshot under the lock so an admin upload can't resize things mid-read.
     with Startup._index_lock:
         # Search far enough to still have ADJACENT_POOL_SIZE items after removing seen ones.
-        k = min(ADJACENT_POOL_SIZE + len(seen_set), Startup.index.ntotal)
+        # With a filter most of the nearest items may be dropped, so rank the whole catalog.
+        # The index is a flat scan anyway, so this costs little extra.
+        k = Startup.index.ntotal if allowed_ids is not None else min(ADJACENT_POOL_SIZE + len(seen_set), Startup.index.ntotal)
 
         # Get the k nearest items by cosine similarity.
         _, indices = Startup.index.search(pref, k=k)
         item_ids = Startup._item_ids
 
-        # Unseen items, nearest first.
-        ranked = [item_ids[idx] for idx in indices[0] if item_ids[idx] not in seen_set]
+        # Unseen allowed items, nearest first.
+        def eligible(item_id: int) -> bool:
+            return item_id not in seen_set and (allowed_ids is None or item_id in allowed_ids)
 
-        # Every unseen item in the catalog.
-        all_unseen = [i for i in item_ids if i not in seen_set]
+        ranked = [item_ids[idx] for idx in indices[0] if eligible(item_ids[idx])]
+
+        # Every unseen allowed item in the catalog.
+        all_unseen = [i for i in item_ids if eligible(i)]
         embeddings = Startup.item_id_to_embedding
 
         # The nearest unseen items, and their embeddings, for MMR to choose from.
@@ -264,7 +274,7 @@ def get_recommendations(
     exploit_set = set(exploit_pool)
 
     # Adjacent pool: further down the ranking, shuffled.
-    adjacent_pool = ranked[MMR_POOL_SIZE:]
+    adjacent_pool = ranked[MMR_POOL_SIZE:ADJACENT_POOL_SIZE]
     random.shuffle(adjacent_pool)
 
     # Random pool: anything unseen, shuffled.
