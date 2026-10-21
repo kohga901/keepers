@@ -253,24 +253,18 @@ def build_tag_lookups(
     return categories, {i: frozenset(t) for i, t in tags_of.items()}, items_of
 
 
-def resolve_filter_tiers(selected_tags: list[str]) -> list[set[int]] | None:
+def resolve_filter(selected_tags: list[str]) -> set[int] | None:
     """
-    Works out which items satisfy a tag filter, from the best matches to the loosest.
-
-    Tags of the same category are alternatives (OR), and each category the user picked
-    from is one requirement, so ["Jeans", "Pants", "Black"] has two requirements:
-    (Jeans or Pants) and Black. Tags are sparse (only a few per item), so requiring every
-    requirement often matches little or nothing. Instead this returns tiers:
-    items meeting all requirements first, then items meeting all but one, and so on
-    down to items meeting any one.
+    Works out which items satisfy a tag filter. Tags of the same category are
+    alternatives (OR), and different categories must all be satisfied (AND), so
+    ["Jeans", "Pants", "Black"] means (Jeans or Pants) and Black.
 
     Args:
         selected_tags: The tags the user picked. An empty list means no filter.
 
     Returns:
-        None if there is no filter. Otherwise a list of item_id sets, strictest first, each
-        containing the one before it. Tiers that add nothing are left out, and the list is
-        empty if no item matches any selected tag. A tag that doesn't exist matches nothing.
+        The set of matching item_ids, or None if there is no filter. A tag that
+        doesn't exist matches nothing.
     """
     # No tags selected, so every item is allowed.
     if not selected_tags:
@@ -283,23 +277,11 @@ def resolve_filter_tiers(selected_tags: list[str]) -> list[set[int]] | None:
 
     # Snapshot under the lock so an admin upload can't change the sets mid-read.
     with _index_lock:
-        # Items matching at least one tag of each group.
+        # Items matching at least one tag of each group...
         per_group = [set().union(*(tag_items.get(tag, ()) for tag in tags)) for tags in groups.values()]
 
-    # How many groups each item satisfies.
-    satisfied: dict[int, int] = {}
-    for members in per_group:
-        for item_id in members:
-            satisfied[item_id] = satisfied.get(item_id, 0) + 1
-
-    # Items satisfying at least `need` groups, for need = all groups down to 1.
-    tiers: list[set[int]] = []
-    for need in range(len(per_group), 0, -1):
-        tier = {item_id for item_id, count in satisfied.items() if count >= need}
-        if tier and (not tiers or len(tier) > len(tiers[-1])):
-            tiers.append(tier)
-
-    return tiers
+    # ...and then items matching every group.
+    return set.intersection(*per_group)
 
 
 def _fetch_tags() -> tuple[list[dict], list[dict]]:
