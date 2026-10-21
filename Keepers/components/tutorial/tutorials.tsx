@@ -7,6 +7,14 @@
 
 import type { TutorialStep } from './Tutorial';
 import {
+  GraphMapDemo,
+  GraphModesDemo,
+  GraphPanZoomDemo,
+  GraphPreviewsDemo,
+  GraphSelectDemo,
+  GraphTasteDemo,
+} from './GraphDemos';
+import {
   HistoryDetailDemo,
   HistoryListDemo,
   HistoryRemoveDemo,
@@ -15,7 +23,7 @@ import {
 } from './HistoryDemos';
 import { FilterDemo, FindItDemo, SwipeDemo, TabsDemo, WelcomeDemo } from './TutorialDemos';
 
-export type TutorialId = 'welcome' | 'history';
+export type TutorialId = 'welcome' | 'history' | 'graph';
 
 type TutorialConfig = {
   steps: readonly TutorialStep[];
@@ -90,6 +98,41 @@ export const TUTORIALS: Record<TutorialId, TutorialConfig> = {
         title: 'More room to browse',
         body: 'The header tucks away as you scroll down and comes back when you scroll up.',
         Demo: HistoryScrollDemo,
+      },
+    ],
+  },
+  graph: {
+    finishLabel: 'Start exploring',
+    steps: [
+      {
+        title: 'Your style map',
+        body: 'Every dot is a piece of clothing. Pieces that look alike sit close together, and the blue dot is your taste.',
+        Demo: GraphMapDemo,
+      },
+      {
+        title: 'Move around',
+        body: 'Drag to explore the map. Pinch or use the + and − buttons to zoom in and out.',
+        Demo: GraphPanZoomDemo,
+      },
+      {
+        title: 'Focus or see it all',
+        body: 'Focus area zooms in on the pieces inside the circle. Whole graph shows every piece at once.',
+        Demo: GraphModesDemo,
+      },
+      {
+        title: 'Tap a piece',
+        body: 'Tap any dot to see the piece. Tap the price to open the store, Find it to search with AI, or the arrow for the next piece nearby.',
+        Demo: GraphSelectDemo,
+      },
+      {
+        title: 'Likes move your taste',
+        body: 'Like a piece and your blue dot moves toward it, so the map keeps up as your style changes.',
+        Demo: GraphTasteDemo,
+      },
+      {
+        title: 'Previews and My taste',
+        body: 'Use the switch at the top right to show or hide pictures on the map. Tap My taste to jump back to your blue dot.',
+        Demo: GraphPreviewsDemo,
       },
     ],
   },

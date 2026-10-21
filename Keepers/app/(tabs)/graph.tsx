@@ -11,6 +11,7 @@ import { Text } from '../../components/Text';
 import { ImageLookupModal } from '../../components/ai/ImageLookupModal';
 import { usePriceDisplay } from '../../contexts/PriceDisplayContext';
 import { useStackHeaderHeight } from '../../contexts/StackHeaderHeightContext';
+import { useTutorial } from '../../contexts/TutorialContext';
 import { useAppTheme } from '../../hooks/useAppTheme';
 import type { Item } from '../../models/Items';
 import { lookupPurchasableItem, toAiLookupError, type AiLookupErrorCode, type ImageLookupResult } from '../../services/ai';
@@ -87,6 +88,10 @@ export default function GraphTab() {
   const [lookupError, setLookupError] = useState<{ code: AiLookupErrorCode; message: string } | null>(null);
   const lookupRequest = useRef<AbortController | null>(null);
   const lookupId = useRef(0);
+  const { showTutorialOnce } = useTutorial();
+
+  // First visit to the Graph explains the dots, moving around, and how likes move your taste.
+  useFocusEffect(useCallback(() => { showTutorialOnce('graph'); }, [showTutorialOnce]));
 
   const command = useCallback((payload: object) => {
     if (ready.current) web.current?.injectJavaScript(`window.keepersMap && window.keepersMap(${JSON.stringify(payload).replace(/</g, '\\u003c')}); true;`);

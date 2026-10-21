@@ -174,6 +174,16 @@ export default function Settings() {
         >
           <Text style={styles.signOutText}>Replay History tutorial</Text>
         </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => showTutorial('graph')}
+          style={({ pressed }) => [
+            styles.signOutButton,
+            { backgroundColor: theme.primary, opacity: pressed ? 0.9 : 1 },
+          ]}
+        >
+          <Text style={styles.signOutText}>Replay Graph tutorial</Text>
+        </Pressable>
       </View>
     </ScrollView>
   );
