@@ -23,6 +23,8 @@ from pathlib import Path
 import faiss
 import numpy as np
 
+from services import bitset
+
 log = logging.getLogger(__name__)
 
 # Length of a CLIP embedding.
@@ -58,8 +60,8 @@ item_coordinates = None
 # item_id → the tags of the item. Items without tags are not in here.
 item_tags: dict[int, frozenset[str]] = {}
 
-# tag → the item_ids carrying it.
-tag_items: dict[str, set[int]] = {}
+# tag → the item_ids carrying it, as a bitset (see bitset.py). Tags no item carries are not in here.
+tag_items: dict[str, int] = {}
 
 # tag → its category (e.g. "Jeans" → "category"), from the master Tags table.
 tag_category: dict[str, str] = {}
@@ -228,7 +230,7 @@ def _load_item_coordinates() -> dict[int, tuple[float, float]]:
 
 def build_tag_lookups(
     tag_rows: list[dict], tagged_rows: list[dict]
-) -> tuple[dict[str, str], dict[int, frozenset[str]], dict[str, set[int]]]:
+) -> tuple[dict[str, str], dict[int, frozenset[str]], dict[str, int]]:
     """
     Turns the rows of the Tags and Tagged_Clothing tables into the lookups used for filtering.
 
@@ -237,18 +239,18 @@ def build_tag_lookups(
         tagged_rows: Rows of {"clothes_id": ..., "Tag": ...}.
 
     Returns:
-        (tag → category, item_id → tags, tag → item_ids)
+        (tag → category, item_id → tags, tag → bitset of item_ids)
     """
     # tag → category.
     categories = {row["Tag"]: row["Category"] for row in tag_rows}
 
     # item_id → tags, and tag → item_ids.
     tags_of: dict[int, set[str]] = {}
-    items_of: dict[str, set[int]] = {}
+    items_of: dict[str, int] = {}
     for row in tagged_rows:
         item_id, tag = int(row["clothes_id"]), row["Tag"]
         tags_of.setdefault(item_id, set()).add(tag)
-        items_of.setdefault(tag, set()).add(item_id)
+        items_of[tag] = bitset.with_bit(items_of.get(tag, bitset.EMPTY), item_id)
 
     return categories, {i: frozenset(t) for i, t in tags_of.items()}, items_of
 
@@ -278,10 +280,10 @@ def resolve_filter(selected_tags: list[str]) -> set[int] | None:
     # Snapshot under the lock so an admin upload can't change the sets mid-read.
     with _index_lock:
         # Items matching at least one tag of each group...
-        per_group = [set().union(*(tag_items.get(tag, ()) for tag in tags)) for tags in groups.values()]
+        per_group = [bitset.union(tag_items.get(tag, bitset.EMPTY) for tag in tags) for tags in groups.values()]
 
     # ...and then items matching every group.
-    return set.intersection(*per_group)
+    return bitset.to_set(bitset.intersection(per_group))
 
 
 def _fetch_tags() -> tuple[list[dict], list[dict]]:
@@ -317,7 +319,7 @@ def add_item_tags(item_id: int, tags: list[str]) -> None:
         known = [tag for tag in tags if tag in tag_category]
         item_tags[item_id] = frozenset(known)
         for tag in known:
-            tag_items.setdefault(tag, set()).add(item_id)
+            tag_items[tag] = bitset.with_bit(tag_items.get(tag, bitset.EMPTY), item_id)
 
 
 def initialize():

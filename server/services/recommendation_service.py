@@ -287,6 +287,30 @@ def get_recommendations(
     return _fill_results(pools, n, batch_size, explore_boost)
 
 
+def _eligible_mask(item_ids: np.ndarray, seen_set: set[int], allowed_ids: set[int] | None) -> np.ndarray:
+    """
+    Boolean per catalog row: True if the item is unseen and, when a tag filter is
+    given, allowed. Done as array operations instead of one Python call per item.
+
+    Args:
+        item_ids:    (N,) item_id of each row.
+        seen_set:    item_ids the user has already swiped on.
+        allowed_ids: if given, only these item_ids are eligible.
+    """
+    # Start with every row eligible.
+    eligible = np.ones(len(item_ids), dtype=bool)
+
+    # Rule out seen items.
+    if seen_set:
+        eligible &= ~np.isin(item_ids, np.fromiter(seen_set, dtype=item_ids.dtype, count=len(seen_set)))
+
+    # Rule out everything outside the tag filter.
+    if allowed_ids is not None:
+        eligible &= np.isin(item_ids, np.fromiter(allowed_ids, dtype=item_ids.dtype, count=len(allowed_ids)))
+
+    return eligible
+
+
 def _snapshot(
     pref: np.ndarray, seen_set: set[int], allowed_ids: set[int] | None
 ) -> tuple[list[int], list[int], list[int], np.ndarray]:
@@ -311,16 +335,17 @@ def _snapshot(
 
         # Get the k nearest items by cosine similarity.
         _, indices = Startup.index.search(pref, k=k)
-        item_ids = Startup._item_ids
+        item_ids = np.asarray(Startup._item_ids)
+
+        # Which catalog rows may be recommended.
+        eligible = _eligible_mask(item_ids, seen_set, allowed_ids)
 
         # Unseen allowed items, nearest first.
-        def eligible(item_id: int) -> bool:
-            return item_id not in seen_set and (allowed_ids is None or item_id in allowed_ids)
-
-        ranked = [item_ids[idx] for idx in indices[0] if eligible(item_ids[idx])]
+        nearest_rows = indices[0]
+        ranked = item_ids[nearest_rows][eligible[nearest_rows]].tolist()
 
         # Every unseen allowed item in the catalog.
-        all_unseen = [i for i in item_ids if eligible(i)]
+        all_unseen = item_ids[eligible].tolist()
         embeddings = Startup.item_id_to_embedding
 
         # The nearest unseen items, and their embeddings, for MMR to choose from.
