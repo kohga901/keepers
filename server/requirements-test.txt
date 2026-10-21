@@ -1,0 +1,9 @@
+# Offline suite: production dependencies only; no torch, CLIP, UMAP or test framework.
+numpy==2.4.4
+faiss-cpu==1.13.2
+fastapi==0.136.0
+starlette==1.0.0
+pydantic==2.13.0
+httpx==0.28.1
+python-dotenv==1.2.2
+supabase==2.28.3

@@ -39,6 +39,27 @@ frontend_lint:
   script:
     - npm run lint
 
+frontend_tests:
+  extends: .frontend_job
+  stage: validate
+  script:
+    - npm test
+
+backend_tests:
+  image: python:3.14-slim
+  stage: validate
+  variables:
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+  cache:
+    key:
+      files:
+        - server/requirements-test.txt
+    paths:
+      - .pip-cache/
+  script:
+    - python -m pip install -r server/requirements-test.txt
+    - python -m unittest discover -s server/tests -t server -v
+
 backend_syntax:
   image: python:3.14-slim
   stage: validate

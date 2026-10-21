@@ -15,6 +15,15 @@ processing/ML pipelines in this repo.
 | `ML_Pipeline/` | ML scripts used to build/update the recommendation model |
 | `Scrapers/` | Scrapers used to collect clothing item data/images |
 
+## Testing
+
+Run `npm test` from `Keepers/`. For backend and ingestion tests, install
+`server/requirements-test.txt` and run
+`python -m unittest discover -s server/tests -t server -v` from the repo root.
+Tests run without external services or credentials. See [TESTING.md](TESTING.md)
+for setup, functional coverage, validation results and the four known production
+bugs reproduced by the suite.
+
 ## Running the app
 
 You need two things running at once: the **backend server** and the **Expo
