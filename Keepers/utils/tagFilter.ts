@@ -21,19 +21,21 @@ export type TagGroup = {
 export const toggleTag = (selected: readonly string[], tag: string): readonly string[] =>
   selected.includes(tag) ? selected.filter((t) => t !== tag) : [...selected, tag];
 
+// Orders tags by category, then by name, so each category's tags sit together in the list.
+const byCategoryThenName = (a: Tag, b: Tag): number =>
+  a.Category.localeCompare(b.Category) || a.Tag.localeCompare(b.Tag);
+
 // Groups tags by category. Groups and the tags inside them are sorted by name.
-export const groupByCategory = (tags: readonly Tag[]): readonly TagGroup[] =>
-  Object.entries(
-    tags.reduce<Readonly<Record<string, readonly Tag[]>>>(
-      (groups, tag) => ({ ...groups, [tag.Category]: [...(groups[tag.Category] ?? []), tag] }),
-      {},
-    ),
-  )
-    .map(([category, members]) => ({
-      category,
-      tags: [...members].sort((a, b) => a.Tag.localeCompare(b.Tag)),
-    }))
-    .sort((a, b) => a.category.localeCompare(b.category));
+// Sorts once, then a tag that starts a new category starts a new group, so no group is copied per tag.
+export const groupByCategory = (tags: readonly Tag[]): readonly TagGroup[] => {
+  const sorted = [...tags].sort(byCategoryThenName);
+  return sorted
+    .filter((tag, i) => i === 0 || tag.Category !== sorted[i - 1].Category)
+    .map((first) => ({
+      category: first.Category,
+      tags: sorted.filter((tag) => tag.Category === first.Category),
+    }));
+};
 
 // Two selections are the same filter if they hold the same tags, in any order.
 export const sameSelection = (a: readonly string[], b: readonly string[]): boolean =>
