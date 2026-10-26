@@ -10,7 +10,7 @@ import { ActivityIndicator, Animated, Easing, StyleSheet, View, Pressable, FlatL
 import { Text } from '../../components/Text';
 import { Image } from 'expo-image';
 import { useSafeAreaFrame, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Swipeable } from 'react-native-gesture-handler';
+import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { Ionicons } from '@expo/vector-icons';
 import { usePriceDisplay } from '../../contexts/PriceDisplayContext';
 import { useTutorial } from '../../contexts/TutorialContext';

@@ -53,7 +53,7 @@ export default function TabLayout() {
             tabBarIcon: ({ color, focused }) => (
               <Ionicons
                 name={focused ? 'heart' : 'heart-outline'}
-                color={color}
+                color={color as string}
                 size={TAB_ICON_SIZE}
               />
             ),
@@ -66,7 +66,7 @@ export default function TabLayout() {
             tabBarIcon: ({ color, focused }) => (
               <Ionicons
                 name={focused ? 'stats-chart' : 'stats-chart-outline'}
-                color={color}
+                color={color as string}
                 size={TAB_ICON_SIZE}
               />
             ),      
@@ -79,7 +79,7 @@ export default function TabLayout() {
             tabBarIcon: ({ color, focused }) => (
               <Ionicons
                 name={focused ? 'shirt' : 'shirt-outline'}
-                color={color}
+                color={color as string}
                 size={TAB_ICON_SIZE}
               />
             ),
@@ -92,7 +92,7 @@ export default function TabLayout() {
             tabBarIcon: ({ color, focused }) => (
               <Ionicons
                 name={focused ? 'receipt' : 'receipt-outline'}
-                color={color}
+                color={color as string}
                 size={TAB_ICON_SIZE}
               />
             ),
@@ -105,7 +105,7 @@ export default function TabLayout() {
             tabBarIcon: ({ color, focused }) => (
               <Ionicons
                 name={focused ? 'settings' : 'settings-outline'}
-                color={color}
+                color={color as string}
                 size={TAB_ICON_SIZE}
               />
             ),

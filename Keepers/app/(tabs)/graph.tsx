@@ -6,7 +6,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Pressable, StyleSheet, Switch, View } from 'react-native';
 import { useSafeAreaFrame, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as WebBrowser from 'expo-web-browser';
-import { WebView, type WebViewMessageEvent } from 'react-native-webview';
+import { WebView as RNWebView, type WebViewMessageEvent } from 'react-native-webview';
 import { Text } from '../../components/Text';
 import { ImageLookupModal } from '../../components/ai/ImageLookupModal';
 import { usePriceDisplay } from '../../contexts/PriceDisplayContext';
@@ -21,6 +21,9 @@ import { GraphLikes, type GraphHistory } from '../../utils/graphLikes';
 import { getPriceTierSymbol } from '../../utils/price';
 import { MAP_GEOMETRY_SOURCE, normalizeMapPoints, validMapPosition, parseMapFrame, type MapFrame, type MapLayout, type MapPoint, type Position } from '../../utils/styleMap';
 import { supabase } from '../../utils/supabase';
+
+// react-native-webview 14 defaults WebView's extra-props generic to `undefined`, which collapses its props to `never`.
+const WebView = RNWebView<object>;
 
 const POINTS = normalizeMapPoints(require('../../data/nodeData.json'));
 const POINT_IDS = new Set(POINTS.map((p) => p.clothesId));
@@ -54,7 +57,7 @@ export default function GraphTab() {
   const stackHeaderHeight = useStackHeaderHeight();
   const headerHeight = stackHeaderHeight || getDefaultHeaderHeight(safeFrame, false, insets.top);
   const isFocused = useIsFocused();
-  const web = useRef<WebView>(null);
+  const web = useRef<RNWebView<object>>(null);
   const ready = useRef(false);
   const session = useRef<AbortController | null>(null);
   const userId = useRef<string | null>(null);

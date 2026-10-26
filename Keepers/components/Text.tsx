@@ -6,7 +6,7 @@
  * Date: 2026-10-06
  */
 
-import { createContext, forwardRef, useContext } from 'react';
+import { createContext, forwardRef, useContext, type ComponentRef } from 'react';
 import {
   StyleSheet,
   Text as RNText,
@@ -32,7 +32,7 @@ function withPublicSans(style: StyleProp<TextStyle>, inherit: boolean): StylePro
   return { ...rest, fontFamily: resolveFontFamily(fontWeight, fontStyle) };
 }
 
-export const Text = forwardRef<RNText, TextProps>(function Text({ style, ...props }, ref) {
+export const Text = forwardRef<ComponentRef<typeof RNText>, TextProps>(function Text({ style, ...props }, ref) {
   const insideText = useContext(InsideText);
   return (
     <InsideText.Provider value>
@@ -41,6 +41,6 @@ export const Text = forwardRef<RNText, TextProps>(function Text({ style, ...prop
   );
 });
 
-export const TextInput = forwardRef<RNTextInput, TextInputProps>(function TextInput({ style, ...props }, ref) {
+export const TextInput = forwardRef<ComponentRef<typeof RNTextInput>, TextInputProps>(function TextInput({ style, ...props }, ref) {
   return <RNTextInput ref={ref} {...props} style={withPublicSans(style, false)} />;
 });
