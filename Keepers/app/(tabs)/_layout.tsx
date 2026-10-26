@@ -14,6 +14,10 @@ import { useAppTheme } from '../../hooks/useAppTheme';
 
 const TAB_ICON_SIZE = 30;
 
+export const unstable_settings = {
+  anchor: 'swiper',
+};
+
 export default function TabLayout() {
   const { theme } = useAppTheme();
 
