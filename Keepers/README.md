@@ -10,6 +10,9 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    npm install
    ```
 
+   The install hook patches `react-native-deck-swiper` to remove its SDK 58-incompatible
+   `InteractionManager` call. If you install with `--ignore-scripts`, run `npm run postinstall` afterward.
+
 2. Start the app
 
    ```bash

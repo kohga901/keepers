@@ -3,6 +3,7 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
+    "postinstall": "node ./scripts/patch-deck-swiper.cjs",
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
     "generate:node-data": "node ./data/data_processing_scripts/convert-coordinates.js",
