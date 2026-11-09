@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Keepers — Item Requests</title>
+<style>
+  :root {
+    --bg: #f5f5f7;
+    --card: #ffffff;
+    --border: #e0e0e6;
+    --text: #1c1c1e;
+    --muted: #6e6e73;
+    --accent: #0a84ff;
+    --accent-hover: #0071e3;
+    --danger: #d92d20;
+    --ok: #12885b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 32px 16px 80px;
+  }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  p.subtitle { color: var(--muted); margin: 0 0 28px; font-size: 14px; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+
+  .request-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: 16px;
+  }
+  .request-card.error { border-color: #f3c4bd; }
+  .request-card img {
+    width: 140px; height: 180px; object-fit: cover;
+    border-radius: 8px; background: var(--bg); border: 1px solid var(--border);
+  }
+  .field { margin-bottom: 10px; }
+  .field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .field input, .field select {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--border);
+    border-radius: 8px; font-size: 14px; background: #fff; color: var(--text);
+  }
+  .field input:focus, .field select:focus { outline: none; border-color: var(--accent); }
+  .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .note { font-size: 13px; color: var(--danger); margin-bottom: 10px; }
+
+  .actions { display: flex; gap: 10px; margin-top: 4px; }
+  button {
+    font-size: 14px; font-weight: 600; border-radius: 8px; padding: 10px 16px;
+    cursor: pointer; border: 1px solid transparent;
+  }
+  .approve-btn { background: var(--accent); color: #fff; flex: 1; }
+  .approve-btn:hover { background: var(--accent-hover); }
+  .reject-btn { background: #fff; border-color: var(--border); color: var(--danger); }
+  .reject-btn:hover { border-color: var(--danger); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .tag-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+  .tag-chip {
+    background: #e8f2ff; color: var(--accent-hover); border-radius: 999px;
+    padding: 3px 10px; font-size: 13px; cursor: pointer;
+  }
+  .tag-chip:hover { background: #fdecea; color: var(--danger); }
+  .tag-options {
+    display: none; max-height: 160px; overflow-y: auto; margin-top: 4px;
+    border: 1px solid var(--border); border-radius: 8px; background: #fff;
+  }
+  .tag-options.open { display: block; }
+  .tag-option { padding: 7px 10px; font-size: 14px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
+  .tag-option .tag-category { color: var(--muted); font-size: 12px; }
+  .tag-option:hover { background: var(--bg); }
+  .tag-empty { padding: 7px 10px; font-size: 13px; color: var(--muted); }
+
+  #status-line { font-size: 13px; color: var(--muted); margin: 8px 0 16px; }
+  #status-line.ok { color: var(--ok); }
+  #status-line.error { color: var(--danger); }
+  .empty { color: var(--muted); text-align: center; padding: 40px 0; }
+
+  @media (max-width: 560px) {
+    .request-card { grid-template-columns: 1fr; }
+    .request-card img { width: 100%; height: 220px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Item Requests</h1>
+  <p class="subtitle">Items users have asked for. Fix any field, pick tags, then approve — approving embeds the image and adds the item to the catalog. Rejecting tells the user it wasn't added.</p>
+  <div id="status-line"></div>
+  <div id="requests"></div>
+</div>
+
+<script>
+  const listEl = document.getElementById('requests');
+  const statusLine = document.getElementById('status-line');
+
+  let existingTags = []; // [{ Tag, Category }, ...] from the master Tags table.
+  const tagsLoaded = fetch('/admin/tags')
+    .then(r => r.json())
+    .then(d => { existingTags = d.tags; })
+    .catch(() => { setStatus('Could not load existing tags — tag search unavailable.', 'error'); });
+
+  function setStatus(text, kind = '') {
+    statusLine.textContent = text;
+    statusLine.className = kind;
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str ?? '';
+    return div.innerHTML;
+  }
+
+  async function errorText(response) {
+    const body = await response.json().catch(() => null);
+    return typeof body?.detail === 'string' ? body.detail : `Server responded ${response.status}`;
+  }
+
+  function setupTagPicker(card) {
+    const chips = card.querySelector('.tag-chips');
+    const search = card.querySelector('.tag-search');
+    const options = card.querySelector('.tag-options');
+    card._tags = [];
+
+    function render() {
+      chips.innerHTML = '';
+      card._tags.forEach(tag => {
+        const chip = document.createElement('span');
+        chip.className = 'tag-chip';
+        chip.textContent = tag + ' ×';
+        chip.addEventListener('click', () => {
+          card._tags = card._tags.filter(t => t !== tag);
+          render();
+        });
+        chips.appendChild(chip);
+      });
+      const q = search.value.trim().toLowerCase();
+      const matches = existingTags.filter(t => !card._tags.includes(t.Tag) && t.Tag.toLowerCase().includes(q));
+      options.innerHTML = '';
+      if (matches.length === 0) {
+        options.innerHTML = '<div class="tag-empty">No matching existing tags</div>';
+      }
+      matches.slice(0, 50).forEach(({ Tag: tag, Category: category }) => {
+        const opt = document.createElement('div');
+        opt.className = 'tag-option';
+        opt.innerHTML = `<span>${escapeHtml(tag)}</span><span class="tag-category">${escapeHtml(category || '')}</span>`;
+        opt.addEventListener('mousedown', e => {
+          e.preventDefault();
+          card._tags.push(tag);
+          search.value = '';
+          render();
+        });
+        options.appendChild(opt);
+      });
+    }
+
+    search.addEventListener('focus', () => { options.classList.add('open'); render(); });
+    search.addEventListener('blur', () => options.classList.remove('open'));
+    search.addEventListener('input', render);
+    render();
+  }
+
+  function buildCard(r) {
+    const card = document.createElement('div');
+    card.className = `request-card ${r.status}`;
+    card.innerHTML = `
+      <img alt="" referrerpolicy="no-referrer">
+      <div>
+        ${r.status === 'error' ? '<div class="note"></div>' : ''}
+        <div class="field"><label>Name</label><input type="text" name="item_name" maxlength="200"></div>
+        <div class="field"><label>Image link</label><input type="url" name="item_img" maxlength="2000"></div>
+        <div class="field"><label>Listing link</label><input type="url" name="item_web_listing" maxlength="2000"></div>
+        <div class="row-2">
+          <div class="field"><label>Price</label><input type="text" name="item_price" maxlength="50"></div>
+          <div class="field"><label>Gender</label><input type="text" name="item_gender" maxlength="20"></div>
+        </div>
+        <div class="field">
+          <label>Tags</label>
+          <div class="tag-chips"></div>
+          <input type="text" class="tag-search" placeholder="Search tags…" autocomplete="off">
+          <div class="tag-options"></div>
+        </div>
+        <div class="field"><label>Reject reason (shown to the user, optional)</label><input type="text" name="reason" maxlength="300"></div>
+        <div class="actions">
+          <button type="button" class="reject-btn">Reject</button>
+          <button type="button" class="approve-btn">Approve &amp; upload</button>
+        </div>
+      </div>
+    `;
+
+    // Values are set as properties, never concatenated into the HTML, so a user's text can't inject markup.
+    const set = (name, value) => { card.querySelector(`[name="${name}"]`).value = value ?? ''; };
+    const get = name => card.querySelector(`[name="${name}"]`).value.trim();
+    set('item_name', r.item_name);
+    set('item_img', r.item_img);
+    set('item_web_listing', r.item_web_listing);
+    set('item_price', r.item_price);
+    set('item_gender', r.item_gender);
+    card.querySelector('img').src = r.item_img;
+    if (r.status === 'error') card.querySelector('.note').textContent = `Last attempt failed: ${r.admin_note || 'unknown error'}`;
+    card.querySelector('[name="item_img"]').addEventListener('change', e => { card.querySelector('img').src = e.target.value.trim(); });
+    setupTagPicker(card);
+
+    const approveBtn = card.querySelector('.approve-btn');
+    const rejectBtn = card.querySelector('.reject-btn');
+    const busy = value => { approveBtn.disabled = value; rejectBtn.disabled = value; };
+
+    approveBtn.addEventListener('click', async () => {
+      busy(true);
+      setStatus('Uploading… this can take a moment.');
+      try {
+        const response = await fetch(`/requests/admin/${r.id}/approve`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            item_name: get('item_name'),
+            item_img: get('item_img'),
+            item_web_listing: get('item_web_listing') || null,
+            item_price: get('item_price') || null,
+            item_gender: get('item_gender') || null,
+            item_tags: card._tags,
+          }),
+        });
+        if (!response.ok) throw new Error(await errorText(response));
+        const data = await response.json();
+        if (data.status !== 'ok') throw new Error(data.error || 'Upload failed');
+        card.remove();
+        setStatus(`Approved — item_id ${data.item_id}.`, 'ok');
+        showEmptyIfDone();
+      } catch (err) {
+        setStatus(`Approve failed: ${err.message}`, 'error');
+        busy(false);
+      }
+    });
+
+    rejectBtn.addEventListener('click', async () => {
+      busy(true);
+      try {
+        const response = await fetch(`/requests/admin/${r.id}/reject`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason: get('reason') || null }),
+        });
+        if (!response.ok) throw new Error(await errorText(response));
+        card.remove();
+        setStatus('Rejected.', 'ok');
+        showEmptyIfDone();
+      } catch (err) {
+        setStatus(`Reject failed: ${err.message}`, 'error');
+        busy(false);
+      }
+    });
+
+    return card;
+  }
+
+  function showEmptyIfDone() {
+    if (!listEl.querySelector('.request-card')) {
+      listEl.innerHTML = '<div class="empty">No requests waiting.</div>';
+    }
+  }
+
+  async function load() {
+    await tagsLoaded;
+    try {
+      const response = await fetch('/requests/admin/pending');
+      if (!response.ok) throw new Error(await errorText(response));
+      const { requests } = await response.json();
+      listEl.innerHTML = '';
+      requests.forEach(r => listEl.appendChild(buildCard(r)));
+      showEmptyIfDone();
+      if (requests.length) setStatus(`${requests.length} request${requests.length === 1 ? '' : 's'} waiting.`);
+    } catch (err) {
+      setStatus(`Could not load requests: ${err.message}`, 'error');
+    }
+  }
+
+  load();
+</script>
+</body>
+</html>

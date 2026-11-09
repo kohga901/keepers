@@ -182,19 +182,20 @@ def _undo_swipe(user_id: str, item_id: int, liked: bool, background_tasks: Backg
     # The swipe history changed, so save the new pref_vec and coordinates.
     background_tasks.add_task(_sync_user, user_id, liked_ids, disliked_ids)
 
-def _user_from_token(authorization: str | None) -> str:
+def _user_from_token(authorization: str | None, detail: str = "Sign in again to clear your history.") -> str:
     """
     Returns the id of the user who owns the Supabase access token in an
     "Authorization: Bearer <token>" header, so a user can only change their own data.
+    `detail` is the message returned with the 401 error.
     """
     if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(status_code=401, detail="Sign in again to clear your history.")
+        raise HTTPException(status_code=401, detail=detail)
     try:
         response = supabase.auth.get_user(authorization[7:].strip())
     except Exception:
-        raise HTTPException(status_code=401, detail="Sign in again to clear your history.")
+        raise HTTPException(status_code=401, detail=detail)
     if not response or not response.user:
-        raise HTTPException(status_code=401, detail="Sign in again to clear your history.")
+        raise HTTPException(status_code=401, detail=detail)
     return response.user.id
 
 def _clear_taste(user_id: str) -> None:
