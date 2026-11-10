@@ -210,3 +210,84 @@ export const clearHistoryOnServer = async (scope: ClearHistoryScope): Promise<st
     return 'Could not reach the Keepers server. Check your connection and try again.';
   }
 };
+
+export type ItemRequestInput = {
+  item_name: string;
+  item_img: string;
+  item_web_listing?: string;
+  item_price?: string;
+  item_gender?: string;
+};
+
+export type ItemRequestStatus = 'pending' | 'approved' | 'rejected' | 'error';
+
+export type ItemRequest = {
+  id: number;
+  item_name: string;
+  item_img: string;
+  status: ItemRequestStatus;
+  clothes_id: number | null;
+  admin_note: string | null;
+  created_at: string;
+};
+
+// The signed-in user's access token, or null when they need to sign in again.
+const getAccessToken = async (): Promise<string | null> => {
+  const { data, error } = await supabase.auth.getSession();
+  return error ? null : data.session?.access_token ?? null;
+};
+
+// Asks for an item to be added to the app. An admin approves or rejects it later.
+// Returns an error message, or null on success.
+export const submitItemRequest = async (item: ItemRequestInput): Promise<string | null> => {
+  const token = await getAccessToken();
+  if (!token) {
+    return 'Sign in again to request an item.';
+  }
+
+  try {
+    const response = await fetch(`${SERVER_BASE_URL}/requests`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(item),
+    });
+
+    if (!response.ok) {
+      const result = await response.json().catch(() => null);
+      // A 422 comes back as a list of validation errors rather than a message.
+      return typeof result?.detail === 'string' ? result.detail : 'Your request could not be sent. Check the fields and try again.';
+    }
+
+    return null;
+  } catch (fetchError) {
+    console.error('Error requesting item:', fetchError);
+    return 'Could not reach the Keepers server. Check your connection and try again.';
+  }
+};
+
+// The signed-in user's item requests, newest first. Returns an error message when they can't be loaded.
+export const fetchMyItemRequests = async (): Promise<{ requests: ItemRequest[]; error: string | null }> => {
+  const token = await getAccessToken();
+  if (!token) {
+    return { requests: [], error: 'Sign in again to see your requests.' };
+  }
+
+  try {
+    const response = await fetch(`${SERVER_BASE_URL}/requests/mine`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!response.ok) {
+      return { requests: [], error: 'Your requests could not be loaded.' };
+    }
+
+    const result = await response.json();
+    return { requests: result.requests ?? [], error: null };
+  } catch (fetchError) {
+    console.error('Error loading item requests:', fetchError);
+    return { requests: [], error: 'Could not reach the Keepers server.' };
+  }
+};
