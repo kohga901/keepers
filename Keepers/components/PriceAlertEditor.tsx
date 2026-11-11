@@ -34,9 +34,7 @@ export function PriceAlertEditor({ itemId, price }: { itemId: string; price: str
 
   return <View style={[styles.panel, { backgroundColor: theme.surface }]}>
     <Text style={[styles.title, { color: theme.text }]}>Price alert</Text>
-    <Text style={{ color: theme.text }}>
-      {current === null ? 'This item needs a supported USD price before you can set an alert.' : `Current catalog price: ${formatAlertPrice(current)}`}
-    </Text>
+    {current === null && <Text style={{ color: theme.text }}>This item needs a supported USD price before you can set an alert.</Text>}
     {existing && <Text style={{ color: theme.text }}>Watching for {formatAlertPrice(existing.target_price)} or less.</Text>}
     <TextInput value={target} onChangeText={setDraft} placeholder="Target Price"
       placeholderTextColor={theme.mutedText} keyboardType="decimal-pad" maxLength={16}

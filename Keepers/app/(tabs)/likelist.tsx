@@ -33,6 +33,7 @@ const App: React.FC = () => {
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [imageExpanded, setImageExpanded] = useState(false);
   const { showTutorialOnce } = useTutorial();
 
   // First visit to History walks through the toggle, item details, and swipe-to-remove.
@@ -297,34 +298,44 @@ const App: React.FC = () => {
           visible={modalVisible}
           transparent={true}
           animationType="slide"
-          onRequestClose={() => setModalVisible(false)}
+          onRequestClose={() => imageExpanded ? setImageExpanded(false) : setModalVisible(false)}
         >
+          {imageExpanded ? (
+            <View style={{ flex: 1, backgroundColor: '#000000', paddingTop: insets.top, paddingBottom: insets.bottom }}>
+              <Image source={{ uri: selectedItem?.imageUrl }} style={{ flex: 1, width: '100%' }} contentFit="contain"
+                accessibilityLabel={selectedItem?.name} />
+              <Pressable onPress={() => setImageExpanded(false)} accessibilityRole="button" accessibilityLabel="Close full-size image"
+                style={[styles.modalClose, { top: insets.top + 12, backgroundColor: theme.surface }]}>
+                <Ionicons name="close" size={24} color={theme.text} />
+              </Pressable>
+            </View>
+          ) : (
           <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <Pressable style={styles.modalBackground} onPress={() => setModalVisible(false)}>
             <Pressable style={[styles.modalContainer, { maxHeight: '90%' }]} onPress={event => event.stopPropagation()}>
               <ScrollView style={{ width: '100%' }} keyboardShouldPersistTaps="handled">
-                <Pressable onPress={() => setModalVisible(false)} accessibilityRole="button" accessibilityLabel="Close item details"
-                  style={{ alignSelf: 'flex-end', minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}>
-                  <Ionicons name="close" size={24} color={theme.text} />
-                </Pressable>
               {selectedItem && (
                 <>
+                  <Pressable onPress={() => setImageExpanded(true)} accessibilityRole="button" accessibilityLabel="View full-size image">
                   <Image
                     style={styles.modalImage}
                     source={{ uri: selectedItem.imageUrl }}
                   />
+                  </Pressable>
                   <View style={[styles.textAndButtonContainer, { backgroundColor: theme.primary }]}>
                     <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '600', fontFamily: 'PublicSans_600SemiBold' }}>
                       {selectedItem.name}
                     </Text>
                     <View style={{ height: 1, backgroundColor: '#FFFFFF', opacity: 0.4, width: '100%', marginVertical: 10 }} />
 
-                    <Text style={{ color: theme.accentBrown, fontFamily: 'PublicSans_600SemiBold', alignSelf: 'flex-start' }}>
+                    <View style={styles.modalPriceGenderRow}>
+                    <Text style={{ color: theme.accentGold, fontFamily: 'PublicSans_600SemiBold' }}>
                       {showPriceAsTier ? getPriceTierSymbol(selectedItem.price) : selectedItem.price}
                     </Text>
-                    <Text style={{ color: '#FFFFFF', fontFamily: 'PublicSans_600SemiBold', alignSelf: 'flex-end' }}>
+                    <Text style={{ color: '#FFFFFF', fontFamily: 'PublicSans_600SemiBold' }}>
                       {selectedItem.gender.toUpperCase()}
                     </Text>
+                    </View>
 
                     <Pressable style={[styles.closeButton, { backgroundColor: theme.surface }]} onPress={() => {
                       if (selectedItem.itemUrl) {
@@ -339,9 +350,14 @@ const App: React.FC = () => {
                 </>
               )}
               </ScrollView>
+              <Pressable onPress={() => setModalVisible(false)} accessibilityRole="button" accessibilityLabel="Close item details"
+                style={[styles.modalClose, { backgroundColor: theme.surface }]}>
+                <Ionicons name="close" size={24} color={theme.text} />
+              </Pressable>
             </Pressable>
           </Pressable>
           </KeyboardAvoidingView>
+          )}
         </Modal>
       </View>
     </View>
@@ -517,7 +533,8 @@ const styles = StyleSheet.create({
   },
 
   modalContainer: {
-    width: '80%',
+    width: '94%',
+    maxWidth: 600,
     padding: 20,
     backgroundColor: 'white',
     borderRadius: 20,
@@ -530,13 +547,34 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     borderRadius: 15,
   },
+  modalClose: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 3,
+    zIndex: 1,
+  },
   textAndButtonContainer: {
     padding: 10,
     borderRadius: 10,
     width: '100%',
     alignItems: 'center',
   },
+  modalPriceGenderRow: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+  },
   closeButton: {
+    width: '100%',
+    alignItems: 'center',
     paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 10,
