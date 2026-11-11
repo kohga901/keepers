@@ -37,9 +37,8 @@ export function PriceAlertEditor({ itemId, price }: { itemId: string; price: str
     <Text style={{ color: theme.text }}>
       {current === null ? 'This item needs a supported USD price before you can set an alert.' : `Current catalog price: ${formatAlertPrice(current)}`}
     </Text>
-    <Text style={{ color: theme.text }}>Set a lower target in USD. We’ll notify you here once it is reached.</Text>
     {existing && <Text style={{ color: theme.text }}>Watching for {formatAlertPrice(existing.target_price)} or less.</Text>}
-    <TextInput value={target} onChangeText={setDraft} placeholder="Target price, e.g. 25.00"
+    <TextInput value={target} onChangeText={setDraft} placeholder="Target Price"
       placeholderTextColor={theme.mutedText} keyboardType="decimal-pad" maxLength={16}
       editable={!busy && current !== null} accessibilityLabel="Target price in US dollars"
       style={[styles.input, { color: theme.text, borderColor: theme.border }]} />
@@ -52,7 +51,6 @@ export function PriceAlertEditor({ itemId, price }: { itemId: string; price: str
     </Pressable>}
     {(error || loadError) && <Text accessibilityRole="alert" style={{ color: '#9B341C' }}>{error || loadError}</Text>}
     {message && <Text accessibilityLiveRegion="polite" style={{ color: theme.text }}>{message}</Text>}
-    <Text style={{ color: theme.text, fontSize: 12 }}>Alerts appear inside Keepers when catalog prices are updated. Store prices may differ.</Text>
   </View>;
 }
 const styles = StyleSheet.create({

@@ -23,8 +23,6 @@ export default function PriceAlertsScreen() {
   return <ScrollView style={{ backgroundColor: theme.background }} contentContainerStyle={styles.page}
     refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void refresh()} tintColor={theme.text} />}>
     <Text style={[styles.heading, { color: theme.text }]}>Price alerts</Text>
-    <Text style={{ color: theme.text }}>Your alerts live here. Check back for catalog updates or pull to refresh.</Text>
-    <Text style={{ color: theme.text }}>In Expo Go, alerts wait in this inbox until you return to Keepers. Phone push notifications require a different app build.</Text>
     {(error || actionError) && <View style={styles.card}>
       <Text accessibilityRole="alert" style={{ color: '#9B341C' }}>{actionError || error}</Text>
       <Pressable onPress={() => void refresh()} accessibilityRole="button" style={styles.action}>
@@ -50,7 +48,6 @@ export default function PriceAlertsScreen() {
     </View>)}
     {notifications.length === 50 && <Text style={{ color: theme.text }}>Showing your latest 50 notifications. “Mark all read” includes older notifications.</Text>}
     <Text style={[styles.section, { color: theme.text }]}>Watching ({alerts.length})</Text>
-    {!loading && !error && !alerts.length && <Text style={{ color: theme.text }}>No active targets. Alerts stop watching after they fire; you can set another target in History.</Text>}
     {alerts.map(alert => <View key={alert.clothes_id} style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
       <Text style={[styles.itemName, { color: theme.text }]}>{alert.Clothing?.item_name ?? 'Clothing item'}</Text>
       <Text style={{ color: theme.text }}>Notify at {formatAlertPrice(alert.target_price)} or less.</Text>
