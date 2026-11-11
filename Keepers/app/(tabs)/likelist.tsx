@@ -6,8 +6,10 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Easing, StyleSheet, View, Pressable, FlatList, Modal } from 'react-native';
+import { ActivityIndicator, Animated, Easing, StyleSheet, View, Pressable, FlatList, Modal, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { Text } from '../../components/Text';
+import { PriceAlertEditor } from '../../components/PriceAlertEditor';
+import { PriceAlertsBell } from '../../components/PriceAlertsBell';
 import { Image } from 'expo-image';
 import { useSafeAreaFrame, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
@@ -22,9 +24,10 @@ import { deleteLikedItem, getLikedItems, deleteDislikedItem as deleteDislikedIte
 import { getDefaultHeaderHeight, useFocusEffect } from "expo-router/react-navigation";
 import * as WebBrowser from 'expo-web-browser';
 
-const TOGGLE_OPTION_WIDTH = 130;
-
 const App: React.FC = () => {
+  const frame = useSafeAreaFrame();
+  // Leave space for the bell, filter and header padding on narrow phones.
+  const toggleOptionWidth = Math.min(130, Math.max(80, (frame.width - 120) / 2));
   const [allLikedItems, setAllLikedItems] = useState<Item[]>([]);
   const [allDislikedItems, setAllDislikedItems] = useState<Item[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
@@ -68,7 +71,7 @@ const App: React.FC = () => {
             imageUrl: row.Clothing.item_img,
             liked: true,
             itemUrl: row.Clothing.item_web_listing,
-            gender: row.Clothing.item_gender,
+            gender: row.Clothing.item_gender ?? '',
           }));
 
         if (active) setAllLikedItems(parsedCards);
@@ -88,7 +91,7 @@ const App: React.FC = () => {
             imageUrl: row.Clothing.item_img,
             liked: false,
             itemUrl: row.Clothing.item_web_listing,
-            gender: row.Clothing.item_gender,
+            gender: row.Clothing.item_gender ?? '',
           }));
 
         if (active) setAllDislikedItems(parsedCards);
@@ -123,7 +126,7 @@ const App: React.FC = () => {
 
   const indicatorTranslate = toggleAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, TOGGLE_OPTION_WIDTH],
+    outputRange: [0, toggleOptionWidth],
   });
 
   // Collapsing header: slides up as the list scrolls down, and back in on scroll up.
@@ -134,7 +137,6 @@ const App: React.FC = () => {
     () => Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true }),
     [scrollY],
   );
-  const frame = useSafeAreaFrame();
   // Match the real height of the "KEEPERS" header shown on the other tabs (e.g. Swiper).
   const stackHeaderHeight = useStackHeaderHeight();
   const headerHeight = stackHeaderHeight > 0 ? stackHeaderHeight : getDefaultHeaderHeight(frame, false, insets.top);
@@ -173,10 +175,10 @@ const App: React.FC = () => {
               <Animated.View
                 style={[
                   styles.toggleIndicator,
-                  { width: TOGGLE_OPTION_WIDTH, backgroundColor: theme.primary, transform: [{ translateX: indicatorTranslate }] },
+                  { width: toggleOptionWidth, backgroundColor: theme.primary, transform: [{ translateX: indicatorTranslate }] },
                 ]}
               />
-              <Pressable style={[styles.toggleOption, { width: TOGGLE_OPTION_WIDTH }]} onPress={() => switchTab('liked')}>
+              <Pressable style={[styles.toggleOption, { width: toggleOptionWidth }]} onPress={() => switchTab('liked')}>
                 <Text
                   style={[
                     styles.toggleText,
@@ -187,7 +189,7 @@ const App: React.FC = () => {
                 </Text>
               </Pressable>
 
-              <Pressable style={[styles.toggleOption, { width: TOGGLE_OPTION_WIDTH }]} onPress={() => switchTab('disliked')}>
+              <Pressable style={[styles.toggleOption, { width: toggleOptionWidth }]} onPress={() => switchTab('disliked')}>
                 <Text
                   style={[
                     styles.toggleText,
@@ -200,6 +202,7 @@ const App: React.FC = () => {
             </View>
           </View>
 
+          <PriceAlertsBell color={theme.tabActive} />
           <View style={styles.filterWrapper}>
             <Pressable
               style={[styles.filterButton, { backgroundColor: theme.tabBg, borderColor: theme.border }]}
@@ -294,9 +297,16 @@ const App: React.FC = () => {
           visible={modalVisible}
           transparent={true}
           animationType="slide"
+          onRequestClose={() => setModalVisible(false)}
         >
+          <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <Pressable style={styles.modalBackground} onPress={() => setModalVisible(false)}>
-            <View style={styles.modalContainer}>
+            <Pressable style={[styles.modalContainer, { maxHeight: '90%' }]} onPress={event => event.stopPropagation()}>
+              <ScrollView style={{ width: '100%' }} keyboardShouldPersistTaps="handled">
+                <Pressable onPress={() => setModalVisible(false)} accessibilityRole="button" accessibilityLabel="Close item details"
+                  style={{ alignSelf: 'flex-end', minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="close" size={24} color={theme.text} />
+                </Pressable>
               {selectedItem && (
                 <>
                   <Image
@@ -324,11 +334,14 @@ const App: React.FC = () => {
                     }}>
                       <Text style={[styles.closeButtonText, { color: theme.text }]}>Go to Store Page</Text>
                     </Pressable>
+                    {selectedItem.liked && <PriceAlertEditor key={selectedItem.id} itemId={selectedItem.id} price={selectedItem.price} />}
                   </View>
                 </>
               )}
-            </View>
+              </ScrollView>
+            </Pressable>
           </Pressable>
+          </KeyboardAvoidingView>
         </Modal>
       </View>
     </View>

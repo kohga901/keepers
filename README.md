@@ -15,6 +15,14 @@ processing/ML pipelines in this repo.
 | `ML_Pipeline/` | ML scripts used to build/update the recommendation model |
 | `Scrapers/` | Scrapers used to collect clothing item data/images |
 
+## Price alerts
+
+Price alerts work inside Expo Go: set a target on a liked item in History, then
+use the bell to view notifications and manage targets. Apply the one-time SQL
+setup before testing. Alerts depend on updates to existing catalog prices;
+automatic merchant-price refresh and remote push are outside this implementation.
+See [PRICE_ALERTS.md](PRICE_ALERTS.md) for the implementation choices and setup.
+
 ## Testing
 
 Run `npm test` from `Keepers/`. For backend and ingestion tests, install
