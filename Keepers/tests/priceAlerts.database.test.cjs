@@ -16,8 +16,9 @@ before(async () => {
   await db.exec(`
     create role anon;
     create role authenticated;
+    create role service_role;
     create schema auth;
-    create table auth.users (id uuid primary key);
+    create table auth.users (id uuid primary key, email text, email_confirmed_at timestamptz);
     create function auth.uid() returns uuid language sql stable as
       $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
     grant usage on schema auth to authenticated;
@@ -25,11 +26,13 @@ before(async () => {
     grant select on public."Clothing" to authenticated;
   `);
   await db.exec(fs.readFileSync(path.resolve(__dirname, '../../server/price_alerts.sql'), 'utf8'));
+  await db.exec(fs.readFileSync(path.resolve(__dirname, '../../server/price_alert_emails.sql'), 'utf8'));
 });
 after(async () => { await db?.close(); });
 beforeEach(async () => {
   await db.exec(`truncate auth.users, "Clothing" cascade;
-    insert into auth.users values ('${alice}'), ('${bob}');
+    insert into auth.users (id, email, email_confirmed_at) values
+      ('${alice}', 'alice@example.com', now()), ('${bob}', 'bob@example.com', now());
     insert into "Clothing" values (1, 'Linen shirt', '$40.00'), (2, 'Jacket', '$120.00');`);
 });
 
@@ -43,6 +46,57 @@ const save = (user, item, target) => asUser(user, () =>
   db.query('select * from public.set_price_alert($1, $2)', [item, target]));
 const price = (value, item = 1) => db.query('update "Clothing" set item_price = $1 where item_id = $2', [value, item]);
 const notices = () => db.query('select * from "Price_Notifications" order by user_id');
+
+test('email jobs are queued once with notifications and are inaccessible to clients', async () => {
+  await save(alice, 1, '30');
+  await price('$25');
+  await price('$20');
+  const jobs = await db.query('select * from public.price_alert_emails');
+  assert.equal(jobs.rows.length, 1);
+  assert.equal(jobs.rows[0].notification_id, (await notices()).rows[0].id);
+  assert.equal(jobs.rows[0].sent_at, null);
+  await asUser(alice, () => assert.rejects(db.query('select * from public.price_alert_emails'), /permission denied/));
+  await asUser(alice, () => assert.rejects(db.query('select * from public.claim_price_alert_emails()'), /permission denied/));
+  await asUser(alice, () => assert.rejects(db.query('select public.finish_price_alert_email($1, $2)',
+    [jobs.rows[0].notification_id, alice]), /permission denied/));
+  await db.query('delete from auth.users where id = $1', [alice]);
+  assert.equal((await db.query('select * from public.price_alert_emails')).rows.length, 0);
+});
+
+test('email claims require verified accounts, lease jobs and reject stale completions', async () => {
+  await save(alice, 1, '30');
+  await price('$25');
+  await db.exec(`update auth.users set email_confirmed_at = null where id = '${alice}'`);
+  assert.equal((await db.query('select * from claim_price_alert_emails()')).rows.length, 0);
+  await db.exec(`update auth.users set email_confirmed_at = now() where id = '${alice}'`);
+  await db.exec('set role service_role');
+  let job;
+  try { job = (await db.query('select * from claim_price_alert_emails()')).rows[0]; }
+  finally { await db.exec('reset role'); }
+  assert.equal(job.recipient, 'alice@example.com');
+  assert.equal(job.item_name, 'Linen shirt');
+  assert.equal((await db.query('select * from claim_price_alert_emails()')).rows.length, 0);
+  await db.exec("update price_alert_emails set next_attempt_at = now() - interval '1 second'");
+  const retry = (await db.query('select * from claim_price_alert_emails()')).rows[0];
+  assert.notEqual(retry.lease_id, job.lease_id);
+  await db.query('select finish_price_alert_email($1, $2)', [job.notification_id, job.lease_id]);
+  assert.equal((await db.query('select sent_at from price_alert_emails')).rows[0].sent_at, null);
+  await db.query('select finish_price_alert_email($1, $2, $3)', [retry.notification_id, retry.lease_id, 'provider_http_429']);
+  assert.equal((await db.query('select last_error from price_alert_emails')).rows[0].last_error, 'provider_http_429');
+  await db.query('select finish_price_alert_email($1, $2)', [retry.notification_id, retry.lease_id]);
+  assert.ok((await db.query('select sent_at from price_alert_emails')).rows[0].sent_at);
+});
+
+test('email retry limits prevent resending outside provider idempotency protection', async () => {
+  await save(alice, 1, '30');
+  await price('$25');
+  await db.exec("update price_alert_emails set first_attempt_at = now() - interval '24 hours'");
+  assert.equal((await db.query('select * from claim_price_alert_emails()')).rows.length, 0);
+  assert.equal((await db.query('select last_error from price_alert_emails')).rows[0].last_error, 'retry_limit');
+  await db.exec('update price_alert_emails set first_attempt_at = now(), failed_at = null, attempts = 12');
+  assert.equal((await db.query('select * from claim_price_alert_emails()')).rows.length, 0);
+  assert.ok((await db.query('select failed_at from price_alert_emails')).rows[0].failed_at);
+});
 
 test('SQL and client accept the same USD formats and reject ambiguous catalog prices', async () => {
   for (const [value, expected] of [
