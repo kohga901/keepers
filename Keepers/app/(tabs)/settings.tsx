@@ -16,6 +16,7 @@ import { usePriceDisplay } from '../../contexts/PriceDisplayContext';
 import { useTutorial } from '../../contexts/TutorialContext';
 import { clearHistoryOnServer, type ClearHistoryScope } from '../../services/serverApi';
 import { AiKeySettings } from '../../components/ai/AiKeySettings';
+import { EmailNotificationSettings } from '../../components/EmailNotificationSettings';
 import { useAppTheme } from '../../hooks/useAppTheme';
 import { supabase } from '../../utils/supabase';
 import { PRICE_TIERS } from '../../utils/price';
@@ -189,6 +190,8 @@ export default function Settings() {
           </View>
         )}
       </View>
+
+      {user && <EmailNotificationSettings key={user.id} />}
 
       <View style={styles.section}>
         <AiKeySettings />

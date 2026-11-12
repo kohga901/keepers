@@ -45,6 +45,9 @@ export function createHandler(env: (name: string) => string | undefined, request
       const jobs: Job[] = await rpc('claim_price_alert_emails', {});
       let sent = 0;
       for (const job of jobs) {
+        if (!await rpc('price_alert_email_allowed', {
+          p_notification_id: job.notification_id, p_lease_id: job.lease_id,
+        })) continue;
         let error: string | null = null;
         try {
           const response = await request('https://api.resend.com/emails', {

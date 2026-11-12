@@ -25,8 +25,9 @@ before(async () => {
     create table public."Clothing" (item_id bigint primary key, item_name text, item_price text);
     grant select on public."Clothing" to authenticated;
   `);
-  await db.exec(fs.readFileSync(path.resolve(__dirname, '../../server/price_alerts.sql'), 'utf8'));
-  await db.exec(fs.readFileSync(path.resolve(__dirname, '../../server/price_alert_emails.sql'), 'utf8'));
+  await db.exec(fs.readFileSync(path.resolve(__dirname, '../../supabase/price_alerts.sql'), 'utf8'));
+  await db.exec(fs.readFileSync(path.resolve(__dirname, '../../supabase/price_alert_emails.sql'), 'utf8'));
+  await db.exec(fs.readFileSync(path.resolve(__dirname, '../../supabase/price_alert_email_preferences.sql'), 'utf8'));
 });
 after(async () => { await db?.close(); });
 beforeEach(async () => {
@@ -46,6 +47,33 @@ const save = (user, item, target) => asUser(user, () =>
   db.query('select * from public.set_price_alert($1, $2)', [item, target]));
 const price = (value, item = 1) => db.query('update "Clothing" set item_price = $1 where item_id = $2', [value, item]);
 const notices = () => db.query('select * from "Price_Notifications" order by user_id');
+
+test('email preferences default on, isolate accounts and discard unsent jobs when disabled', async () => {
+  assert.equal((await asUser(alice, () => db.query('select get_price_alert_email_enabled() as enabled'))).rows[0].enabled, true);
+  await save(alice, 1, '30'); await save(bob, 1, '30'); await price('$25');
+  const jobs = (await db.query('select * from claim_price_alert_emails()')).rows;
+  const aliceJob = jobs.find(job => job.recipient === 'alice@example.com');
+  assert.equal((await db.query('select price_alert_email_allowed($1, $2) as allowed',
+    [aliceJob.notification_id, aliceJob.lease_id])).rows[0].allowed, true);
+  await asUser(alice, () => db.query('select set_price_alert_email_enabled(false)'));
+  assert.equal((await db.query('select price_alert_email_allowed($1, $2) as allowed',
+    [aliceJob.notification_id, aliceJob.lease_id])).rows[0].allowed, false);
+  assert.equal((await db.query('select * from price_alert_emails')).rows.length, 1);
+  assert.equal((await notices()).rows.length, 2);
+  await price('$40'); await save(alice, 1, '30'); await price('$20');
+  assert.equal((await notices()).rows.length, 3);
+  assert.equal((await db.query('select * from price_alert_emails')).rows.length, 1);
+  await asUser(alice, async () => {
+    assert.equal((await db.query('select * from price_alert_email_preferences')).rows.length, 1);
+    await assert.rejects(db.query('update price_alert_email_preferences set enabled = true'), /permission denied/);
+    await assert.rejects(db.query('select price_alert_email_allowed($1, $2)', [aliceJob.notification_id, aliceJob.lease_id]), /permission denied/);
+  });
+  await asUser(alice, () => db.query('select set_price_alert_email_enabled(true)'));
+  assert.equal((await db.query('select * from price_alert_emails')).rows.length, 1);
+  await price('$40'); await save(alice, 1, '30'); await price('$25');
+  assert.equal((await db.query('select * from price_alert_emails')).rows.length, 2);
+  await assert.rejects(db.query('select set_price_alert_email_enabled(false)'), /Sign in/);
+});
 
 test('email jobs are queued once with notifications and are inaccessible to clients', async () => {
   await save(alice, 1, '30');

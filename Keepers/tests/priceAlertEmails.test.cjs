@@ -40,16 +40,17 @@ test('email delivery uses persisted recipient, stable idempotency key and acknow
   const handler = createHandler(name => config[name], async (url, options) => {
     calls.push({ url, options, body: JSON.parse(options.body) });
     if (url.endsWith('claim_price_alert_emails')) return Response.json([job]);
+    if (url.endsWith('price_alert_email_allowed')) return Response.json(true);
     if (url === 'https://api.resend.com/emails') return Response.json({ id: 'provider-id' });
     return new Response('null');
   });
   assert.deepEqual(await (await handler(incoming())).json(), { processed: 1, sent: 1 });
   assert.equal(calls[0].options.headers.apikey, secretKey);
   assert.equal(calls[0].options.headers.Authorization, undefined);
-  assert.equal(calls[1].options.headers['Idempotency-Key'], 'price-alert/notice-1');
-  assert.deepEqual(calls[1].body.to, ['alice@example.com']);
-  assert.match(calls[1].body.text, /Linen shirt is now \$25.00/);
-  assert.deepEqual(calls[2].body, { p_notification_id: 'notice-1', p_lease_id: 'lease-1', p_error: null });
+  assert.equal(calls[2].options.headers['Idempotency-Key'], 'price-alert/notice-1');
+  assert.deepEqual(calls[2].body.to, ['alice@example.com']);
+  assert.match(calls[2].body.text, /Linen shirt is now \$25.00/);
+  assert.deepEqual(calls[3].body, { p_notification_id: 'notice-1', p_lease_id: 'lease-1', p_error: null });
 });
 
 test('provider rejection/timeouts leave retryable jobs and do not report a successful send', async () => {
@@ -57,6 +58,7 @@ test('provider rejection/timeouts leave retryable jobs and do not report a succe
     let finished;
     const handler = createHandler(name => config[name], async (url, options) => {
       if (url.endsWith('claim_price_alert_emails')) return Response.json([job]);
+      if (url.endsWith('price_alert_email_allowed')) return Response.json(true);
       if (url === 'https://api.resend.com/emails') {
         if (mode === 'timeout') throw new Error('timeout');
         return mode === 'invalid' ? Response.json({}) : new Response('private error', { status: 429 });
@@ -76,8 +78,21 @@ test('queue failures stop processing so the lease can expire safely', async () =
   const handler = createHandler(name => config[name], async url => {
     if (url === 'https://api.resend.com/emails') { providerCalls++; return Response.json({ id: 'sent' }); }
     if (url.endsWith('claim_price_alert_emails')) return Response.json([job, job]);
+    if (url.endsWith('price_alert_email_allowed')) return Response.json(true);
     return new Response('database unavailable', { status: 500 });
   });
   assert.equal((await handler(incoming())).status, 500);
   assert.equal(providerCalls, 1);
+});
+
+test('opt-out after claiming prevents provider delivery', async () => {
+  const calls = [];
+  const handler = createHandler(name => config[name], async url => {
+    calls.push(url);
+    if (url.endsWith('claim_price_alert_emails')) return Response.json([job]);
+    if (url.endsWith('price_alert_email_allowed')) return Response.json(false);
+    throw new Error('Unexpected send');
+  });
+  assert.deepEqual(await (await handler(incoming())).json(), { processed: 1, sent: 0 });
+  assert.equal(calls.length, 2);
 });
