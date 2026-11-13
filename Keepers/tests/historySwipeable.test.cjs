@@ -1,46 +1,122 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createLoader, plain } = require('./helpers/load.cjs');
+const { createLoader } = require('./helpers/load.cjs');
 
-function render(platform) {
-  let gesture;
-  const { HistorySwipeable } = createLoader({
-    'react/jsx-runtime': { jsx: (type, props) => ({ type, props }) },
-    'react-native': { Platform: { OS: platform }, View: 'View' },
-    'react-native-gesture-handler': {
-      GestureDetector: 'GestureDetector',
-      usePanGesture: config => (gesture = config),
+function harness() {
+  const slots = [], timers = new Map();
+  let cursor = 0, tree, deleted = 0, captured = false;
+  const hooks = {
+    useState(value) {
+      const index = cursor++;
+      if (!(index in slots)) slots[index] = value;
+      return [slots[index], next => { slots[index] = next; }];
     },
-    'react-native-gesture-handler/ReanimatedSwipeable': { default: 'Swipeable', __esModule: true },
-  })('components/HistorySwipeable.tsx');
-  const onSwipeableOpen = () => {};
-  return { tree: HistorySwipeable({ onSwipeableOpen, children: 'item' }), gesture, onSwipeableOpen };
+    useRef(value) { const index = cursor++; return slots[index] ??= { current: value }; },
+    useEffect() {},
+  };
+  const { HistorySwipeable } = createLoader({
+    react: hooks,
+    'react/jsx-runtime': { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }) },
+  }, { setTimeout: fn => { timers.set(1, fn); return 1; }, clearTimeout: id => timers.delete(id) })(
+    'components/HistorySwipeable.web.tsx');
+  const target = { getBoundingClientRect: () => ({ width: 320 }),
+    setPointerCapture() { captured = true; }, hasPointerCapture: () => captured,
+    releasePointerCapture() { captured = false; } };
+  function render() {
+    cursor = 0;
+    tree = HistorySwipeable({ children: 'item', renderRightActions: () => 'delete', onSwipeableOpen: () => deleted++ });
+  }
+  render();
+  return {
+    event(name, x, y, extra = {}) {
+      let prevented = false, stopped = false;
+      tree.props[name]({ pointerId: 1, isPrimary: true, button: 0, clientX: x, clientY: y,
+        currentTarget: target, preventDefault() { prevented = true; }, stopPropagation() { stopped = true; }, ...extra });
+      render();
+      return { prevented, stopped };
+    },
+    get tree() { return tree; }, get captured() { return captured; }, get deleted() { return deleted; },
+    get transform() { return tree.props.children[1].props.style.transform; },
+    flush() { for (const fn of timers.values()) fn(); timers.clear(); },
+  };
 }
 
-test('web history lets vertical drags win before swipe-to-delete can activate', () => {
-  const { tree, gesture, onSwipeableOpen } = render('web');
-  assert.equal(tree.props.touchAction, 'pan-y');
-  assert.equal(tree.props.gesture, gesture);
-  const swipe = tree.props.children.props.children;
-  assert.equal(swipe.props.requireToFail, gesture);
-  const { activeOffsetY, failOffsetX } = plain(gesture);
-  // A typical scrolling drag (12px sideways, 30px down) activates the guard;
-  // a deliberate horizontal swipe (30px sideways, 4px down) fails it.
-  assert.ok(30 > activeOffsetY[1] && 12 < failOffsetX[1]);
-  assert.ok(-30 < activeOffsetY[0] && -12 > failOffsetX[0]);
-  assert.ok(30 > failOffsetX[1] && 4 < activeOffsetY[1]);
-  assert.ok(swipe.props.dragOffsetFromLeft >= failOffsetX[1]);
-  assert.ok(swipe.props.dragOffsetFromRight <= failOffsetX[0]);
-  assert.equal(swipe.props.onSwipeableOpen, onSwipeableOpen);
-  assert.equal(swipe.props.children, 'item');
+test('first drag on a web row leaves vertical scrolling to the browser, even with sideways drift', () => {
+  const h = harness();
+  assert.equal(h.tree.props.style.touchAction, 'pan-y pinch-zoom');
+  h.event('onPointerDown', 180, 200);
+  assert.equal(h.event('onPointerMove', 168, 170).prevented, false);
+  assert.equal(h.event('onPointerMove', 110, 100).prevented, false);
+  assert.equal(h.captured, false);
+  assert.equal(h.transform, 'translateX(0px)');
+  h.event('onPointerCancel'); h.flush();
+  assert.equal(h.deleted, 0);
 });
 
-test('native history keeps the existing swipe behavior', () => {
-  for (const platform of ['ios', 'android']) {
-    const { tree, onSwipeableOpen } = render(platform);
-    assert.equal(tree.type, 'Swipeable');
-    assert.equal(tree.props.requireToFail, undefined);
-    assert.equal(tree.props.dragOffsetFromRight, undefined);
-    assert.equal(tree.props.onSwipeableOpen, onSwipeableOpen);
+test('partial delete and reversal both reset capture and allow the next vertical scroll', () => {
+  for (const reverse of [false, true]) {
+    const h = harness();
+    h.event('onPointerDown', 280, 200);
+    assert.equal(h.event('onPointerMove', 180, 198).prevented, true);
+    assert.equal(h.captured, true);
+    if (reverse) h.event('onPointerMove', 278, 198);
+    h.event('onPointerUp', reverse ? 278 : 180, 198);
+    assert.equal(h.captured, false);
+    assert.equal(h.transform, 'translateX(0px)');
+    assert.equal(h.event('onClickCapture').stopped, true);
+    h.event('onPointerDown', 160, 200);
+    assert.equal(h.event('onPointerMove', 158, 100).prevented, false);
+    h.event('onPointerCancel'); h.flush();
+    assert.equal(h.deleted, 0);
   }
+});
+
+test('browser cancellation and lost capture never delete, including past the deletion threshold', () => {
+  for (const ending of ['onPointerCancel', 'onLostPointerCapture']) {
+    const h = harness();
+    h.event('onPointerDown', 280, 200);
+    h.event('onPointerMove', 40, 198);
+    h.event(ending);
+    assert.equal(h.transform, 'translateX(0px)');
+    assert.equal(h.captured, false);
+    h.event('onPointerDown', 160, 200);
+    assert.equal(h.event('onPointerMove', 162, 80).prevented, false);
+    h.event('onPointerCancel'); h.flush();
+    assert.equal(h.deleted, 0);
+  }
+});
+
+test('only a released left swipe past half the row deletes, exactly once', () => {
+  const h = harness();
+  h.event('onPointerDown', 280, 200);
+  h.event('onPointerMove', 40, 198);
+  h.event('onPointerUp', 40, 198);
+  h.event('onLostPointerCapture');
+  assert.equal(h.transform, 'translateX(-320px)');
+  assert.equal(h.deleted, 0);
+  assert.equal(h.event('onClickCapture').stopped, true);
+  h.flush(); assert.equal(h.deleted, 1);
+});
+
+test('tapping still opens details after a canceled swipe; right swipes do not delete', () => {
+  const h = harness();
+  h.event('onPointerDown', 100, 200);
+  h.event('onPointerMove', 300, 200);
+  h.event('onPointerUp', 300, 200); h.flush();
+  assert.equal(h.deleted, 0);
+  h.event('onPointerDown', 100, 200);
+  h.event('onPointerUp', 100, 200);
+  assert.equal(h.event('onClickCapture').stopped, false);
+});
+
+test('native row forwards its content and deletion callback to the original Swipeable', () => {
+  const { HistorySwipeable } = createLoader({
+    'react/jsx-runtime': { jsx: (type, props) => ({ type, props }) },
+    'react-native-gesture-handler/ReanimatedSwipeable': { default: 'Swipeable', __esModule: true },
+  })('components/HistorySwipeable.tsx');
+  const props = { children: 'item', renderRightActions: () => 'delete', onSwipeableOpen() {} };
+  const tree = HistorySwipeable(props);
+  assert.equal(tree.type, 'Swipeable');
+  assert.equal(tree.props.onSwipeableOpen, props.onSwipeableOpen);
+  assert.equal(tree.props.children, props.children);
 });
