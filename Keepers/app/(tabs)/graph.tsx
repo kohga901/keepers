@@ -3,7 +3,8 @@ import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { getDefaultHeaderHeight, useFocusEffect, useIsFocused } from 'expo-router/react-navigation';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Switch, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Switch, View } from 'react-native';
+import { TAB_CONTENT_MAX_WIDTH } from '../../constants/layout';
 import { useSafeAreaFrame, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as WebBrowser from 'expo-web-browser';
 import { Text } from '../../components/Text';
@@ -249,7 +250,7 @@ export default function GraphTab() {
 
   return <View style={[styles.screen, { backgroundColor: theme.background }]}>
     <View style={[styles.header, { backgroundColor: theme.primary, height: headerHeight }]}>
-      <View style={[styles.headerRow, { height: headerHeight - insets.top }]}>
+      <View style={[styles.headerRow, Platform.OS === 'web' && styles.webContent, { height: headerHeight - insets.top }]}>
         <View style={styles.modeWrapper}>
         <View style={[styles.modes, { backgroundColor: theme.tabBg, borderColor: theme.border }]}>{(['focus', 'whole'] as const).map((mode) => <Pressable key={mode} accessibilityRole="button" hitSlop={{ top: 6, bottom: 6 }}
           accessibilityState={{ selected: frame.mode === mode }} onPress={() => command({ type: 'mode', mode })}
@@ -263,7 +264,7 @@ export default function GraphTab() {
         </View>
       </View>
     </View>
-    <View style={styles.graph} onLayout={({ nativeEvent: { layout: next } }) => setSize({ width: next.width, height: next.height })}>
+    <View style={[styles.graph, Platform.OS === 'web' && styles.webContent]} onLayout={({ nativeEvent: { layout: next } }) => setSize({ width: next.width, height: next.height })}>
       <GraphCanvas key={webKey} ref={web} source={SOURCE} onMessage={onMessage}
         onError={() => { ready.current = false; setMapError(true); }} />
       {/* The canvas handles thumbnail taps as well as graph gestures. */}
@@ -330,6 +331,7 @@ export default function GraphTab() {
 }
 
 const styles = StyleSheet.create({
+  webContent: { maxWidth: TAB_CONTENT_MAX_WIDTH, width: '100%', alignSelf: 'center' },
   screen: { flex: 1 }, graph: { flex: 1 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 16 },
   loading: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center', gap: 16 },

@@ -8,7 +8,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Dimensions, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Dimensions, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { Text } from '../../components/Text';
 import Swiper from 'react-native-deck-swiper';
 import {getRecommendationsFromServer, getTagsFromServer, sendSwipeToServer} from '../../services/serverApi';
@@ -481,6 +481,7 @@ const App: React.FC = () => {
           stackSize={3}
           stackSeparation={15}
           cardVerticalMargin={CARD_VERTICAL_MARGIN}
+          cardStyle={Platform.select({ web: { width: 'auto', right: 20 } })}
           backgroundColor="transparent"
         />
       )}

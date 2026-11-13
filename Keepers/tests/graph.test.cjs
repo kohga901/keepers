@@ -16,6 +16,7 @@ function load(relative, stubs = {}, discardFunctionSource = false, globals = {})
   const module = { exports: {} };
   const context = vm.createContext({ module, exports: module.exports, require(name) {
     if (Object.hasOwn(stubs, name)) return stubs[name];
+    if (name.endsWith('constants/layout')) return load('constants/layout.ts');
     if (name.endsWith('utils/styleMap')) return load('utils/styleMap.ts', {}, discardFunctionSource);
     if (name.endsWith('utils/graphLikes')) return load('utils/graphLikes.ts', {}, discardFunctionSource);
     if (name.endsWith('utils/price')) return load('utils/price.ts', {}, discardFunctionSource);
@@ -382,7 +383,7 @@ function nativeScreen(overrides = {}) {
   const theme = load('constants/theme.ts').lightTheme;
   const stubs = {
     react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'Fragment' },
-    'react-native': { View: 'View', Pressable: 'Pressable', Switch: 'Switch', ActivityIndicator: 'Spinner', Alert: { alert() {} }, StyleSheet: { create: (x) => x, absoluteFill: {} } },
+    'react-native': { Platform: { OS: 'ios' }, View: 'View', Pressable: 'Pressable', Switch: 'Switch', ActivityIndicator: 'Spinner', Alert: { alert() {} }, StyleSheet: { create: (x) => x, absoluteFill: {} } },
     '@expo/vector-icons/Ionicons': 'Icon', 'expo-image': { Image: 'Image' },
     'expo-router': { router: { push() {} } }, 'expo-web-browser': { openBrowserAsync: async () => {} },
     '../../components/graph/GraphCanvas': { default: 'GraphCanvas', __esModule: true },

@@ -15,6 +15,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { ImageLookupModal } from '../../components/ai/ImageLookupModal';
 
 import { useAppTheme } from '../../hooks/useAppTheme';
+import { TAB_CONTENT_MAX_WIDTH } from '../../constants/layout';
 import type { AppTheme } from '../../constants/theme';
 import type { Item } from '../../models/Items';
 import {
@@ -157,6 +158,8 @@ export default function StyleWraps() {
   return (
     <View style={[styles.screen, { backgroundColor: theme.background }]}>
       <ScrollView
+        showsVerticalScrollIndicator={false}
+        showsHorizontalScrollIndicator={false}
         contentContainerStyle={[styles.content, { paddingTop: headerHeight + 24 }]}
         // Refresh feedback is shown in the keepers card once data is available.
         refreshControl={<RefreshControl refreshing={false} onRefresh={() => void load()} tintColor={theme.text} progressViewOffset={headerHeight} />}
@@ -274,7 +277,7 @@ export default function StyleWraps() {
 const createStyles = (theme: AppTheme) => StyleSheet.create({
   screen: { flex: 1 },
   flex: { flex: 1, minWidth: 0 },
-  content: { paddingHorizontal: 20, paddingBottom: 32, gap: 16, maxWidth: 760, width: '100%', alignSelf: 'center' },
+  content: { paddingHorizontal: 20, paddingBottom: 32, gap: 16, maxWidth: TAB_CONTENT_MAX_WIDTH, width: '100%', alignSelf: 'center' },
   headingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
   eyebrow: { fontSize: 11, fontWeight: '800', letterSpacing: 1, color: theme.text, flexShrink: 1 },
   pageTitle: { fontFamily: 'GeorgiaProBold', fontSize: 32, marginTop: 7 },

@@ -31,7 +31,7 @@ function screen({ recommend = async () => [row(1), row(2)], session = { user: { 
     react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx },
     'react-native': { View: 'View', Pressable: 'Pressable', ActivityIndicator: 'Spinner',
       Alert: { alert: (...args) => calls.alerts.push(args) }, Dimensions: { get: () => ({ width: 390, height: 844 }) },
-      StyleSheet: { create: (styles) => styles } },
+      Platform: { select: () => undefined }, StyleSheet: { create: (styles) => styles } },
     'expo-router': { useRouter: () => ({ push() {} }), useNavigation: () => navigation,
       useFocusEffect: (fn) => hooks.useEffect(fn, [fn]) },
     'react-native-deck-swiper': 'Swiper', '@expo/vector-icons/Ionicons': 'Icon', 'expo-image': { Image: 'Image' },

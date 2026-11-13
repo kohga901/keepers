@@ -8,6 +8,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, Easing, StyleSheet, View, Pressable, FlatList, Modal, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { Text } from '../../components/Text';
+import { TAB_CONTENT_MAX_WIDTH } from '../../constants/layout';
 import { PriceAlertEditor } from '../../components/PriceAlertEditor';
 import { PriceAlertsBell } from '../../components/PriceAlertsBell';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -206,7 +207,7 @@ const App: React.FC = () => {
           { backgroundColor: theme.primary, height: headerHeight, transform: [{ translateY: headerTranslate }] },
         ]}
       >
-        <View style={[styles.headerRow, { height: headerBarHeight }]}>
+        <View style={[styles.headerRow, Platform.OS === 'web' && styles.webContent, { height: headerBarHeight }]}>
           <View style={styles.toggleWrapper}>
             <View style={[styles.toggleContainer, { backgroundColor: theme.tabBg, borderColor: theme.border }]}>
               <Animated.View
@@ -257,7 +258,7 @@ const App: React.FC = () => {
         </View>
       </Animated.View>
 
-      <View style={styles.content}>
+      <View style={[styles.content, Platform.OS === 'web' && styles.webContent]}>
         {isLoadingHistory ? (
           <View style={[styles.loadingState, { paddingTop: headerHeight }]} accessibilityRole="progressbar" accessibilityLabel="Loading your history">
             <ActivityIndicator size="large" color={theme.text} />
@@ -402,6 +403,7 @@ const App: React.FC = () => {
 }
 
 const styles = StyleSheet.create({
+  webContent: { maxWidth: TAB_CONTENT_MAX_WIDTH, width: '100%', alignSelf: 'center' },
   container: {
     flex: 1,
   },
