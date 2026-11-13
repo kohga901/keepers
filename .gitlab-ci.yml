@@ -85,7 +85,7 @@ deploy_web:
       export EXPO_NO_DOTENV=1
       export EXPO_PUBLIC_SERVER_URL=https://keepers-fu6r.onrender.com
       unset EXPO_PUBLIC_KEEPERS_GOOGLE_AI_API_KEY EXPO_PUBLIC_KEEPERS_OPENAI_API_KEY EXPO_PUBLIC_KEEPERS_ANTHROPIC_API_KEY
-      npx expo export --platform web --output-dir dist
+      npm run build:web
     # Direct Upload projects can use a production branch name other than main.
     - |
       CLOUDFLARE_PAGES_BRANCH="$(node --input-type=module -e '

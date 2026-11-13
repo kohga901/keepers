@@ -52,6 +52,10 @@ The build uses the Render URL `https://keepers-fu6r.onrender.com` and the public
 Supabase configuration in `Keepers/public-config.ts`. It disables dotenv loading
 and removes development AI provider keys before exporting the website.
 
+Use `npm run build:web` for Pages exports. It also moves exported dependency
+assets from `assets/node_modules` to `assets/vendor` and updates their references:
+Wrangler otherwise skips those directories, omitting the fonts and icons.
+
 ## 4. Activate and verify
 
 1. Commit the pipeline changes and push/merge them into `main` on capstone.
