@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,6 +15,7 @@ import { Text } from '../Text';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppTheme } from '../../hooks/useAppTheme';
+import { TAB_CONTENT_MAX_WIDTH } from '../../constants/layout';
 import type { Item } from '../../models/Items';
 import type { AiLookupErrorCode, ImageLookupResult } from '../../services/ai';
 
@@ -69,7 +71,7 @@ export function ImageLookupModal({
       visible={item !== null}
     >
       <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
-        <View style={[styles.header, { borderBottomColor: theme.border }]}>
+        <View style={[styles.header, Platform.OS === 'web' && styles.webContent, { borderBottomColor: theme.border }]}>
           <View style={styles.headerText}>
             <Text style={[styles.eyebrow, { color: theme.mutedText }]}>AI SHOPPING SEARCH</Text>
             <Text numberOfLines={1} style={[styles.headerTitle, { color: theme.text }]}>
@@ -88,7 +90,7 @@ export function ImageLookupModal({
         </View>
 
         <ScrollView
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content, Platform.OS === 'web' && styles.webContent]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -296,6 +298,11 @@ export function ImageLookupModal({
 }
 
 const styles = StyleSheet.create({
+  webContent: {
+    maxWidth: TAB_CONTENT_MAX_WIDTH,
+    width: '100%',
+    alignSelf: 'center',
+  },
   safeArea: {
     flex: 1,
   },
