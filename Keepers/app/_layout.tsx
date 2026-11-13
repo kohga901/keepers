@@ -115,7 +115,7 @@ export default function RootLayout() {
                     };
                   }}
                 />
-                <Stack.Screen name="price-alerts" options={{ title: 'Price alerts', headerTintColor: theme.headerText, headerStyle: { backgroundColor: theme.headerBg } }} />
+                <Stack.Screen name="price-alerts" options={{ title: 'Price alerts', headerBackTitle: 'History', headerTintColor: theme.headerText, headerStyle: { backgroundColor: theme.headerBg } }} />
               </Stack>
               <StatusBar style="dark" />
             </View>
