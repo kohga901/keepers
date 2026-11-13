@@ -50,6 +50,9 @@ bugs reproduced by the suite.
 
 ## Running the app
 
+For automatic frontend releases from `main` to Cloudflare Pages, see
+[WEB_DEPLOYMENT.md](WEB_DEPLOYMENT.md).
+
 You need two things running at once: the **backend server** and the **Expo
 frontend**.
 

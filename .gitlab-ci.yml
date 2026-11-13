@@ -1,5 +1,6 @@
 stages:
   - validate
+  - deploy
 
 # The private GitLab.com mirror supplies runners; capstone is the source of truth.
 workflow:
@@ -65,3 +66,37 @@ backend_syntax:
   stage: validate
   script:
     - python -m compileall -q server Image_Process_PL ML_Pipeline Scrapers
+
+deploy_web:
+  extends: .frontend_job
+  stage: deploy
+  interruptible: false
+  resource_group: cloudflare-production
+  environment:
+    name: production
+    url: https://keepers-9qp.pages.dev
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
+  script:
+    - |
+      : "${CLOUDFLARE_ACCOUNT_ID:?Set CLOUDFLARE_ACCOUNT_ID in GitLab CI/CD variables}"
+      : "${CLOUDFLARE_API_TOKEN:?Set CLOUDFLARE_API_TOKEN in GitLab CI/CD variables}"
+      : "${CLOUDFLARE_PAGES_PROJECT_NAME:?Set CLOUDFLARE_PAGES_PROJECT_NAME in GitLab CI/CD variables}"
+      export EXPO_NO_DOTENV=1
+      export EXPO_PUBLIC_SERVER_URL=https://keepers-fu6r.onrender.com
+      unset EXPO_PUBLIC_KEEPERS_GOOGLE_AI_API_KEY EXPO_PUBLIC_KEEPERS_OPENAI_API_KEY EXPO_PUBLIC_KEEPERS_ANTHROPIC_API_KEY
+      npx expo export --platform web --output-dir dist
+    # Direct Upload projects can use a production branch name other than main.
+    - |
+      CLOUDFLARE_PAGES_BRANCH="$(node --input-type=module -e '
+        const { CLOUDFLARE_ACCOUNT_ID: account, CLOUDFLARE_API_TOKEN: token, CLOUDFLARE_PAGES_PROJECT_NAME: project } = process.env;
+        const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(account)}/pages/projects/${encodeURIComponent(project)}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success || !data.result?.production_branch) {
+          throw new Error("Could not read the Pages production branch. Check the account ID, project name, and token permissions.");
+        }
+        console.log(data.result.production_branch);
+      ')"
+      npx --yes wrangler@4 pages deploy dist --project-name "$CLOUDFLARE_PAGES_PROJECT_NAME" --branch "$CLOUDFLARE_PAGES_BRANCH" --commit-hash "$CI_COMMIT_SHA"
