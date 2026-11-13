@@ -37,6 +37,18 @@ const catalog = [];
 for (let y = -6; y <= 6; y += .5) for (let x = -6; x <= 6; x += .5) catalog.push({ clothesId: catalog.length + 1, x, y });
 const close = (a, b) => assert.ok(Math.abs(a - b) < 1e-8, `${a} != ${b}`);
 
+test('wide graph keeps previews and taste labels inside the capped controls area', () => {
+  const wide = { ...layout, width: 1440, side: 340 };
+  assert.equal(g.safePreview({ x: 100, y: 300 }, wide, null), false);
+  assert.equal(g.safePreview({ x: 1300, y: 300 }, wide, null), false);
+  assert.equal(g.safePreview({ x: 500, y: 300 }, wide, null), true);
+  assert.equal(g.safePreview({ x: 1050, y: 250 }, wide, null), false);
+  const camera = g.fit(catalog, wide);
+  const previews = g.previews(catalog, camera, wide, 'whole', null, null);
+  assert.ok(previews.length > 0);
+  for (const p of previews) assert.ok(p.x >= 368 && p.x <= 1072);
+});
+
 test('positions reject missing coordinates and malformed/duplicate nodes', () => {
   assert.equal(g.validPosition({ x: null, y: 0 }), false);
   assert.equal(g.validPosition({ x: 0, y: Infinity }), false);
