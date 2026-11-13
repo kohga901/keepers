@@ -14,7 +14,7 @@ import { PriceAlertsBell } from '../../components/PriceAlertsBell';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import { useSafeAreaFrame, useSafeAreaInsets } from 'react-native-safe-area-context';
-import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
+import { HistorySwipeable } from '../../components/HistorySwipeable';
 import { Ionicons } from '@expo/vector-icons';
 import { usePriceDisplay } from '../../contexts/PriceDisplayContext';
 import { useTutorial } from '../../contexts/TutorialContext';
@@ -293,7 +293,7 @@ const App: React.FC = () => {
             </View>
           }
           renderItem={({ item }) => (
-            <Swipeable
+            <HistorySwipeable
               renderRightActions={() => (
                 <View style={styles.deleteAction}>
                   <Ionicons name="trash" size={24} color="white" />
@@ -330,7 +330,7 @@ const App: React.FC = () => {
                   </View>
                 </View>
               </Pressable>
-            </Swipeable>
+            </HistorySwipeable>
           )}
         />}
 
