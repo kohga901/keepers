@@ -10,6 +10,7 @@ import { ActivityIndicator, Animated, Easing, StyleSheet, View, Pressable, FlatL
 import { Text } from '../../components/Text';
 import { PriceAlertEditor } from '../../components/PriceAlertEditor';
 import { PriceAlertsBell } from '../../components/PriceAlertsBell';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import { useSafeAreaFrame, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
@@ -20,11 +21,14 @@ import { useStackHeaderHeight } from '../../contexts/StackHeaderHeightContext';
 import { useAppTheme } from '../../hooks/useAppTheme';
 import { Item } from '../../models/Items';
 import { getPriceTierSymbol } from '../../utils/price';
-import { deleteLikedItem, getLikedItems, deleteDislikedItem as deleteDislikedItemRemote, getDislikedItems } from '@/services/dataServices';
+import { deleteLikedItem, getLikedItems, deleteDislikedItem as deleteDislikedItemRemote, getDislikedItems, getClothingById } from '@/services/dataServices';
 import { getDefaultHeaderHeight, useFocusEffect } from "expo-router/react-navigation";
 import * as WebBrowser from 'expo-web-browser';
 
 const App: React.FC = () => {
+  const router = useRouter();
+  const { itemId } = useLocalSearchParams<{ itemId?: string | string[] }>();
+  const requestedItemId = Array.isArray(itemId) ? itemId[0] : itemId;
   const frame = useSafeAreaFrame();
   // Leave space for the bell, filter and header padding on narrow phones.
   const toggleOptionWidth = Math.min(130, Math.max(80, (frame.width - 120) / 2));
@@ -34,6 +38,7 @@ const App: React.FC = () => {
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [imageExpanded, setImageExpanded] = useState(false);
+  const [itemError, setItemError] = useState<string | null>(null);
   const { showTutorialOnce } = useTutorial();
 
   // First visit to History walks through the toggle, item details, and swipe-to-remove.
@@ -57,6 +62,7 @@ const App: React.FC = () => {
   useFocusEffect(
     useCallback(() => {
       let active = true;
+      setIsLoadingHistory(true);
 
       const aquireLikedItems = async () => {
         const data = await getLikedItems();
@@ -162,6 +168,36 @@ const App: React.FC = () => {
     listRef.current?.scrollToOffset({ offset: 0, animated: false });
   };
 
+  useEffect(() => {
+    if (!requestedItemId || isLoadingHistory) return;
+    let active = true;
+    void (async () => {
+      try {
+        const row = await getClothingById(requestedItemId);
+        if (!active) return;
+        setItemError(null);
+        if (!row) throw new Error('This item could not be loaded. Please try again from your notifications.');
+        setSelectedItem({
+          id: String(row.item_id), name: row.item_name, price: row.item_price ?? '',
+          imageUrl: row.item_img, itemUrl: row.item_web_listing, gender: row.item_gender ?? '',
+          liked: allLikedItems.some(item => item.id === requestedItemId),
+        });
+        setModalVisible(true);
+      } catch (failure) {
+        if (active) setItemError(failure instanceof Error ? failure.message : 'This item could not be loaded. Please try again.');
+      } finally {
+        if (active) {
+          setActiveTab('liked');
+          setFilterOpen(false);
+          setImageExpanded(false);
+          listRef.current?.scrollToOffset({ offset: 0, animated: false });
+          router.setParams({ itemId: undefined });
+        }
+      }
+    })();
+    return () => { active = false; };
+  }, [requestedItemId, isLoadingHistory, allLikedItems, router]);
+
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <Animated.View
@@ -235,6 +271,7 @@ const App: React.FC = () => {
           scrollIndicatorInsets={{ top: headerHeight }}
           onScroll={onListScroll}
           scrollEventThrottle={16}
+          ListHeaderComponent={itemError ? <Text accessibilityRole="alert" style={{ color: theme.text, paddingBottom: 16 }}>{itemError}</Text> : undefined}
           ListEmptyComponent={
             <View style={styles.emptyState}>
               <Ionicons

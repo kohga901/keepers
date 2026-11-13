@@ -1,7 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { createLoader } = require('./helpers/load.cjs');
-const { createHandler } = createLoader({}, { Request, Response, AbortSignal })(
+const { createHandler, createPriceAlertEmail } = createLoader({}, { Request, Response, AbortSignal })(
   '../supabase/functions/price-alert-emails/handler.ts');
 const secretKey = 'sb_secret_test-only';
 const config = { SUPABASE_SECRET_KEYS: JSON.stringify({ default: secretKey }), SUPABASE_URL: 'https://example.supabase.co',
@@ -9,7 +9,33 @@ const config = { SUPABASE_SECRET_KEYS: JSON.stringify({ default: secretKey }), S
 const incoming = (key = secretKey) => new Request('https://example.com', {
   method: 'POST', headers: { apikey: key } });
 const job = { notification_id: 'notice-1', lease_id: 'lease-1', recipient: 'alice@example.com',
-  item_name: 'Linen shirt', price: '25.00', target_price: '30.00' };
+  item_name: 'Linen shirt', price: '25.00', target_price: '30.00', direction: 'decrease',
+  item_img: 'https://example.com/shirt.jpg' };
+
+test('email subject, text and HTML identify both alert directions and include the item image', () => {
+  for (const direction of ['increase', 'decrease']) {
+    const email = createPriceAlertEmail({ ...job, direction });
+    assert.match(email.subject, new RegExp(`price ${direction}`));
+    assert.match(email.text, new RegExp(`Price ${direction}: Linen shirt`));
+    assert.match(email.html, new RegExp(`>Price ${direction}</h1>`));
+    assert.match(email.html, /<img src="https:\/\/example.com\/shirt.jpg" alt="Linen shirt"/);
+    assert.match(email.text, /Your target was \$30.00/);
+  }
+  assert.match(createPriceAlertEmail({ ...job, direction: null }).subject, /price alert/);
+});
+
+test('email HTML escapes catalog content and omits missing or unsafe image URLs', () => {
+  const email = createPriceAlertEmail({ ...job, item_name: '<img src=x onerror="bad"> & Shirt',
+    item_img: 'https://example.com/shirt.jpg?a=1&b="bad"' });
+  assert.ok(email.html.includes('&lt;img src=x onerror=&quot;bad&quot;&gt; &amp; Shirt'));
+  assert.ok(email.html.includes('?a=1&amp;b=%22bad%22'));
+  assert.ok(!email.html.includes('<img src=x'));
+  for (const item_img of [null, '', 'not a URL', 'javascript:alert(1)', 'data:image/png;base64,abc', 'http://example.com/image.jpg', 'https://user:password@example.com/image.jpg']) {
+    const result = createPriceAlertEmail({ ...job, item_img });
+    assert.ok(!result.html.includes('<img'));
+    assert.match(result.text, /Linen shirt/);
+  }
+});
 
 test('email endpoint rejects public/user calls and leaves queue untouched without provider secrets', async () => {
   let calls = 0;
@@ -50,6 +76,8 @@ test('email delivery uses persisted recipient, stable idempotency key and acknow
   assert.equal(calls[2].options.headers['Idempotency-Key'], 'price-alert/notice-1');
   assert.deepEqual(calls[2].body.to, ['alice@example.com']);
   assert.match(calls[2].body.text, /Linen shirt is now \$25.00/);
+  assert.match(calls[2].body.subject, /price decrease/);
+  assert.match(calls[2].body.html, /<img src="https:\/\/example.com\/shirt.jpg"/);
   assert.deepEqual(calls[3].body, { p_notification_id: 'notice-1', p_lease_id: 'lease-1', p_error: null });
 });
 

@@ -5,7 +5,37 @@ type Job = {
   item_name: string;
   price: number;
   target_price: number;
+  direction: 'increase' | 'decrease' | null;
+  item_img: string | null;
 };
+
+const escapeHtml = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+export function createPriceAlertEmail(job: Job) {
+  const label = job.direction === 'increase' ? 'Price increase' : job.direction === 'decrease' ? 'Price decrease' : 'Price alert';
+  const price = `$${Number(job.price).toFixed(2)}`;
+  const target = `$${Number(job.target_price).toFixed(2)}`;
+  let image = '';
+  try {
+    const url = new URL(job.item_img ?? '');
+    if (url.protocol === 'https:' && !url.username && !url.password) {
+      image = `<img src="${escapeHtml(url.href)}" alt="${escapeHtml(job.item_name)}" width="320" style="display:block;width:100%;max-width:320px;height:auto;margin:24px 0;" />`;
+    }
+  } catch { /* Items without a valid image still receive their price alert. */ }
+  return {
+    subject: `Keepers ${label.toLowerCase()}: your target was reached`,
+    text: `${label}: ${job.item_name} is now ${price} in the Keepers catalog.\n` +
+      `Your target was ${target}.\n`,
+    html: '<!doctype html><html lang="en"><head><meta charset="utf-8" />' +
+      '<meta name="viewport" content="width=device-width, initial-scale=1" /></head>' +
+      '<body style="margin:0;padding:24px;background:#ffffff;color:#18211e;font-family:Arial,sans-serif;">' +
+      '<main style="max-width:560px;margin:0 auto;line-height:1.6;">' +
+      `<h1 style="font-size:24px;line-height:1.3;margin:0 0 16px;">${label}</h1>` +
+      `<p>${escapeHtml(job.item_name)} is now <strong>${price}</strong> in the Keepers catalog.</p>` +
+      `<p>Your target was ${target}.</p>${image}</main></body></html>`,
+  };
+}
 
 export function createHandler(env: (name: string) => string | undefined, request = fetch) {
   return async (incoming: Request): Promise<Response> => {
@@ -57,10 +87,7 @@ export function createHandler(env: (name: string) => string | undefined, request
               'Idempotency-Key': `price-alert/${job.notification_id}`,
             },
             body: JSON.stringify({
-              from, to: [job.recipient], subject: 'Keepers price alert: your target was reached',
-              text: `${job.item_name} is now $${Number(job.price).toFixed(2)} in the Keepers catalog.\n` +
-                `Your target was $${Number(job.target_price).toFixed(2)}.\n\n` +
-                'Open Keepers to view your price alerts. Store prices may differ.\n',
+              from, to: [job.recipient], ...createPriceAlertEmail(job),
             }),
             signal: AbortSignal.timeout(15_000),
           });

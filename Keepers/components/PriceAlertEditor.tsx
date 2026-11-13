@@ -35,13 +35,15 @@ export function PriceAlertEditor({ itemId, price }: { itemId: string; price: str
   return <View style={[styles.panel, { backgroundColor: theme.surface }]}>
     <Text style={[styles.title, { color: theme.text }]}>Price alert</Text>
     {current === null && <Text style={{ color: theme.text }}>This item needs a supported USD price before you can set an alert.</Text>}
-    {existing && <Text style={{ color: theme.text }}>Watching for {formatAlertPrice(existing.target_price)} or less.</Text>}
-    <TextInput value={target} onChangeText={setDraft} placeholder="Target Price"
+    {existing && <Text style={{ color: theme.text }}>Watching for {formatAlertPrice(existing.target_price)} or {existing.direction === 'increase' ? 'more' : 'less'}.</Text>}
+    <Text style={{ color: theme.text }}>Choose a target above or below the current catalog price for an alert</Text>
+    <Text style={{ color: theme.text }}>Target price (USD)</Text>
+    <TextInput value={target} onChangeText={setDraft} placeholder="e.g. 25.00"
       placeholderTextColor={theme.mutedText} keyboardType="decimal-pad" maxLength={16}
       editable={!busy && current !== null} accessibilityLabel="Target price in US dollars"
       style={[styles.input, { color: theme.text, borderColor: theme.border }]} />
-    <Pressable onPress={() => void submit(false)} disabled={busy || loading || !!loadError || current === null || current <= 0}
-      accessibilityRole="button" style={[styles.button, { backgroundColor: theme.text, opacity: busy || loading || !!loadError || current === null || current <= 0 ? 0.5 : 1 }]}>
+    <Pressable onPress={() => void submit(false)} disabled={busy || loading || !!loadError || current === null}
+      accessibilityRole="button" style={[styles.button, { backgroundColor: theme.text, opacity: busy || loading || !!loadError || current === null ? 0.5 : 1 }]}>
       {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.buttonText}>{existing ? 'Update alert' : 'Set price alert'}</Text>}
     </Pressable>
     {existing && <Pressable onPress={() => void submit(true)} disabled={busy} accessibilityRole="button" style={styles.remove}>

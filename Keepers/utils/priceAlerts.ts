@@ -11,7 +11,7 @@ export function validateAlertTarget(value: string, currentPrice: string): number
   if (target === null || target <= 0) throw new Error('Enter a positive USD price with at most two decimal places.');
   const current = parseAlertPrice(currentPrice);
   if (current === null) throw new Error('This item does not have a supported USD price.');
-  if (target >= current) throw new Error('Choose a target below the current catalog price.');
+  if (target === current) throw new Error('Choose a target above or below the current catalog price.');
   return target;
 }
 

@@ -4,6 +4,7 @@ type AlertItem = { item_name: string; item_price: string | null };
 export type PriceAlert = {
   clothes_id: number;
   target_price: number;
+  direction: 'increase' | 'decrease';
   Clothing: AlertItem | null;
 };
 export type PriceNotification = {
@@ -12,6 +13,7 @@ export type PriceNotification = {
   item_name: string;
   price: number;
   target_price: number;
+  direction: 'increase' | 'decrease' | null;
   created_at: string;
   read_at: string | null;
 };
@@ -29,7 +31,7 @@ export async function getPriceAlertState(userId: string, signal: AbortSignal) {
   // A user's saved alerts can exceed the database's single-response limit.
   for (let offset = 0; ; offset += 500) {
     const { data, error } = await supabase.from('Price_Alerts')
-      .select('clothes_id, target_price, Clothing(item_name, item_price)')
+      .select('clothes_id, target_price, direction, Clothing(item_name, item_price)')
       .eq('user_id', userId).eq('active', true).order('clothes_id')
       .range(offset, offset + 499).abortSignal(signal);
     checkError(error);
@@ -38,11 +40,11 @@ export async function getPriceAlertState(userId: string, signal: AbortSignal) {
   }
   const [notifications, unread] = await Promise.all([
     supabase.from('Price_Notifications')
-      .select('id, clothes_id, item_name, price, target_price, created_at, read_at')
-      .eq('user_id', userId).order('created_at', { ascending: false }).order('id')
+      .select('id, clothes_id, item_name, price, target_price, direction, created_at, read_at')
+      .eq('user_id', userId).is('dismissed_at', null).order('created_at', { ascending: false }).order('id')
       .limit(50).abortSignal(signal),
     supabase.from('Price_Notifications').select('id', { count: 'exact', head: true })
-      .eq('user_id', userId).is('read_at', null).abortSignal(signal),
+      .eq('user_id', userId).is('read_at', null).is('dismissed_at', null).abortSignal(signal),
   ]);
   checkError(notifications.error);
   checkError(unread.error);
@@ -62,7 +64,15 @@ export async function deletePriceAlert(userId: string, itemId: string) {
 
 export async function markPriceNotificationsRead(userId: string, id?: string) {
   let query = supabase.from('Price_Notifications').update({ read_at: new Date().toISOString() })
-    .eq('user_id', userId).is('read_at', null);
+    .eq('user_id', userId).is('read_at', null).is('dismissed_at', null);
+  if (id) query = query.eq('id', id);
+  const { error } = await query;
+  checkError(error);
+}
+
+export async function clearPriceNotifications(userId: string, id?: string) {
+  let query = supabase.from('Price_Notifications').update({ dismissed_at: new Date().toISOString() })
+    .eq('user_id', userId).is('dismissed_at', null);
   if (id) query = query.eq('id', id);
   const { error } = await query;
   checkError(error);

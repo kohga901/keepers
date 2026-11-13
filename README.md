@@ -18,10 +18,26 @@ processing/ML pipelines in this repo.
 ## Price alerts
 
 Price alerts work inside Expo Go: set a target on a liked item in History, then
-use the bell to view notifications and manage targets. Apply the one-time SQL
-setup before testing. Alerts depend on updates to existing catalog prices;
+use the bell to view notifications and manage targets. A target above the current
+catalog price watches for that price or more; a lower target watches for that
+price or less. Each saved alert fires once and can be set again.
+Apply `supabase/price_alerts.sql`, then `supabase/price_alert_increases.sql` in the
+Supabase SQL editor before running the updated app. For an existing installation,
+apply only `supabase/price_alert_increases.sql`; existing alerts keep watching for
+decreases. Alerts depend on updates to existing catalog prices;
 automatic merchant-price refresh and remote push are outside this implementation.
 See [PRICE_ALERTS.md](PRICE_ALERTS.md) for the implementation choices and setup.
+
+For increase/decrease labels in notifications and emails with item images, apply
+`supabase/price_notification_details.sql` after the increases and email-queue SQL,
+then deploy `supabase/functions/price-alert-emails` and update the app. New
+notifications retain the direction and image URL from when the alert fired.
+Older notifications show a generic label if their direction cannot be recovered.
+
+Apply `supabase/price_notification_dismissal.sql` before using the app's Clear and
+Clear all notification actions. Clearing hides notifications and removes them from
+the unread count while retaining queued emails and active alerts. Tap a notification
+to open its item details in Like List.
 
 ## Testing
 

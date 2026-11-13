@@ -3,10 +3,12 @@ const assert = require('node:assert/strict');
 const { createLoader, deferred, plain } = require('./helpers/load.cjs');
 const { validateAlertTarget } = createLoader()('utils/priceAlerts.ts');
 
-test('target validation preserves cents and rejects invalid or already reached thresholds', () => {
+test('target validation supports increases and decreases, preserves cents and rejects equal targets', () => {
   assert.equal(validateAlertTarget('19.99', '$20'), 19.99);
   assert.equal(validateAlertTarget('USD 1,234.50', '$2,000'), 1234.5);
-  for (const target of ['', '0', '-1', '20', '21', 'NaN', '10.999', '$10-15', '€10']) {
+  assert.equal(validateAlertTarget('21.50', '$20'), 21.5);
+  assert.equal(validateAlertTarget('0.01', '$0'), 0.01);
+  for (const target of ['', '0', '-1', '20', 'NaN', '10.999', '$10-15', '€10']) {
     assert.throws(() => validateAlertTarget(target, '$20'));
   }
   assert.throws(() => validateAlertTarget('10', 'Price unavailable'), /supported USD/);
@@ -46,6 +48,28 @@ test('loading alerts pages past 1000 rows, scopes all reads, and counts unread b
     assert.ok(call.operations.some(op => op[0] === 'abortSignal' && op[1] === controller.signal));
   }
   assert.ok(app.calls[4].operations.some(op => op[0] === 'select' && op[2].head && op[2].count === 'exact'));
+  assert.ok(app.calls[0].operations.some(op => op[0] === 'select' && op[1].includes('direction')));
+  assert.ok(app.calls[3].operations.some(op => op[0] === 'select' && op[1].includes('direction')));
+  for (const call of app.calls.slice(3)) {
+    assert.ok(call.operations.some(op => op[0] === 'is' && op[1] === 'dismissed_at' && op[2] === null));
+  }
+});
+
+test('clearing one or all notifications hides only the caller\'s visible notifications', async () => {
+  const app = setup();
+  await app.api.clearPriceNotifications('alice', 'notice');
+  await app.api.clearPriceNotifications('alice');
+  for (const call of app.calls) {
+    assert.equal(call.table, 'Price_Notifications');
+    assert.ok(call.operations.some(op => op[0] === 'eq' && op[1] === 'user_id' && op[2] === 'alice'));
+    assert.ok(call.operations.some(op => op[0] === 'is' && op[1] === 'dismissed_at' && op[2] === null));
+    assert.deepEqual(Object.keys(call.operations.find(op => op[0] === 'update')[1]), ['dismissed_at']);
+    assert.ok(!call.operations.some(op => op[0] === 'limit' || op[0] === 'delete'));
+  }
+  assert.ok(app.calls[0].operations.some(op => op[0] === 'eq' && op[1] === 'id' && op[2] === 'notice'));
+  assert.ok(!app.calls[1].operations.some(op => op[0] === 'eq' && op[1] === 'id'));
+  const failure = setup([{ error: { code: 'offline', message: 'internal details' } }]);
+  await assert.rejects(failure.api.clearPriceNotifications('alice'), /Check your connection/);
 });
 
 test('saving uses an identity-free RPC; cancelling and read updates keep explicit ownership filters', async () => {
@@ -68,8 +92,8 @@ test('saving uses an identity-free RPC; cancelling and read updates keep explici
 test('failed reads/writes never become empty inboxes or successful saves', async () => {
   const missing = setup([{ error: { code: 'PGRST205', message: 'missing' } }]);
   await assert.rejects(missing.api.getPriceAlertState('alice', new AbortController().signal), /not available yet/);
-  const denied = setup([], { code: 'P0001', message: 'Choose a target below the current catalog price.' });
-  await assert.rejects(denied.api.savePriceAlert('7', 40), /below the current/);
+  const denied = setup([], { code: 'P0001', message: 'Choose a target above or below the current catalog price.' });
+  await assert.rejects(denied.api.savePriceAlert('7', 40), /above or below the current/);
   const failure = setup([{ error: { code: 'offline', message: 'internal details' } }]);
   await assert.rejects(failure.api.deletePriceAlert('alice', '7'), /Check your connection/);
 });
