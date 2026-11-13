@@ -8,7 +8,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Dimensions, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Dimensions, Platform, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Text } from '../../components/Text';
 import { TAB_CONTENT_MAX_WIDTH } from '../../constants/layout';
 import Swiper from 'react-native-deck-swiper';
@@ -62,6 +62,8 @@ const toItem = (row: ClothingRow): Item => ({
 });
 
 const App: React.FC = () => {
+  const { width: viewportWidth } = useWindowDimensions();
+  const filterRightInset = 16 + (Platform.OS === 'web' ? Math.max(0, (viewportWidth - TAB_CONTENT_MAX_WIDTH) / 2) : 0);
   const router = useRouter();
   const swiper = useRef<any>(null);
   const loadedUserId = useRef<string | null>(null);
@@ -177,12 +179,14 @@ const App: React.FC = () => {
       if (!stack || !isAuthenticated) return;
 
       stack.setOptions({
-        headerRight: () => <TagFilter tags={tags} selected={selectedTags} onChange={applyFilter} />,
+        headerRight: () => <View style={{ marginRight: filterRightInset }}>
+          <TagFilter tags={tags} selected={selectedTags} onChange={applyFilter} />
+        </View>,
       });
       return () => stack.setOptions({ headerRight: undefined });
       // applyFilter only reads refs and state setters, so the copy captured here never goes stale.
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [navigation, isAuthenticated, tags, selectedTags])
+    }, [navigation, isAuthenticated, tags, selectedTags, filterRightInset])
   );
 
   // The filter options, loaded once the user is signed in.
@@ -396,10 +400,10 @@ const App: React.FC = () => {
               <View style={styles.imagePlaceholder}>
                 <Image
                   draggable={false}
-                  style={styles.image}
+                  style={[styles.image, Platform.OS === 'web' && { backgroundColor: 'transparent' }]}
                   source={{ uri: card.imageUrl }}
                   placeholder={{ blurhash }}
-                  contentFit="cover"
+                  contentFit={Platform.OS === 'web' && viewportWidth > TAB_CONTENT_MAX_WIDTH ? 'contain' : 'cover'}
                   transition={1000}
                 />
               </View>

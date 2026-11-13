@@ -30,6 +30,7 @@ function screen({ recommend = async () => [row(1), row(2)], session = { user: { 
   const load = createLoader({
     react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx },
     'react-native': { View: 'View', Pressable: 'Pressable', ActivityIndicator: 'Spinner',
+      useWindowDimensions: () => ({ width: viewportWidth, height: 844 }),
       Alert: { alert: (...args) => calls.alerts.push(args) }, Dimensions: { get: () => ({ width: viewportWidth, height: 844 }) },
       Platform: { OS: platform, select: (options) => options[platform] }, StyleSheet: { create: (styles) => styles } },
     'expo-router': { useRouter: () => ({ push() {} }), useNavigation: () => navigation,
@@ -70,21 +71,24 @@ function screen({ recommend = async () => [row(1), row(2)], session = { user: { 
   return { calls, flush, nodes,
     deck: () => { const node = nodes().find((n) => n.type === 'Swiper'); assert.ok(node, 'Expected an active swipe deck'); return node.props; },
     text: () => nodes().filter((n) => n.type === 'Text').flatMap((n) => n.props.children).join(' '),
-    filter: (tags) => header().props.onChange(tags),
+    header: () => header(),
+    filter: (tags) => header().props.children.props.onChange(tags),
     auth: (value) => authChanged('TOKEN_REFRESHED', value),
     refresh: () => nodes().find((n) => n.props.accessibilityLabel === 'Load more items').props.onPress(),
   };
 }
 
 test('web deck lets mouse gestures reach the swiper and scales thresholds to the content width', async () => {
-  for (const width of [390, 1920]) {
+  for (const width of [390, 760, 761, 1920]) {
     const app = screen({ platform: 'web', viewportWidth: width }); await app.flush();
     const deck = app.deck();
+    assert.equal(app.header().props.style.marginRight, 16 + Math.max(0, (width - 760) / 2));
     assert.equal(deck.horizontalThreshold, Math.min(width, 760) / 6);
     assert.equal(deck.cardStyle.userSelect, 'none');
     assert.equal(deck.cardStyle.cursor, 'grab');
     const card = deck.renderCard(deck.cards[0], 0);
     assert.equal(card.props.children[0].props.children.props.draggable, false);
+    assert.equal(card.props.children[0].props.children.props.contentFit, width > 760 ? 'contain' : 'cover');
     await deck.onSwipedRight(0); await deck.onSwipedLeft(1);
     assert.deepEqual(app.calls.swipes, [['1', true], ['2', false]]);
   }
