@@ -3,12 +3,14 @@ import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { getDefaultHeaderHeight, useFocusEffect, useIsFocused } from 'expo-router/react-navigation';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Switch, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Switch, View } from 'react-native';
+import { TAB_CONTENT_MAX_WIDTH } from '../../constants/layout';
 import { useSafeAreaFrame, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as WebBrowser from 'expo-web-browser';
-import { WebView as RNWebView, type WebViewMessageEvent } from 'react-native-webview';
 import { Text } from '../../components/Text';
 import { ImageLookupModal } from '../../components/ai/ImageLookupModal';
+import GraphCanvas from '../../components/graph/GraphCanvas';
+import type { GraphCanvasHandle } from '../../components/graph/GraphCanvas.types';
 import { usePriceDisplay } from '../../contexts/PriceDisplayContext';
 import { useStackHeaderHeight } from '../../contexts/StackHeaderHeightContext';
 import { useTutorial } from '../../contexts/TutorialContext';
@@ -21,9 +23,6 @@ import { GraphLikes, type GraphHistory } from '../../utils/graphLikes';
 import { getPriceTierSymbol } from '../../utils/price';
 import { MAP_GEOMETRY_SOURCE, normalizeMapPoints, validMapPosition, parseMapFrame, type MapFrame, type MapLayout, type MapPoint, type Position } from '../../utils/styleMap';
 import { supabase } from '../../utils/supabase';
-
-// react-native-webview 14 defaults WebView's extra-props generic to `undefined`, which collapses its props to `never`.
-const WebView = RNWebView<object>;
 
 const POINTS = normalizeMapPoints(require('../../data/nodeData.json'));
 const POINT_IDS = new Set(POINTS.map((p) => p.clothesId));
@@ -57,7 +56,7 @@ export default function GraphTab() {
   const stackHeaderHeight = useStackHeaderHeight();
   const headerHeight = stackHeaderHeight || getDefaultHeaderHeight(safeFrame, false, insets.top);
   const isFocused = useIsFocused();
-  const web = useRef<RNWebView<object>>(null);
+  const web = useRef<GraphCanvasHandle>(null);
   const ready = useRef(false);
   const session = useRef<AbortController | null>(null);
   const userId = useRef<string | null>(null);
@@ -97,7 +96,7 @@ export default function GraphTab() {
   useFocusEffect(useCallback(() => { showTutorialOnce('graph'); }, [showTutorialOnce]));
 
   const command = useCallback((payload: object) => {
-    if (ready.current) web.current?.injectJavaScript(`window.keepersMap && window.keepersMap(${JSON.stringify(payload).replace(/</g, '\\u003c')}); true;`);
+    if (ready.current) web.current?.send(payload);
   }, []);
   const config = useMemo(() => ({ type: 'configure', layout, preference, initialize: profileReady, showPreviews,
     colors: { background: theme.background, grid: theme.border, point: theme.primary,
@@ -181,16 +180,16 @@ export default function GraphTab() {
 
   const select = (id: number) => { setSelectedId(id); setActionError(null); command({ type: 'select', id }); };
   const clearSelection = () => { setSelectedId(null); setActionError(null); command({ type: 'clear' }); };
-  function onMessage(event: WebViewMessageEvent) {
+  function onMessage(data: string) {
     try {
-      if (event.nativeEvent.data.length > 12000) return;
-      const message = JSON.parse(event.nativeEvent.data);
+      if (data.length > 12000) return;
+      const message = JSON.parse(data);
       if (message.type === 'ready') { ready.current = true; command(config); return; }
       if (message.type === 'select' && POINT_IDS.has(message.id)) { setSelectedId(message.id); setActionError(null); return; }
       if (message.type === 'empty') { setActionError('No other pieces in this area. Widen the area or view the whole graph.'); return; }
       const next = parseMapFrame(message, POINT_IDS, layout);
       if (next) { setFrame(next); setRendered(true); }
-    } catch { /* Ignore invalid messages at the WebView boundary. */ }
+    } catch { /* Ignore invalid messages at the canvas boundary. */ }
   }
   const selectedItem = selectedId === null ? null : items.get(selectedId);
   const selectedError = selectedId !== null && (itemErrors.has(selectedId) || (items.has(selectedId) && !selectedItem));
@@ -251,7 +250,7 @@ export default function GraphTab() {
 
   return <View style={[styles.screen, { backgroundColor: theme.background }]}>
     <View style={[styles.header, { backgroundColor: theme.primary, height: headerHeight }]}>
-      <View style={[styles.headerRow, { height: headerHeight - insets.top }]}>
+      <View style={[styles.headerRow, Platform.OS === 'web' && styles.webContent, { height: headerHeight - insets.top }]}>
         <View style={styles.modeWrapper}>
         <View style={[styles.modes, { backgroundColor: theme.tabBg, borderColor: theme.border }]}>{(['focus', 'whole'] as const).map((mode) => <Pressable key={mode} accessibilityRole="button" hitSlop={{ top: 6, bottom: 6 }}
           accessibilityState={{ selected: frame.mode === mode }} onPress={() => command({ type: 'mode', mode })}
@@ -265,15 +264,10 @@ export default function GraphTab() {
         </View>
       </View>
     </View>
-    <View style={styles.graph} onLayout={({ nativeEvent: { layout: next } }) => setSize({ width: next.width, height: next.height })}>
-      <WebView key={webKey} ref={web} source={SOURCE} originWhitelist={['*']} javaScriptEnabled
-        style={styles.webview} onMessage={onMessage} scrollEnabled={false} bounces={false}
-        accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
-        onShouldStartLoadWithRequest={(request) => request.url === 'about:blank' || request.url.startsWith('about:srcdoc')}
-        onError={() => { ready.current = false; setMapError(true); }}
-        onContentProcessDidTerminate={() => { ready.current = false; setMapError(true); }}
-        onRenderProcessGone={() => { ready.current = false; setMapError(true); }} />
-      {/* Keep every finger on the WebView; it handles thumbnail taps as well as graph gestures. */}
+    <View style={[styles.graph, Platform.OS === 'web' && styles.webContent]} onLayout={({ nativeEvent: { layout: next } }) => setSize({ width: next.width, height: next.height })}>
+      <GraphCanvas key={webKey} ref={web} source={SOURCE} onMessage={onMessage}
+        onError={() => { ready.current = false; setMapError(true); }} />
+      {/* The canvas handles thumbnail taps as well as graph gestures. */}
       <View pointerEvents="none" style={StyleSheet.absoluteFill}>
         {showPreviews && frame.previews.map((p) => {
           const item = items.get(p.clothesId);
@@ -337,7 +331,8 @@ export default function GraphTab() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 }, graph: { flex: 1 }, webview: { flex: 1, backgroundColor: 'transparent' },
+  webContent: { maxWidth: TAB_CONTENT_MAX_WIDTH, width: '100%', alignSelf: 'center' },
+  screen: { flex: 1 }, graph: { flex: 1 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 16 },
   loading: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center', gap: 16 },
   loadingText: { fontSize: 16, fontWeight: '600' },
@@ -384,7 +379,7 @@ export function buildPlotHtml(points: MapPoint[]) {
     var canvas=document.getElementById('plot'), ctx=canvas.getContext('2d');
     var layout=null, camera=null, preference=null, colors=null, mode='whole', selected=null, showPreviews=true;
     var raf=false, lastFrame='', lastPost=0, postTimer=null, seen=new Set(), pointers=new Map(), moved=0, multi=false;
-    function post(message){if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage(JSON.stringify(message));}
+    function post(message){var data=JSON.stringify(message);if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage(data);else if(window.parent!==window)window.parent.postMessage({type:'keepers-map-event',data:data},'*');}
     function configureSize(){var dpr=Math.min(window.devicePixelRatio||1,2);canvas.width=Math.round(layout.width*dpr);canvas.height=Math.round(layout.height*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);}
     function fit(){camera=G.fit(POINTS,layout);}
     function focus(target){var base=G.fit(POINTS,layout);camera={x:target.x,y:target.y,scale:base.scale*2.5};mode='focus';}
@@ -434,6 +429,11 @@ export function buildPlotHtml(points: MapPoint[]) {
       }
       schedule();
     };
+    if(!window.ReactNativeWebView)window.addEventListener('message',function(event){
+      if(event.source!==window.parent||!event.data||event.data.type!=='keepers-map-command')return;
+      var message=event.data.message;if(!message||typeof message!=='object')return;
+      if(message.type==='connect')post({type:'ready'});else window.keepersMap(message);
+    });
     function local(event){var b=canvas.getBoundingClientRect();return {x:event.clientX-b.left,y:event.clientY-b.top};}
     canvas.addEventListener('pointerdown',function(event){if(!camera)return;canvas.setPointerCapture(event.pointerId);pointers.set(event.pointerId,local(event));moved=0;multi=pointers.size>1;});
     canvas.addEventListener('pointermove',function(event){

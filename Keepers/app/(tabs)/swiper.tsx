@@ -8,8 +8,9 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Dimensions, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Dimensions, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { Text } from '../../components/Text';
+import { TAB_CONTENT_MAX_WIDTH } from '../../constants/layout';
 import Swiper from 'react-native-deck-swiper';
 import {getRecommendationsFromServer, getTagsFromServer, sendSwipeToServer} from '../../services/serverApi';
 
@@ -37,8 +38,9 @@ const CARD_VERTICAL_MARGIN = (height * (1 - CARD_HEIGHT_RATIO)) / 2;
 // Swipe sensitivity. A swipe counts once the card passes the threshold; the LIKE/NOPE
 // label starts fading in at the hint distance and is fully visible at the threshold,
 // so users can see the decision before letting go.
-const HORIZONTAL_SWIPE_THRESHOLD = width / 6;
-const HORIZONTAL_LABEL_HINT = width / 20;
+const swipeWidth = Platform.OS === 'web' ? Math.min(width, TAB_CONTENT_MAX_WIDTH) : width;
+const HORIZONTAL_SWIPE_THRESHOLD = swipeWidth / 6;
+const HORIZONTAL_LABEL_HINT = swipeWidth / 20;
 const VERTICAL_SWIPE_THRESHOLD = height / 5;
 const VERTICAL_LABEL_HINT = height / 10;
 // The library's typings declare 3 values here, but at runtime it must match the 5-value input range.
@@ -393,6 +395,7 @@ const App: React.FC = () => {
              <View style={styles.card}>
               <View style={styles.imagePlaceholder}>
                 <Image
+                  draggable={false}
                   style={styles.image}
                   source={{ uri: card.imageUrl }}
                   placeholder={{ blurhash }}
@@ -481,6 +484,7 @@ const App: React.FC = () => {
           stackSize={3}
           stackSeparation={15}
           cardVerticalMargin={CARD_VERTICAL_MARGIN}
+          cardStyle={Platform.select({ web: { width: 'auto', right: 20, userSelect: 'none', cursor: 'grab', touchAction: 'none' } })}
           backgroundColor="transparent"
         />
       )}
