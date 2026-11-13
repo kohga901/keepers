@@ -1,0 +1,360 @@
+/* global __dirname */
+const { before, after, beforeEach, test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const { PGlite } = require('@electric-sql/pglite');
+const { createLoader } = require('./helpers/load.cjs');
+const { parseAlertPrice } = createLoader()('utils/priceAlerts.ts');
+
+const alice = '11111111-1111-4111-8111-111111111111';
+const bob = '22222222-2222-4222-8222-222222222222';
+let db;
+before(async () => {
+  db = new PGlite();
+  // Supabase's auth boundary; the migration and all trigger/RLS logic run unchanged.
+  await db.exec(`
+    create role anon;
+    create role authenticated;
+    create role service_role;
+    create schema auth;
+    create table auth.users (id uuid primary key, email text, email_confirmed_at timestamptz);
+    create function auth.uid() returns uuid language sql stable as
+      $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
+    grant usage on schema auth to authenticated;
+    create table public."Clothing" (item_id bigint primary key, item_name text, item_price text, item_img text);
+    grant select on public."Clothing" to authenticated;
+  `);
+  await db.exec(fs.readFileSync(path.resolve(__dirname, '../../supabase/price_alerts.sql'), 'utf8'));
+  await db.exec(fs.readFileSync(path.resolve(__dirname, '../../supabase/price_alert_emails.sql'), 'utf8'));
+  await db.exec(fs.readFileSync(path.resolve(__dirname, '../../supabase/price_alert_email_preferences.sql'), 'utf8'));
+  // Upgrade with an existing alert, rather than only testing an empty schema.
+  await db.exec(`insert into auth.users (id) values ('${alice}');
+    insert into "Clothing" values (1, 'Linen shirt', '$40.00');
+    insert into "Price_Alerts" (user_id, clothes_id, target_price) values ('${alice}', 1, 30);`);
+  const legacy = (await db.query('select * from "Price_Alerts"')).rows[0];
+  await db.exec(fs.readFileSync(path.resolve(__dirname, '../../supabase/price_alert_increases.sql'), 'utf8'));
+  assert.deepEqual((await db.query('select * from "Price_Alerts"')).rows[0], { ...legacy, direction: 'decrease' });
+  await db.exec(`update "Clothing" set item_img = 'https://example.com/shirt.jpg';
+    insert into "Price_Notifications" (user_id, clothes_id, item_name, price, target_price) values
+      ('${alice}', 1, 'Legacy decrease', 25, 30),
+      ('${alice}', 1, 'Legacy increase', 55, 50),
+      ('${alice}', 1, 'Legacy unknown', 40, 40);`);
+  await save(alice, 1, '50'); await price('$50');
+  const queued = (await db.query('select count(*) from price_alert_emails')).rows[0].count;
+  await db.exec(fs.readFileSync(path.resolve(__dirname, '../../supabase/price_notification_details.sql'), 'utf8'));
+  const historical = (await db.query('select item_name, direction, item_img from "Price_Notifications" order by item_name')).rows;
+  assert.deepEqual(historical.map(row => row.direction), ['decrease', 'increase', null, 'increase']);
+  assert.ok(historical.every(row => row.item_img === 'https://example.com/shirt.jpg'));
+  assert.equal((await db.query('select count(*) from price_alert_emails')).rows[0].count, queued);
+  await db.exec(fs.readFileSync(path.resolve(__dirname, '../../supabase/price_notification_dismissal.sql'), 'utf8'));
+  assert.equal((await db.query('select count(*) from "Price_Notifications" where dismissed_at is null')).rows[0].count, queued);
+});
+after(async () => { await db?.close(); });
+beforeEach(async () => {
+  await db.exec(`truncate auth.users, "Clothing" cascade;
+    insert into auth.users (id, email, email_confirmed_at) values
+      ('${alice}', 'alice@example.com', now()), ('${bob}', 'bob@example.com', now());
+    insert into "Clothing" values
+      (1, 'Linen shirt', '$40.00', 'https://example.com/shirt.jpg'),
+      (2, 'Jacket', '$120.00', null);`);
+});
+
+async function asUser(user, action) {
+  await db.query("select set_config('request.jwt.claim.sub', $1, false)", [user]);
+  await db.exec('set role authenticated');
+  try { return await action(); }
+  finally { await db.exec('reset role'); await db.exec("reset request.jwt.claim.sub"); }
+}
+const save = (user, item, target) => asUser(user, () =>
+  db.query('select * from public.set_price_alert($1, $2)', [item, target]));
+const price = (value, item = 1) => db.query('update "Clothing" set item_price = $1 where item_id = $2', [value, item]);
+const notices = () => db.query('select * from "Price_Notifications" order by user_id');
+
+test('email preferences default on, isolate accounts and discard unsent jobs when disabled', async () => {
+  assert.equal((await asUser(alice, () => db.query('select get_price_alert_email_enabled() as enabled'))).rows[0].enabled, true);
+  await save(alice, 1, '30'); await save(bob, 1, '30'); await price('$25');
+  const jobs = (await db.query('select * from claim_price_alert_emails()')).rows;
+  const aliceJob = jobs.find(job => job.recipient === 'alice@example.com');
+  assert.equal((await db.query('select price_alert_email_allowed($1, $2) as allowed',
+    [aliceJob.notification_id, aliceJob.lease_id])).rows[0].allowed, true);
+  await asUser(alice, () => db.query('select set_price_alert_email_enabled(false)'));
+  assert.equal((await db.query('select price_alert_email_allowed($1, $2) as allowed',
+    [aliceJob.notification_id, aliceJob.lease_id])).rows[0].allowed, false);
+  assert.equal((await db.query('select * from price_alert_emails')).rows.length, 1);
+  assert.equal((await notices()).rows.length, 2);
+  await price('$40'); await save(alice, 1, '30'); await price('$20');
+  assert.equal((await notices()).rows.length, 3);
+  assert.equal((await db.query('select * from price_alert_emails')).rows.length, 1);
+  await asUser(alice, async () => {
+    assert.equal((await db.query('select * from price_alert_email_preferences')).rows.length, 1);
+    await assert.rejects(db.query('update price_alert_email_preferences set enabled = true'), /permission denied/);
+    await assert.rejects(db.query('select price_alert_email_allowed($1, $2)', [aliceJob.notification_id, aliceJob.lease_id]), /permission denied/);
+  });
+  await asUser(alice, () => db.query('select set_price_alert_email_enabled(true)'));
+  assert.equal((await db.query('select * from price_alert_emails')).rows.length, 1);
+  await price('$40'); await save(alice, 1, '30'); await price('$25');
+  assert.equal((await db.query('select * from price_alert_emails')).rows.length, 2);
+  await assert.rejects(db.query('select set_price_alert_email_enabled(false)'), /Sign in/);
+});
+
+test('email jobs are queued once with notifications and are inaccessible to clients', async () => {
+  await save(alice, 1, '30');
+  await price('$25');
+  await price('$20');
+  const jobs = await db.query('select * from public.price_alert_emails');
+  assert.equal(jobs.rows.length, 1);
+  assert.equal(jobs.rows[0].notification_id, (await notices()).rows[0].id);
+  assert.equal(jobs.rows[0].sent_at, null);
+  await asUser(alice, () => assert.rejects(db.query('select * from public.price_alert_emails'), /permission denied/));
+  await asUser(alice, () => assert.rejects(db.query('select * from public.claim_price_alert_emails()'), /permission denied/));
+  await asUser(alice, () => assert.rejects(db.query('select public.finish_price_alert_email($1, $2)',
+    [jobs.rows[0].notification_id, alice]), /permission denied/));
+  await db.query('delete from auth.users where id = $1', [alice]);
+  assert.equal((await db.query('select * from public.price_alert_emails')).rows.length, 0);
+});
+
+test('email claims require verified accounts, lease jobs and reject stale completions', async () => {
+  await save(alice, 1, '30');
+  await price('$25');
+  await db.exec(`update auth.users set email_confirmed_at = null where id = '${alice}'`);
+  assert.equal((await db.query('select * from claim_price_alert_emails()')).rows.length, 0);
+  await db.exec(`update auth.users set email_confirmed_at = now() where id = '${alice}'`);
+  await db.exec('set role service_role');
+  let job;
+  try { job = (await db.query('select * from claim_price_alert_emails()')).rows[0]; }
+  finally { await db.exec('reset role'); }
+  assert.equal(job.recipient, 'alice@example.com');
+  assert.equal(job.item_name, 'Linen shirt');
+  assert.equal(job.direction, 'decrease');
+  assert.equal(job.item_img, 'https://example.com/shirt.jpg');
+  assert.equal((await db.query('select * from claim_price_alert_emails()')).rows.length, 0);
+  await db.exec("update price_alert_emails set next_attempt_at = now() - interval '1 second'");
+  const retry = (await db.query('select * from claim_price_alert_emails()')).rows[0];
+  assert.notEqual(retry.lease_id, job.lease_id);
+  await db.query('select finish_price_alert_email($1, $2)', [job.notification_id, job.lease_id]);
+  assert.equal((await db.query('select sent_at from price_alert_emails')).rows[0].sent_at, null);
+  await db.query('select finish_price_alert_email($1, $2, $3)', [retry.notification_id, retry.lease_id, 'provider_http_429']);
+  assert.equal((await db.query('select last_error from price_alert_emails')).rows[0].last_error, 'provider_http_429');
+  await db.query('select finish_price_alert_email($1, $2)', [retry.notification_id, retry.lease_id]);
+  assert.ok((await db.query('select sent_at from price_alert_emails')).rows[0].sent_at);
+});
+
+test('email retry limits prevent resending outside provider idempotency protection', async () => {
+  await save(alice, 1, '30');
+  await price('$25');
+  await db.exec("update price_alert_emails set first_attempt_at = now() - interval '24 hours'");
+  assert.equal((await db.query('select * from claim_price_alert_emails()')).rows.length, 0);
+  assert.equal((await db.query('select last_error from price_alert_emails')).rows[0].last_error, 'retry_limit');
+  await db.exec('update price_alert_emails set first_attempt_at = now(), failed_at = null, attempts = 12');
+  assert.equal((await db.query('select * from claim_price_alert_emails()')).rows.length, 0);
+  assert.ok((await db.query('select failed_at from price_alert_emails')).rows[0].failed_at);
+});
+
+test('SQL and client accept the same USD formats and reject ambiguous catalog prices', async () => {
+  for (const [value, expected] of [
+    ['$1,234.50', 1234.5], ['USD 25.99', 25.99], [' 30 ', 30], ['$0', 0], [null, null],
+    ['', null], ['Free', null], ['€20', null], ['CAD 20', null], ['-$10', null],
+    ['$10 - $30', null], ['12,34.50', null], ['1e2', null], ['2.999', null], ['NaN', null],
+  ]) {
+    const result = await db.query('select public.price_alert_usd($1)::float8 as price', [value]);
+    assert.equal(result.rows[0].price, expected, String(value));
+    assert.equal(parseAlertPrice(value), expected, String(value));
+  }
+});
+
+test('an alert fires at its exact target once, stores a snapshot and can be explicitly rearmed', async () => {
+  await save(alice, 1, '30.00');
+  await price('$35');
+  assert.equal((await notices()).rows.length, 0);
+  await price('$30.00');
+  const first = (await notices()).rows;
+  assert.equal(first.length, 1);
+  assert.equal(first[0].item_name, 'Linen shirt');
+  assert.equal(first[0].price, '30.00');
+  assert.equal(first[0].target_price, '30.00');
+  assert.equal(first[0].read_at, null);
+  assert.equal(first[0].direction, 'decrease');
+  assert.equal(first[0].item_img, 'https://example.com/shirt.jpg');
+  const saved = (await db.query('select * from "Price_Alerts"')).rows[0];
+  assert.equal(saved.active, false);
+  assert.ok(saved.triggered_at);
+  await price('$40'); await price('$25'); await price('$20');
+  assert.equal((await notices()).rows.length, 1);
+  await save(alice, 1, '15.00');
+  await price('$15');
+  assert.equal((await notices()).rows.length, 2);
+});
+
+test('targets update in place; cancelled alerts, unrelated products and invalid prices do not notify', async () => {
+  await save(alice, 1, '30');
+  await save(alice, 1, '20');
+  await save(bob, 1, '25');
+  await save(alice, 2, '100');
+  assert.equal((await db.query('select * from "Price_Alerts"')).rows.length, 3);
+  for (const value of ['€10', null, '$10 - $20', 'USD unavailable']) await price(value);
+  assert.equal((await notices()).rows.length, 0);
+  await asUser(bob, () => db.query('delete from "Price_Alerts" where clothes_id = 1'));
+  await price('$25');
+  assert.equal((await notices()).rows.length, 0);
+  await price('$20');
+  assert.deepEqual((await notices()).rows.map(row => row.user_id), [alice]);
+  await price('$100', 2);
+  assert.equal((await notices()).rows.length, 2);
+});
+
+test('RPC rejects invalid and equal targets, uses the latest price and authenticates ownership', async () => {
+  for (const value of ['0', '-1', '40', '10.001', 'NaN', 'Infinity', '100000000', null]) {
+    await assert.rejects(save(alice, 1, value));
+  }
+  await assert.rejects(save(alice, 999, '10'), /no longer available/);
+  await price('€40');
+  await assert.rejects(save(alice, 1, '20'), /supported USD/);
+  await price('$15');
+  assert.equal((await save(alice, 1, '20')).rows[0].direction, 'increase');
+  await assert.rejects(save('', 1, '10'), /Sign in again/);
+  await save(alice, 1, '10');
+  assert.equal((await db.query('select user_id from "Price_Alerts"')).rows[0].user_id, alice);
+  await db.exec('set role anon');
+  try { await assert.rejects(db.query('select * from public.set_price_alert(1, 10)'), /permission denied/); }
+  finally { await db.exec('reset role'); }
+});
+
+test('increase alerts ignore lower and invalid prices, fire once at the target and queue email', async () => {
+  assert.equal((await save(alice, 1, '50.25')).rows[0].direction, 'increase');
+  await save(bob, 1, '55');
+  for (const value of ['$30', '$45', '$50.24', '€60', null, '$50 - $60', '$100000000']) await price(value);
+  assert.equal((await notices()).rows.length, 0);
+  await price('$50.25');
+  const first = (await notices()).rows;
+  assert.equal(first.length, 1);
+  assert.equal(first[0].user_id, alice);
+  assert.equal(first[0].price, '50.25');
+  assert.equal(first[0].target_price, '50.25');
+  assert.equal(first[0].direction, 'increase');
+  assert.equal((await db.query('select active from "Price_Alerts" where user_id = $1', [alice])).rows[0].active, false);
+  const jobs = (await db.query('select * from claim_price_alert_emails()')).rows;
+  assert.equal(jobs.length, 1);
+  assert.equal(jobs[0].recipient, 'alice@example.com');
+  assert.equal(jobs[0].price, '50.25');
+  assert.equal(jobs[0].direction, 'increase');
+  assert.equal(jobs[0].item_img, 'https://example.com/shirt.jpg');
+  await price('$60');
+  await price('$70');
+  assert.equal((await notices()).rows.length, 2);
+  assert.equal((await notices()).rows.find(row => row.user_id === bob).price, '60.00');
+});
+
+test('updating or rearming an alert changes its direction; increases from zero are supported', async () => {
+  await save(alice, 1, '30');
+  await save(alice, 1, '50');
+  await price('$25');
+  assert.equal((await notices()).rows.length, 0);
+  await price('$55');
+  assert.equal((await notices()).rows.length, 1);
+  const rearmed = (await save(alice, 1, '20')).rows[0];
+  assert.equal(rearmed.direction, 'decrease');
+  assert.equal(rearmed.active, true);
+  assert.equal(rearmed.triggered_at, null);
+  await price('$60');
+  assert.equal((await notices()).rows.length, 1);
+  await price('$20');
+  assert.equal((await notices()).rows.length, 2);
+  await price('$0');
+  await save(alice, 1, '0.01');
+  await price('$0.01');
+  assert.equal((await notices()).rows.length, 3);
+  await save(alice, 1, '10');
+  await asUser(alice, () => db.query('delete from "Price_Alerts" where clothes_id = 1'));
+  await price('$15');
+  assert.equal((await notices()).rows.length, 3);
+});
+
+test('read permission repair restores only read_at updates for authenticated users', async () => {
+  await db.exec('revoke update (read_at) on public."Price_Notifications" from authenticated');
+  await asUser(alice, () => assert.rejects(
+    db.query('update "Price_Notifications" set read_at = now()'), /permission denied/));
+  await db.exec(fs.readFileSync(path.resolve(__dirname, '../../supabase/price_notification_read_permission.sql'), 'utf8'));
+  const { rows } = await db.query(`select
+    has_column_privilege('authenticated', 'public."Price_Notifications"', 'read_at', 'UPDATE') as can_mark_read,
+    has_table_privilege('authenticated', 'public."Price_Notifications"', 'UPDATE') as can_update_table`);
+  assert.deepEqual(rows[0], { can_mark_read: true, can_update_table: false });
+  await asUser(alice, () => db.query('update "Price_Notifications" set read_at = now()'));
+});
+
+test('notification direction and image remain unchanged after rearming and catalog edits', async () => {
+  await save(alice, 1, '50'); await price('$50');
+  await save(alice, 1, '30');
+  await db.exec(`update "Clothing" set item_img = 'https://example.com/replacement.jpg', item_name = 'Updated shirt' where item_id = 1`);
+  const job = (await db.query('select * from claim_price_alert_emails()')).rows[0];
+  assert.equal(job.direction, 'increase');
+  assert.equal(job.item_img, 'https://example.com/shirt.jpg');
+  assert.equal(job.item_name, 'Linen shirt');
+  await save(alice, 2, '100'); await price('$100', 2);
+  assert.equal((await notices()).rows.find(row => row.clothes_id === 2).item_img, null);
+  await asUser(alice, () => assert.rejects(db.query('update "Price_Notifications" set direction = $1', ['decrease']), /permission denied/));
+  await asUser(alice, () => assert.rejects(db.query('update "Price_Notifications" set item_img = $1', ['https://example.com/forged.jpg']), /permission denied/));
+});
+
+test('RLS isolates alerts and notifications; clients can only change their own read status', async () => {
+  await save(alice, 1, '30');
+  await save(bob, 1, '20');
+  await asUser(bob, async () => {
+    assert.equal((await db.query('select * from "Price_Alerts"')).rows.length, 1);
+    assert.equal((await db.query('delete from "Price_Alerts" where user_id = $1 returning *', [alice])).rows.length, 0);
+    await assert.rejects(db.query('update "Price_Alerts" set target_price = 100'), /permission denied/);
+    await assert.rejects(db.query('insert into "Price_Alerts" values ($1, 2, 10, true, null)', [alice]), /permission denied/);
+  });
+  await price('$20');
+  await asUser(alice, async () => {
+    assert.deepEqual((await db.query('select user_id from "Price_Notifications"')).rows, [{ user_id: alice }]);
+    assert.equal((await db.query('update "Price_Notifications" set read_at = now() where user_id = $1 returning id', [bob])).rows.length, 0);
+    await db.query('update "Price_Notifications" set read_at = now()');
+    await assert.rejects(db.query('update "Price_Notifications" set price = 1'), /permission denied/);
+    await assert.rejects(db.query('insert into "Price_Notifications" (user_id, clothes_id, item_name, price, target_price) values ($1, 1, $2, 1, 1)', [alice, 'Forged']), /permission denied/);
+    await assert.rejects(db.query('select public.notify_price_alerts()'), /permission denied/);
+  });
+  const rows = (await notices()).rows;
+  assert.ok(rows[0].read_at);
+  assert.equal(rows[1].read_at, null);
+});
+
+test('clearing notifications is isolated, includes older rows and preserves alerts and email jobs', async () => {
+  await save(alice, 1, '30');
+  await db.query(`insert into "Price_Notifications" (user_id, clothes_id, item_name, price, target_price)
+    select $1, 1, 'Older alert', 30, 30 from generate_series(1, 60)`, [alice]);
+  await db.query(`insert into "Price_Notifications" (user_id, clothes_id, item_name, price, target_price)
+    values ($1, 1, 'Bob alert', 30, 30)`, [bob]);
+  const id = (await notices()).rows[0].id;
+  await asUser(bob, async () => {
+    assert.equal((await db.query('update "Price_Notifications" set dismissed_at = now() where id = $1 returning id', [id])).rows.length, 0);
+  });
+  await asUser(alice, async () => {
+    await db.query('update "Price_Notifications" set dismissed_at = now() where id = $1', [id]);
+    assert.equal((await db.query('select * from "Price_Notifications" where dismissed_at is null and read_at is null')).rows.length, 59);
+    await db.query('update "Price_Notifications" set dismissed_at = now() where dismissed_at is null');
+    assert.equal((await db.query('select * from "Price_Notifications" where dismissed_at is null')).rows.length, 0);
+    await assert.rejects(db.query('update "Price_Notifications" set price = 1'), /permission denied/);
+  });
+  await asUser(bob, async () => {
+    assert.equal((await db.query('select * from "Price_Notifications" where dismissed_at is null')).rows.length, 1);
+  });
+  assert.equal((await db.query('select * from "Price_Notifications"')).rows.length, 61);
+  assert.equal((await db.query('select * from price_alert_emails')).rows.length, 61);
+  assert.equal((await db.query('select active from "Price_Alerts"')).rows[0].active, true);
+  assert.equal((await db.query(`select has_column_privilege('anon', 'public."Price_Notifications"', 'dismissed_at', 'UPDATE') as allowed`)).rows[0].allowed, false);
+});
+
+test('price changes and notifications roll back together; deleting an account removes private alert data', async () => {
+  await save(alice, 1, '30');
+  await db.exec('begin');
+  await price('$20');
+  assert.equal((await notices()).rows.length, 1);
+  await db.exec('rollback');
+  assert.equal((await notices()).rows.length, 0);
+  assert.equal((await db.query('select active from "Price_Alerts"')).rows[0].active, true);
+  await price('$30');
+  await db.query('delete from auth.users where id = $1', [alice]);
+  assert.equal((await notices()).rows.length, 0);
+  assert.equal((await db.query('select * from "Price_Alerts"')).rows.length, 0);
+});

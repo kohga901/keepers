@@ -6,8 +6,11 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Easing, StyleSheet, View, Pressable, FlatList, Modal } from 'react-native';
+import { ActivityIndicator, Animated, Easing, StyleSheet, View, Pressable, FlatList, Modal, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { Text } from '../../components/Text';
+import { PriceAlertEditor } from '../../components/PriceAlertEditor';
+import { PriceAlertsBell } from '../../components/PriceAlertsBell';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import { useSafeAreaFrame, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
@@ -18,18 +21,24 @@ import { useStackHeaderHeight } from '../../contexts/StackHeaderHeightContext';
 import { useAppTheme } from '../../hooks/useAppTheme';
 import { Item } from '../../models/Items';
 import { getPriceTierSymbol } from '../../utils/price';
-import { deleteLikedItem, getLikedItems, deleteDislikedItem as deleteDislikedItemRemote, getDislikedItems } from '@/services/dataServices';
+import { deleteLikedItem, getLikedItems, deleteDislikedItem as deleteDislikedItemRemote, getDislikedItems, getClothingById } from '@/services/dataServices';
 import { getDefaultHeaderHeight, useFocusEffect } from "expo-router/react-navigation";
 import * as WebBrowser from 'expo-web-browser';
 
-const TOGGLE_OPTION_WIDTH = 130;
-
 const App: React.FC = () => {
+  const router = useRouter();
+  const { itemId } = useLocalSearchParams<{ itemId?: string | string[] }>();
+  const requestedItemId = Array.isArray(itemId) ? itemId[0] : itemId;
+  const frame = useSafeAreaFrame();
+  // Leave space for the bell, filter and header padding on narrow phones.
+  const toggleOptionWidth = Math.min(130, Math.max(80, (frame.width - 120) / 2));
   const [allLikedItems, setAllLikedItems] = useState<Item[]>([]);
   const [allDislikedItems, setAllDislikedItems] = useState<Item[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [imageExpanded, setImageExpanded] = useState(false);
+  const [itemError, setItemError] = useState<string | null>(null);
   const { showTutorialOnce } = useTutorial();
 
   // First visit to History walks through the toggle, item details, and swipe-to-remove.
@@ -53,6 +62,7 @@ const App: React.FC = () => {
   useFocusEffect(
     useCallback(() => {
       let active = true;
+      setIsLoadingHistory(true);
 
       const aquireLikedItems = async () => {
         const data = await getLikedItems();
@@ -68,7 +78,7 @@ const App: React.FC = () => {
             imageUrl: row.Clothing.item_img,
             liked: true,
             itemUrl: row.Clothing.item_web_listing,
-            gender: row.Clothing.item_gender,
+            gender: row.Clothing.item_gender ?? '',
           }));
 
         if (active) setAllLikedItems(parsedCards);
@@ -88,7 +98,7 @@ const App: React.FC = () => {
             imageUrl: row.Clothing.item_img,
             liked: false,
             itemUrl: row.Clothing.item_web_listing,
-            gender: row.Clothing.item_gender,
+            gender: row.Clothing.item_gender ?? '',
           }));
 
         if (active) setAllDislikedItems(parsedCards);
@@ -123,7 +133,7 @@ const App: React.FC = () => {
 
   const indicatorTranslate = toggleAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, TOGGLE_OPTION_WIDTH],
+    outputRange: [0, toggleOptionWidth],
   });
 
   // Collapsing header: slides up as the list scrolls down, and back in on scroll up.
@@ -134,7 +144,6 @@ const App: React.FC = () => {
     () => Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true }),
     [scrollY],
   );
-  const frame = useSafeAreaFrame();
   // Match the real height of the "KEEPERS" header shown on the other tabs (e.g. Swiper).
   const stackHeaderHeight = useStackHeaderHeight();
   const headerHeight = stackHeaderHeight > 0 ? stackHeaderHeight : getDefaultHeaderHeight(frame, false, insets.top);
@@ -159,6 +168,36 @@ const App: React.FC = () => {
     listRef.current?.scrollToOffset({ offset: 0, animated: false });
   };
 
+  useEffect(() => {
+    if (!requestedItemId || isLoadingHistory) return;
+    let active = true;
+    void (async () => {
+      try {
+        const row = await getClothingById(requestedItemId);
+        if (!active) return;
+        setItemError(null);
+        if (!row) throw new Error('This item could not be loaded. Please try again from your notifications.');
+        setSelectedItem({
+          id: String(row.item_id), name: row.item_name, price: row.item_price ?? '',
+          imageUrl: row.item_img, itemUrl: row.item_web_listing, gender: row.item_gender ?? '',
+          liked: allLikedItems.some(item => item.id === requestedItemId),
+        });
+        setModalVisible(true);
+      } catch (failure) {
+        if (active) setItemError(failure instanceof Error ? failure.message : 'This item could not be loaded. Please try again.');
+      } finally {
+        if (active) {
+          setActiveTab('liked');
+          setFilterOpen(false);
+          setImageExpanded(false);
+          listRef.current?.scrollToOffset({ offset: 0, animated: false });
+          router.setParams({ itemId: undefined });
+        }
+      }
+    })();
+    return () => { active = false; };
+  }, [requestedItemId, isLoadingHistory, allLikedItems, router]);
+
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <Animated.View
@@ -173,10 +212,10 @@ const App: React.FC = () => {
               <Animated.View
                 style={[
                   styles.toggleIndicator,
-                  { width: TOGGLE_OPTION_WIDTH, backgroundColor: theme.primary, transform: [{ translateX: indicatorTranslate }] },
+                  { width: toggleOptionWidth, backgroundColor: theme.primary, transform: [{ translateX: indicatorTranslate }] },
                 ]}
               />
-              <Pressable style={[styles.toggleOption, { width: TOGGLE_OPTION_WIDTH }]} onPress={() => switchTab('liked')}>
+              <Pressable style={[styles.toggleOption, { width: toggleOptionWidth }]} onPress={() => switchTab('liked')}>
                 <Text
                   style={[
                     styles.toggleText,
@@ -187,7 +226,7 @@ const App: React.FC = () => {
                 </Text>
               </Pressable>
 
-              <Pressable style={[styles.toggleOption, { width: TOGGLE_OPTION_WIDTH }]} onPress={() => switchTab('disliked')}>
+              <Pressable style={[styles.toggleOption, { width: toggleOptionWidth }]} onPress={() => switchTab('disliked')}>
                 <Text
                   style={[
                     styles.toggleText,
@@ -200,6 +239,7 @@ const App: React.FC = () => {
             </View>
           </View>
 
+          <PriceAlertsBell color={theme.tabActive} />
           <View style={styles.filterWrapper}>
             <Pressable
               style={[styles.filterButton, { backgroundColor: theme.tabBg, borderColor: theme.border }]}
@@ -231,6 +271,7 @@ const App: React.FC = () => {
           scrollIndicatorInsets={{ top: headerHeight }}
           onScroll={onListScroll}
           scrollEventThrottle={16}
+          ListHeaderComponent={itemError ? <Text accessibilityRole="alert" style={{ color: theme.text, paddingBottom: 16 }}>{itemError}</Text> : undefined}
           ListEmptyComponent={
             <View style={styles.emptyState}>
               <Ionicons
@@ -294,27 +335,44 @@ const App: React.FC = () => {
           visible={modalVisible}
           transparent={true}
           animationType="slide"
+          onRequestClose={() => imageExpanded ? setImageExpanded(false) : setModalVisible(false)}
         >
+          {imageExpanded ? (
+            <View style={{ flex: 1, backgroundColor: '#000000', paddingTop: insets.top, paddingBottom: insets.bottom }}>
+              <Image source={{ uri: selectedItem?.imageUrl }} style={{ flex: 1, width: '100%' }} contentFit="contain"
+                accessibilityLabel={selectedItem?.name} />
+              <Pressable onPress={() => setImageExpanded(false)} accessibilityRole="button" accessibilityLabel="Close full-size image"
+                style={[styles.modalClose, { top: insets.top + 12, backgroundColor: theme.surface }]}>
+                <Ionicons name="close" size={24} color={theme.text} />
+              </Pressable>
+            </View>
+          ) : (
+          <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <Pressable style={styles.modalBackground} onPress={() => setModalVisible(false)}>
-            <View style={styles.modalContainer}>
+            <Pressable style={[styles.modalContainer, { maxHeight: '90%' }]} onPress={event => event.stopPropagation()}>
+              <ScrollView style={{ width: '100%' }} keyboardShouldPersistTaps="handled">
               {selectedItem && (
                 <>
+                  <Pressable onPress={() => setImageExpanded(true)} accessibilityRole="button" accessibilityLabel="View full-size image">
                   <Image
                     style={styles.modalImage}
                     source={{ uri: selectedItem.imageUrl }}
                   />
+                  </Pressable>
                   <View style={[styles.textAndButtonContainer, { backgroundColor: theme.primary }]}>
                     <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '600', fontFamily: 'PublicSans_600SemiBold' }}>
                       {selectedItem.name}
                     </Text>
                     <View style={{ height: 1, backgroundColor: '#FFFFFF', opacity: 0.4, width: '100%', marginVertical: 10 }} />
 
-                    <Text style={{ color: theme.accentBrown, fontFamily: 'PublicSans_600SemiBold', alignSelf: 'flex-start' }}>
+                    <View style={styles.modalPriceGenderRow}>
+                    <Text style={{ color: theme.accentGold, fontFamily: 'PublicSans_600SemiBold' }}>
                       {showPriceAsTier ? getPriceTierSymbol(selectedItem.price) : selectedItem.price}
                     </Text>
-                    <Text style={{ color: '#FFFFFF', fontFamily: 'PublicSans_600SemiBold', alignSelf: 'flex-end' }}>
+                    <Text style={{ color: '#FFFFFF', fontFamily: 'PublicSans_600SemiBold' }}>
                       {selectedItem.gender.toUpperCase()}
                     </Text>
+                    </View>
 
                     <Pressable style={[styles.closeButton, { backgroundColor: theme.surface }]} onPress={() => {
                       if (selectedItem.itemUrl) {
@@ -324,11 +382,19 @@ const App: React.FC = () => {
                     }}>
                       <Text style={[styles.closeButtonText, { color: theme.text }]}>Go to Store Page</Text>
                     </Pressable>
+                    {selectedItem.liked && <PriceAlertEditor key={selectedItem.id} itemId={selectedItem.id} price={selectedItem.price} />}
                   </View>
                 </>
               )}
-            </View>
+              </ScrollView>
+              <Pressable onPress={() => setModalVisible(false)} accessibilityRole="button" accessibilityLabel="Close item details"
+                style={[styles.modalClose, { backgroundColor: theme.surface }]}>
+                <Ionicons name="close" size={24} color={theme.text} />
+              </Pressable>
+            </Pressable>
           </Pressable>
+          </KeyboardAvoidingView>
+          )}
         </Modal>
       </View>
     </View>
@@ -504,7 +570,8 @@ const styles = StyleSheet.create({
   },
 
   modalContainer: {
-    width: '80%',
+    width: '94%',
+    maxWidth: 600,
     padding: 20,
     backgroundColor: 'white',
     borderRadius: 20,
@@ -517,13 +584,34 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     borderRadius: 15,
   },
+  modalClose: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 3,
+    zIndex: 1,
+  },
   textAndButtonContainer: {
     padding: 10,
     borderRadius: 10,
     width: '100%',
     alignItems: 'center',
   },
+  modalPriceGenderRow: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+  },
   closeButton: {
+    width: '100%',
+    alignItems: 'center',
     paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 10,
