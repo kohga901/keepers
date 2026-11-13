@@ -60,7 +60,10 @@ export function HistorySwipeable({ children, renderRightActions, onSwipeableOpen
       }}
       onPointerUp={event => finish(event, false)}
       onPointerCancel={event => finish(event, true)}
-      onLostPointerCapture={event => finish(event, true)}
+      onLostPointerCapture={event => {
+        // Ignore capture transferring from a touched child to this row.
+        if (event.target === event.currentTarget) finish(event, true);
+      }}
       onPointerLeave={event => {
         if (!event.currentTarget.hasPointerCapture(event.pointerId)) finish(event, true);
       }}
