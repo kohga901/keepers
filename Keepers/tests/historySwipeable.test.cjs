@@ -31,7 +31,7 @@ function harness() {
     event(name, x, y, extra = {}) {
       let prevented = false, stopped = false;
       tree.props[name]({ pointerId: 1, isPrimary: true, button: 0, clientX: x, clientY: y,
-        currentTarget: target, preventDefault() { prevented = true; }, stopPropagation() { stopped = true; }, ...extra });
+        currentTarget: target, target, preventDefault() { prevented = true; }, stopPropagation() { stopped = true; }, ...extra });
       render();
       return { prevented, stopped };
     },
@@ -96,6 +96,23 @@ test('only a released left swipe past half the row deletes, exactly once', () =>
   assert.equal(h.deleted, 0);
   assert.equal(h.event('onClickCapture').stopped, true);
   h.flush(); assert.equal(h.deleted, 1);
+});
+
+test('touch capture transferring from a card child to the row does not cancel deletion', () => {
+  const h = harness();
+  const child = {};
+  h.event('onPointerDown', 280, 200, { pointerType: 'touch', target: child });
+  h.event('onPointerMove', 240, 198, { pointerType: 'touch', target: child });
+  // Touch starts with implicit capture on the child; transferring it to the row
+  // emits a bubbling lostpointercapture for that child before the next move.
+  h.event('onLostPointerCapture', 240, 198, { pointerType: 'touch', target: child });
+  assert.equal(h.captured, true);
+  assert.equal(h.transform, 'translateX(-40px)');
+  h.event('onPointerMove', 40, 198, { pointerType: 'touch' });
+  h.event('onPointerUp', 40, 198, { pointerType: 'touch' });
+  h.flush();
+  assert.equal(h.deleted, 1);
+  assert.equal(h.captured, false);
 });
 
 test('tapping still opens details after a canceled swipe; right swipes do not delete', () => {
