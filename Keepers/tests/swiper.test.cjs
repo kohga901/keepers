@@ -7,7 +7,7 @@ const row = (id, url = `https://shop.test/${id}`) => ({ item_id: id, item_name: 
 
 // Match the existing graph tests: execute real screen callbacks with deterministic
 // hook scheduling. Native rendering and the third-party gesture engine are boundaries.
-function screen({ recommend = async () => [row(1), row(2)], session = { user: { id: 'alice' } } } = {}) {
+function screen({ recommend = async () => [row(1), row(2)], session = { user: { id: 'alice' } }, platform = 'ios', viewportWidth = 390 } = {}) {
   const slots = [], effects = [], timers = [], calls = { feed: [], swipes: [], opened: [], alerts: [], jumps: [] };
   let cursor = 0, dirty = true, tree, header, authChanged;
   const same = (a, b) => a && b && a.length === b.length && a.every((value, i) => Object.is(value, b[i]));
@@ -30,8 +30,8 @@ function screen({ recommend = async () => [row(1), row(2)], session = { user: { 
   const load = createLoader({
     react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx },
     'react-native': { View: 'View', Pressable: 'Pressable', ActivityIndicator: 'Spinner',
-      Alert: { alert: (...args) => calls.alerts.push(args) }, Dimensions: { get: () => ({ width: 390, height: 844 }) },
-      Platform: { select: () => undefined }, StyleSheet: { create: (styles) => styles } },
+      Alert: { alert: (...args) => calls.alerts.push(args) }, Dimensions: { get: () => ({ width: viewportWidth, height: 844 }) },
+      Platform: { OS: platform, select: (options) => options[platform] }, StyleSheet: { create: (styles) => styles } },
     'expo-router': { useRouter: () => ({ push() {} }), useNavigation: () => navigation,
       useFocusEffect: (fn) => hooks.useEffect(fn, [fn]) },
     'react-native-deck-swiper': 'Swiper', '@expo/vector-icons/Ionicons': 'Icon', 'expo-image': { Image: 'Image' },
@@ -75,6 +75,20 @@ function screen({ recommend = async () => [row(1), row(2)], session = { user: { 
     refresh: () => nodes().find((n) => n.props.accessibilityLabel === 'Load more items').props.onPress(),
   };
 }
+
+test('web deck lets mouse gestures reach the swiper and scales thresholds to the content width', async () => {
+  for (const width of [390, 1920]) {
+    const app = screen({ platform: 'web', viewportWidth: width }); await app.flush();
+    const deck = app.deck();
+    assert.equal(deck.horizontalThreshold, Math.min(width, 760) / 6);
+    assert.equal(deck.cardStyle.userSelect, 'none');
+    assert.equal(deck.cardStyle.cursor, 'grab');
+    const card = deck.renderCard(deck.cards[0], 0);
+    assert.equal(card.props.children[0].props.children.props.draggable, false);
+    await deck.onSwipedRight(0); await deck.onSwipedLeft(1);
+    assert.deepEqual(app.calls.swipes, [['1', true], ['2', false]]);
+  }
+});
 
 test('signed-in feed maps real item IDs and sends left/right reactions for the displayed cards', async () => {
   const app = screen(); await app.flush();
