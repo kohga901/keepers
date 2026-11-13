@@ -265,6 +265,8 @@ const App: React.FC = () => {
             <Text style={[styles.loadingText, { color: theme.text }]}>Loading your history...</Text>
           </View>
         ) : <Animated.FlatList
+          showsVerticalScrollIndicator={false}
+          showsHorizontalScrollIndicator={false}
           ref={listRef}
           data={activeTab === 'liked' ? allLikedItems : allDislikedItems}
           keyExtractor={(item) => item.id}

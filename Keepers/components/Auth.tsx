@@ -12,6 +12,7 @@ import {
 import { Text, TextInput } from './Text';
 
 import { useAppTheme } from '../hooks/useAppTheme';
+import { TAB_CONTENT_MAX_WIDTH } from '../constants/layout';
 import { supabase } from '../utils/supabase';
 
 export default function Auth() {
@@ -55,7 +56,7 @@ export default function Auth() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, Platform.OS === 'web' && styles.webContent]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -154,6 +155,7 @@ export default function Auth() {
 }
 
 const styles = StyleSheet.create({
+  webContent: { maxWidth: TAB_CONTENT_MAX_WIDTH, width: '100%', alignSelf: 'center' },
   safeArea: {
     flex: 1,
   },
