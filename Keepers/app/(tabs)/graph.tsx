@@ -83,7 +83,8 @@ export default function GraphTab() {
   const [mapError, setMapError] = useState(false);
   const [rendered, setRendered] = useState(false);
   const [webKey, setWebKey] = useState(0);
-  const layout = useMemo<MapLayout>(() => ({ ...size, top, bottom: visibleDockHeight + 74 }), [size, top, visibleDockHeight]);
+  const side = Platform.OS === 'web' ? Math.max(0, (size.width - TAB_CONTENT_MAX_WIDTH) / 2) : 0;
+  const layout = useMemo<MapLayout>(() => ({ ...size, side, top, bottom: visibleDockHeight + 74 }), [size, side, top, visibleDockHeight]);
   const [lookupItem, setLookupItem] = useState<Item | null>(null);
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupResult, setLookupResult] = useState<ImageLookupResult | null>(null);
@@ -264,7 +265,7 @@ export default function GraphTab() {
         </View>
       </View>
     </View>
-    <View style={[styles.graph, Platform.OS === 'web' && styles.webContent]} onLayout={({ nativeEvent: { layout: next } }) => setSize({ width: next.width, height: next.height })}>
+    <View style={styles.graph} onLayout={({ nativeEvent: { layout: next } }) => setSize({ width: next.width, height: next.height })}>
       <GraphCanvas key={webKey} ref={web} source={SOURCE} onMessage={onMessage}
         onError={() => { ready.current = false; setMapError(true); }} />
       {/* The canvas handles thumbnail taps as well as graph gestures. */}
@@ -279,7 +280,7 @@ export default function GraphTab() {
         })}
         {frame.taste && preference && <View pointerEvents="none" style={[styles.tasteLabel, surface, { left: frame.taste.x + 13, top: frame.taste.y - 12 }]}><Text style={[styles.small, textColor]}>Your taste</Text></View>}
       </View>
-      <View style={styles.topPanel} onLayout={(event) => setTop(event.nativeEvent.layout.height + 24)}>
+      <View style={[styles.topPanel, { left: side + 16, right: side + 16 }]} onLayout={(event) => setTop(event.nativeEvent.layout.height + 24)}>
         <View style={styles.row}><Text accessibilityLiveRegion="polite" style={[styles.small, styles.flex, textColor]}>
           {frame.mode === 'whole' ? 'All clothing' : frame.nearTaste ? 'Around your taste' : 'Exploring this area'} · {frame.count.toLocaleString()} pieces
         </Text></View>
@@ -287,15 +288,15 @@ export default function GraphTab() {
         {selectedId === null && actionError && <Text accessibilityRole="alert" style={[styles.hint, textColor]}>{actionError}</Text>}
         {showPreviews && itemErrors.size > 0 && selectedId === null && <Pressable accessibilityRole="button" onPress={retryItems} style={styles.retry}><Text style={[styles.small, textColor]}>Some previews could not load. Retry</Text></Pressable>}
       </View>
-      <View style={[styles.zoomControls, { top: top + 10 }]}>{[{ name: 'add' as const, label: 'Zoom in', factor: 1.4 }, { name: 'remove' as const, label: 'Zoom out', factor: 1 / 1.4 }].map((button) => <Pressable key={button.label} accessibilityRole="button" accessibilityLabel={button.label}
+      <View style={[styles.zoomControls, { top: top + 10, right: side + 12 }]}>{[{ name: 'add' as const, label: 'Zoom in', factor: 1.4 }, { name: 'remove' as const, label: 'Zoom out', factor: 1 / 1.4 }].map((button) => <Pressable key={button.label} accessibilityRole="button" accessibilityLabel={button.label}
         style={[styles.iconButton, surface]} onPress={() => command({ type: 'zoom', factor: button.factor })}><Ionicons name={button.name} size={23} color={theme.text} /></Pressable>)}</View>
-      <View pointerEvents="box-none" style={[styles.legendRow, { bottom: visibleDockHeight + 25 }]}>
+      <View pointerEvents="box-none" style={[styles.legendRow, { bottom: visibleDockHeight + 25, left: side + 16, right: side + 16 }]}>
         <View style={styles.legend}><View style={[styles.dot, { backgroundColor: theme.primary }]} /><Text style={[styles.small, textColor]}>Clothing</Text>
           {preference && <><View style={[styles.tasteDot, { backgroundColor: TASTE_BLUE, borderColor: theme.surface }]} /><Text style={[styles.small, textColor]}>Your taste</Text></>}
         </View>
         {preference && <Pressable accessibilityRole="button" onPress={() => command({ type: 'taste' })} style={[styles.return, surface]}><Ionicons name="locate-outline" size={17} color={theme.text} /><Text style={[styles.small, textColor]}>My taste</Text></Pressable>}
       </View>
-      {selectedId !== null && <View accessibilityLiveRegion="polite" style={[styles.dock, surface]} onLayout={(event) => setDockHeight(event.nativeEvent.layout.height)}>
+      {selectedId !== null && <View accessibilityLiveRegion="polite" style={[styles.dock, surface, { left: side + 12, right: side + 12 }]} onLayout={(event) => setDockHeight(event.nativeEvent.layout.height)}>
           <View style={styles.itemRow}>
             <View style={styles.itemPhoto}><ClothingPhoto key={selectedItem?.imageUrl || String(selectedId)} item={selectedItem} /></View>
             <View style={styles.flex}>{selectedItem ? <>

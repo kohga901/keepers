@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -13,6 +14,7 @@ import { Text, TextInput } from './Text';
 
 import { useAppTheme } from '../hooks/useAppTheme';
 import { TAB_CONTENT_MAX_WIDTH } from '../constants/layout';
+import { Fonts } from '../constants/fonts';
 import { supabase } from '../utils/supabase';
 
 export default function Auth() {
@@ -60,9 +62,9 @@ export default function Auth() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={[styles.headerBlock, { borderColor: theme.border }]}> 
-            <Text style={[styles.title, { color: theme.text }]}>Welcome Back</Text>
-            <Text style={[styles.subtitle, { color: theme.mutedText }]}>Sign in to keep swiping your style picks.</Text>
+          <View style={styles.headerBlock}>
+            <Ionicons name="shirt-outline" size={46} color={theme.primary} accessible={false} />
+            <Text style={[styles.title, { color: theme.text }]}>K E E P E R S</Text>
           </View>
 
           <View
@@ -136,17 +138,15 @@ export default function Auth() {
               style={({ pressed }) => [
                 styles.secondaryButton,
                 {
-                  borderColor: theme.border,
                   opacity: pressed ? 0.92 : 1,
                 },
               ]}
               disabled={loading}
               onPress={signUpWithEmail}
             >
-              <Text style={[styles.secondaryButtonText, { color: theme.mutedText }]}>Create account</Text>
+              <Text style={[styles.secondaryButtonText, { color: theme.text }]}>Create account</Text>
             </Pressable>
 
-            <Text style={[styles.helperText, { color: theme.mutedText }]}>Use the same credentials you registered with in Supabase.</Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -166,20 +166,18 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 28,
-    gap: 18,
+    paddingVertical: 24,
+    gap: 16,
   },
   headerBlock: {
-    gap: 8,
+    alignItems: 'center',
+    gap: 4,
   },
   title: {
-    fontSize: 34,
-    fontWeight: '700',
-    letterSpacing: 0.2,
-  },
-  subtitle: {
-    fontSize: 15,
-    lineHeight: 22,
+    fontFamily: Fonts.black,
+    fontSize: 24,
+    lineHeight: 32,
+    textAlign: 'center',
   },
   card: {
     borderWidth: 1,
@@ -218,7 +216,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   secondaryButton: {
-    borderWidth: 1,
+    minHeight: 44,
     borderRadius: 12,
     paddingVertical: 12,
     alignItems: 'center',
@@ -226,11 +224,6 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     fontSize: 15,
     fontWeight: '600',
-  },
-  helperText: {
-    marginTop: 2,
-    fontSize: 12,
-    lineHeight: 18,
-    textAlign: 'center',
+    textDecorationLine: 'underline',
   },
 });

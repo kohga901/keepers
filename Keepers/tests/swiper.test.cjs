@@ -7,7 +7,7 @@ const row = (id, url = `https://shop.test/${id}`) => ({ item_id: id, item_name: 
 
 // Match the existing graph tests: execute real screen callbacks with deterministic
 // hook scheduling. Native rendering and the third-party gesture engine are boundaries.
-function screen({ recommend = async () => [row(1), row(2)], session = { user: { id: 'alice' } }, platform = 'ios', viewportWidth = 390 } = {}) {
+function screen({ recommend = async () => [row(1), row(2)], session = { user: { id: 'alice' } }, platform = 'ios', viewportWidth = 390, viewportHeight = 844 } = {}) {
   const slots = [], effects = [], timers = [], calls = { feed: [], swipes: [], opened: [], alerts: [], jumps: [] };
   let cursor = 0, dirty = true, tree, header, authChanged;
   const same = (a, b) => a && b && a.length === b.length && a.every((value, i) => Object.is(value, b[i]));
@@ -30,7 +30,7 @@ function screen({ recommend = async () => [row(1), row(2)], session = { user: { 
   const load = createLoader({
     react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx },
     'react-native': { View: 'View', Pressable: 'Pressable', ActivityIndicator: 'Spinner',
-      useWindowDimensions: () => ({ width: viewportWidth, height: 844 }),
+      useWindowDimensions: () => ({ width: viewportWidth, height: viewportHeight }),
       Alert: { alert: (...args) => calls.alerts.push(args) }, Dimensions: { get: () => ({ width: viewportWidth, height: 844 }) },
       Platform: { OS: platform, select: (options) => options[platform] }, StyleSheet: { create: (styles) => styles } },
     'expo-router': { useRouter: () => ({ push() {} }), useNavigation: () => navigation,
@@ -40,6 +40,7 @@ function screen({ recommend = async () => [row(1), row(2)], session = { user: { 
     '../../components/Text': { Text: 'Text' }, '../../components/TagFilter': { TagFilter: 'TagFilter' },
     '../../components/ai/ImageLookupModal': { ImageLookupModal: 'LookupModal' },
     '../../contexts/PriceDisplayContext': { usePriceDisplay: () => ({ showPriceAsTier: false }) },
+    '../../contexts/StackHeaderHeightContext': { useStackHeaderHeight: () => 80 },
     '../../hooks/useAppTheme': { useAppTheme: () => ({ theme: {} }) },
     '../../services/ai': { lookupPurchasableItem: async () => ({}), toAiLookupError: (e) => e },
     '../../services/serverApi': {
@@ -72,6 +73,7 @@ function screen({ recommend = async () => [row(1), row(2)], session = { user: { 
     deck: () => { const node = nodes().find((n) => n.type === 'Swiper'); assert.ok(node, 'Expected an active swipe deck'); return node.props; },
     text: () => nodes().filter((n) => n.type === 'Text').flatMap((n) => n.props.children).join(' '),
     header: () => header(),
+    resize: async (width, height) => { viewportWidth = width; viewportHeight = height; dirty = true; await flush(); },
     filter: (tags) => header().props.children.props.onChange(tags),
     auth: (value) => authChanged('TOKEN_REFRESHED', value),
     refresh: () => nodes().find((n) => n.props.accessibilityLabel === 'Load more items').props.onPress(),
@@ -96,12 +98,31 @@ test('web deck lets mouse gestures reach the swiper and scales thresholds to the
 
 test('signed-in feed maps real item IDs and sends left/right reactions for the displayed cards', async () => {
   const app = screen(); await app.flush();
+  assert.equal(app.deck().cardStyle, undefined);
+  assert.equal(app.deck().containerStyle, undefined);
   assert.deepEqual(plain(app.deck().cards.map((item) => item.id)), ['1', '2']);
   await app.deck().onSwipedRight(0); await app.deck().onSwipedLeft(1);
   assert.deepEqual(app.calls.swipes, [['1', true], ['2', false]]);
   await app.auth({ user: { id: 'alice' } }); await app.flush();
   assert.equal(app.calls.feed.length, 1);
   assert.deepEqual(plain(app.deck().cards.map((item) => item.id)), ['1', '2']);
+});
+
+test('mobile web keeps cards between the bars and updates gestures when the viewport resizes', async () => {
+  const app = screen({ platform: 'web' }); await app.flush();
+  for (const [width, height] of [[390, 844], [390, 500], [844, 390]]) {
+    await app.resize(width, height);
+    const deck = app.deck();
+    assert.equal(deck.cardStyle.height, 'auto');
+    assert.equal(deck.cardStyle.top, 92);
+    assert.equal(deck.cardStyle.bottom, 24);
+    assert.equal(deck.containerStyle.overflow, 'hidden');
+    assert.equal(deck.containerStyle.touchAction, 'none');
+    assert.equal(deck.horizontalThreshold, Math.min(width, 760) / 6);
+    assert.equal(deck.verticalThreshold, height / 5);
+    assert.deepEqual(plain(deck.cards.map(item => item.id)), ['1', '2']);
+  }
+  assert.equal(app.calls.feed.length, 1);
 });
 
 test('signed-out feed never fetches recommendations and removes cards on sign-out', async () => {
