@@ -98,7 +98,7 @@ function historyScreen(getItem = async id => ({ item_id: id, item_name: `Piece $
     'expo-router/react-navigation': { useFocusEffect: focusEffect, getDefaultHeaderHeight: () => 80 },
     'expo-image': { Image: 'Image' }, 'expo-web-browser': {}, '@expo/vector-icons': { Ionicons: 'Icon' },
     'react-native-safe-area-context': { useSafeAreaFrame: () => ({ width: 390 }), useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },
-    'react-native-gesture-handler/ReanimatedSwipeable': 'Swipeable',
+    '../../components/HistorySwipeable': { HistorySwipeable: 'Swipeable' },
     '../../components/Text': { Text: 'Text' }, '../../components/PriceAlertEditor': { PriceAlertEditor: 'PriceAlertEditor' },
     '../../components/PriceAlertsBell': { PriceAlertsBell: 'Bell' },
     '../../contexts/PriceDisplayContext': { usePriceDisplay: () => ({ showPriceAsTier: false }) },
