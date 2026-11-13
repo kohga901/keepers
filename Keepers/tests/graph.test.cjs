@@ -7,7 +7,7 @@ const vm = require('node:vm');
 const ts = require('typescript');
 
 const root = path.resolve(__dirname, '..');
-function load(relative, stubs = {}, discardFunctionSource = false) {
+function load(relative, stubs = {}, discardFunctionSource = false, globals = {}) {
   const filename = path.join(root, relative);
   const code = ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true },
@@ -22,7 +22,7 @@ function load(relative, stubs = {}, discardFunctionSource = false) {
     if (name.endsWith('data/nodeData.json')) return require(path.join(root, 'data/nodeData.json'));
     if (name === 'react-native') return { StyleSheet: { create: (styles) => styles, absoluteFill: {} } };
     return {};
-  }, console, URL, AbortController, setTimeout, clearTimeout });
+  }, console, URL, AbortController, setTimeout, clearTimeout, ...globals });
   if (discardFunctionSource) vm.runInContext('Function.prototype.toString = function () { return "function () { [bytecode] }"; };', context);
   vm.runInContext(code, context, { filename });
   return module.exports;
@@ -107,28 +107,125 @@ test('uncertain like response blocks further training until history reconciliati
   assert.equal(likes.begin(1), false); assert.equal(likes.begin(2), true);
 });
 
-function renderer(preference = null, positions = catalog, builder = buildPlotHtml) {
+function renderer(preference = null, positions = catalog, builder = buildPlotHtml, platform = 'native') {
   const html = builder(positions), script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
   const messages = [], callbacks = [], listeners = new Map(), arcs = [];
   let now = 1000;
   const ctx = new Proxy({}, { get: (_, name) => name === 'arc' ? (...args) => arcs.push(args) : () => {} });
   const canvas = { getContext: () => ctx, addEventListener: (name, fn) => listeners.set(name, fn),
     setPointerCapture() {}, getBoundingClientRect: () => ({ left: 0, top: 0 }) };
-  const window = { devicePixelRatio: 1, ReactNativeWebView: { postMessage: (message) => messages.push(JSON.parse(message)) } };
+  let receive;
+  const parent = { postMessage: (event) => {
+    assert.equal(event.type, 'keepers-map-event');
+    messages.push(JSON.parse(event.data));
+  } };
+  const window = platform === 'web'
+    ? { devicePixelRatio: 1, parent, addEventListener: (name, fn) => { assert.equal(name, 'message'); receive = fn; } }
+    : { devicePixelRatio: 1, ReactNativeWebView: { postMessage: (message) => messages.push(JSON.parse(message)) } };
   vm.runInNewContext(script, { window, document: { getElementById: () => canvas },
     requestAnimationFrame: (fn) => callbacks.push(fn), setTimeout: (fn) => callbacks.push(fn), Date: { now: () => now } });
   const config = { type: 'configure', initialize: true, layout, preference,
     colors: { background: '#f2ebdd', grid: '#d9e2dc', point: '#6d9773', selected: '#ffba00', preference: '#24a7ff', text: '#1e6b4c', surface: '#fff' } };
   function flush() { for (let i = 0; callbacks.length && i < 20; i++) { now += 50; callbacks.shift()(); } }
-  function command(message) { window.keepersMap(message); flush(); }
+  function browserMessage(event) { receive(event); flush(); }
+  function command(message) {
+    if (platform === 'web') browserMessage({ source: parent, data: { type: 'keepers-map-command', message } });
+    else { window.keepersMap(message); flush(); }
+  }
   command(config);
-  return { messages, config, arcs, command, flush,
+  return { messages, config, arcs, command, flush, browserMessage, parent,
     frame: () => messages.filter((m) => m.type === 'frame').at(-1),
     event: (name, props) => { listeners.get(name)({ preventDefault() {}, ...props }); flush(); } };
 }
 test('actual WebView script starts without a fabricated taste marker', () => {
   const app = renderer(); assert.equal(app.messages[0].type, 'ready');
   assert.equal(app.frame().mode, 'whole'); assert.equal(app.frame().taste, null); assert.equal(app.frame().count, catalog.length);
+});
+test('browser bridge shares rendering, gestures and selection and rejects messages from other windows', () => {
+  const app = renderer({ x: 0, y: 0 }, catalog, buildPlotHtml, 'web');
+  assert.equal(app.messages[0].type, 'ready');
+  assert.equal(app.frame().mode, 'focus');
+  app.command({ type: 'connect' });
+  assert.equal(app.messages.at(-1).type, 'ready');
+  const count = app.frame().count;
+  app.browserMessage({ source: {}, data: { type: 'keepers-map-command', message: { type: 'mode', mode: 'whole' } } });
+  app.browserMessage({ source: app.parent, data: { type: 'unrelated', message: { type: 'mode', mode: 'whole' } } });
+  app.browserMessage({ source: app.parent, data: { type: 'keepers-map-command', message: null } });
+  assert.equal(app.frame().count, count);
+  app.command({ type: 'zoom', factor: 1 / 1.4 });
+  assert.ok(app.frame().count > count);
+  const before = app.frame().taste;
+  app.event('pointerdown', { pointerId: 1, clientX: 100, clientY: 300 });
+  app.event('pointermove', { pointerId: 1, clientX: 120, clientY: 310 });
+  app.event('pointerup', { pointerId: 1, clientX: 120, clientY: 310 });
+  close(app.frame().taste.x, before.x + 20); close(app.frame().taste.y, before.y + 10);
+  app.command({ type: 'next' });
+  assert.ok(app.messages.some((m) => m.type === 'select'));
+  app.command({ type: 'mode', mode: 'whole' });
+  assert.equal(app.frame().count, catalog.length);
+});
+
+function canvasComponent(platform) {
+  const effects = [], listeners = new Map(), messages = [], scripts = [], errors = [], received = [];
+  const host = { contentWindow: { postMessage: (...args) => messages.push(args) }, injectJavaScript: (script) => scripts.push(script) };
+  const ref = { current: null };
+  const hooks = {
+    useRef: () => ({ current: host }),
+    useImperativeHandle: (target, create) => { target.current = create(); },
+    useLayoutEffect: (effect) => effects.push(effect()),
+  };
+  const jsx = (type, props) => ({ type, props });
+  const component = load(`components/graph/GraphCanvas${platform === 'web' ? '.web' : ''}.tsx`, {
+    react: hooks, 'react/jsx-runtime': { jsx }, 'react-native-webview': { WebView: 'WebView' },
+  }, false, { window: {
+    addEventListener: (name, listener) => listeners.set(name, listener),
+    removeEventListener: (name, listener) => { assert.equal(listeners.get(name), listener); listeners.delete(name); },
+  } }).default;
+  const source = { html: buildPlotHtml(catalog) };
+  const tree = component({ ref, source, onMessage: (data) => received.push(data), onError: () => errors.push(true) });
+  return { tree, source, host, ref, messages, scripts, received, errors,
+    receive: (event) => listeners.get('message')(event),
+    cleanup: () => { effects.forEach((cleanup) => cleanup?.()); assert.equal(listeners.size, 0); } };
+}
+
+test('web canvas uses an isolated iframe, reconnects after load, filters events and cleans up', () => {
+  const app = canvasComponent('web');
+  assert.equal(app.tree.type, 'iframe');
+  assert.equal(app.tree.props.srcDoc, app.source.html);
+  assert.equal(app.tree.props.sandbox, 'allow-scripts');
+  assert.ok(app.tree.props.title);
+  app.tree.props.onLoad();
+  assert.equal(app.messages[0][0].message.type, 'connect');
+  app.ref.current.send({ type: 'zoom', factor: 1.4 });
+  assert.equal(app.messages[1][0].type, 'keepers-map-command');
+  assert.equal(app.messages[1][0].message.factor, 1.4);
+  const data = { type: 'keepers-map-event', data: '{"type":"ready"}' };
+  app.receive({ source: {}, data });
+  app.receive({ source: app.host.contentWindow, data: { ...data, type: 'other' } });
+  app.receive({ source: app.host.contentWindow, data: { ...data, data: {} } });
+  assert.equal(app.received.length, 0);
+  app.receive({ source: app.host.contentWindow, data });
+  assert.deepEqual(app.received, [data.data]);
+  app.tree.props.onError(); assert.equal(app.errors.length, 1);
+  app.cleanup();
+});
+
+test('native canvas retains the WebView, safe command injection, navigation policy and process errors', () => {
+  const app = canvasComponent('native');
+  assert.equal(app.tree.type, 'WebView');
+  assert.equal(app.tree.props.source, app.source);
+  app.ref.current.send({ type: 'select', value: '</script>' });
+  assert.ok(!app.scripts[0].includes('</script>'));
+  const commands = [];
+  vm.runInNewContext(app.scripts[0], { window: { keepersMap: (message) => commands.push(message) } });
+  assert.equal(commands[0].value, '</script>');
+  app.tree.props.onMessage({ nativeEvent: { data: '{"type":"ready"}' } });
+  assert.deepEqual(app.received, ['{"type":"ready"}']);
+  assert.equal(app.tree.props.scrollEnabled, false);
+  for (const url of ['about:blank', 'about:srcdoc']) assert.equal(app.tree.props.onShouldStartLoadWithRequest({ url }), true);
+  assert.equal(app.tree.props.onShouldStartLoadWithRequest({ url: 'https://example.com' }), false);
+  for (const name of ['onError', 'onContentProcessDidTerminate', 'onRenderProcessGone']) app.tree.props[name]();
+  assert.equal(app.errors.length, 3);
 });
 test('WebView still renders when Hermes discards function source', () => {
   const builder = load('app/(tabs)/graph.tsx', {}, true).buildPlotHtml;
@@ -279,7 +376,7 @@ function nativeScreen(overrides = {}) {
     } },
   };
   const jsx = (type, props) => {
-    if (type === 'WebView' && props.ref) props.ref.current = { injectJavaScript: (script) => calls.scripts.push(script) };
+    if (type === 'GraphCanvas' && props.ref) props.ref.current = { send: (message) => calls.scripts.push(JSON.stringify(message)) };
     return { type, props: props || {} };
   };
   const theme = load('constants/theme.ts').lightTheme;
@@ -288,7 +385,7 @@ function nativeScreen(overrides = {}) {
     'react-native': { View: 'View', Pressable: 'Pressable', Switch: 'Switch', ActivityIndicator: 'Spinner', Alert: { alert() {} }, StyleSheet: { create: (x) => x, absoluteFill: {} } },
     '@expo/vector-icons/Ionicons': 'Icon', 'expo-image': { Image: 'Image' },
     'expo-router': { router: { push() {} } }, 'expo-web-browser': { openBrowserAsync: async () => {} },
-    'react-native-webview': { WebView: 'WebView' },
+    '../../components/graph/GraphCanvas': { default: 'GraphCanvas', __esModule: true },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 24 }), useSafeAreaFrame: () => ({ width: 390, height: 844 }) },
     'expo-router/react-navigation': { getDefaultHeaderHeight: () => 80, useIsFocused: () => focused,
       useFocusEffect: (fn) => hooks.useEffect(() => focused ? fn() : undefined, [focused, fn]) },
@@ -323,7 +420,7 @@ function nativeScreen(overrides = {}) {
   } throw new Error('Screen did not settle'); }
   return { calls, flush, find, nodes,
     text: () => nodes().filter((n) => n.type === 'Text').map((n) => n.props.children).flat().join(' '),
-    async select(id) { find((n) => n.type === 'WebView').props.onMessage({ nativeEvent: { data: JSON.stringify({ type: 'select', id }) } }); await flush(); },
+    async select(id) { find((n) => n.type === 'GraphCanvas').props.onMessage(JSON.stringify({ type: 'select', id })); await flush(); },
     async press(label) { find((n) => n.type === 'Pressable' && n.props.accessibilityLabel === label).props.onPress(); await flush(); },
     async focus(value) { focused = value; dirty = true; await flush(); },
     async isolatePhoto() {
@@ -344,7 +441,7 @@ test('screen puts working graph mode controls in its safe-area header', async ()
   assert.equal(headerChildren[1].props.children.props.accessibilityLabel, 'Image previews');
   assert.equal(headerChildren[1].props.children.props.style.alignSelf, 'center');
   assert.deepEqual(Array.from(modes, (button) => button.props.children.props.children), ['Focus area', 'Whole graph']);
-  app.find((n) => n.type === 'WebView').props.onMessage({ nativeEvent: { data: '{"type":"ready"}' } });
+  app.find((n) => n.type === 'GraphCanvas').props.onMessage('{"type":"ready"}');
   for (const [i, mode] of ['focus', 'whole'].entries()) {
     assert.equal(modes[i].props.style[0].width, 130);
     assert.equal(modes[i].props.style[0].paddingVertical, 6);
@@ -372,9 +469,9 @@ test('preview toggle hides and restores thumbnails without resetting the map or 
   const app = nativeScreen(); await app.flush();
   app.find((n) => n.type === 'View' && n.props.onLayout).props.onLayout({ nativeEvent: { layout: { width: 390, height: 660 } } });
   await app.flush();
-  const message = (payload) => app.find((n) => n.type === 'WebView').props.onMessage({ nativeEvent: { data: JSON.stringify(payload) } });
+  const message = (payload) => app.find((n) => n.type === 'GraphCanvas').props.onMessage(JSON.stringify(payload));
   message({ type: 'ready' });
-  const source = app.find((n) => n.type === 'WebView').props.source;
+  const source = app.find((n) => n.type === 'GraphCanvas').props.source;
   const frame = (id) => ({ type: 'frame', mode: 'focus', count: 4, nearTaste: false, previews: [{ clothesId: id, x: 50, y: 240 }], taste: null });
   message(frame(1)); await app.flush();
   assert.ok(app.nodes().some((n) => n.props.accessibilityLabel === 'Open Piece 1'));
@@ -397,7 +494,7 @@ test('preview toggle hides and restores thumbnails without resetting the map or 
   assert.equal(app.calls.scripts.length, scripts + 2);
   assert.ok(app.calls.scripts.at(-2).includes('"showPreviews":false'));
   assert.ok(app.calls.scripts.at(-1).includes('"showPreviews":true'));
-  assert.equal(app.find((n) => n.type === 'WebView').props.source, source);
+  assert.equal(app.find((n) => n.type === 'GraphCanvas').props.source, source);
   assert.ok(!app.text().includes('Widen area'));
 });
 
