@@ -66,7 +66,7 @@ test('server errors are sanitized and do not direct users to enter API keys', as
 });
 
 test('malformed responses and unsafe result links cannot become UI results', async () => {
-  for (const body of [null, {}, { ...result, searchLinks: [{ ...result.searchLinks[0], url: 'javascript:alert(1)' }] }]) {
+  for (const body of [null, {}, { ...result, provider: 'unsupported' }, { ...result, searchLinks: [{ ...result.searchLinks[0], url: 'javascript:alert(1)' }] }]) {
     const app = fixture({ fetch: async () => response(200, body) });
     await assert.rejects(app.api.lookupPurchasableItem({ itemId: '1' }), { code: 'unknown' });
   }

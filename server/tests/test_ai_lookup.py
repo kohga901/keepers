@@ -166,18 +166,16 @@ class AiLookupTests(BackendTest):
         self.assertEqual(result["provider"], "openai")
         self.assertEqual(result["sources"], [{"url": "https://shop.test/item", "title": "Source"}])
 
-    def test_anthropic_research_and_formatting_are_separate_requests(self):
-        calls = []
-        def handler(request):
-            self.assertEqual(request.headers["x-api-key"], "server-secret")
-            payload = json.loads(request.content)
-            calls.append(payload)
-            text = "A blue shirt https://shop.test/item" if len(calls) == 1 else json.dumps(OUTPUT)
-            return httpx.Response(200, json={"stop_reason": "end_turn", "content": [{"type": "text", "text": text}]})
-        self.assertEqual(self.provider_call("anthropic", handler)["provider"], "anthropic")
-        self.assertIn("tools", calls[0])
-        self.assertNotIn("tools", calls[1])
-        self.assertEqual(calls[1]["output_config"]["format"]["type"], "json_schema")
+    def test_unsupported_provider_is_rejected_without_making_provider_requests(self):
+        with patch.dict(os.environ, {"AI_LOOKUP_PROVIDER": "unsupported"}), \
+                patch.object(ai, "_lookup_provider") as paid:
+            self.assertEqual(self.lookup().status_code, 503)
+            paid.assert_not_called()
+        with patch.object(ai, "_post") as paid:
+            with self.assertRaises(ai.LookupError) as raised:
+                self.provider_call("unsupported", lambda request: self.fail("Unexpected provider request"))
+            self.assertEqual(raised.exception.code, "unavailable")
+            paid.assert_not_called()
 
     def test_provider_errors_and_invalid_output_never_expose_raw_response(self):
         for status, code in [(401, "unavailable"), (404, "unavailable"), (429, "quota"), (500, "unknown")]:
