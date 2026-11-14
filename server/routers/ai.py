@@ -1,5 +1,6 @@
 """Authenticated AI shopping lookup for the mobile and web apps."""
 import logging
+import threading
 
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
@@ -9,20 +10,34 @@ from services import ai_lookup_service
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/ai", tags=["ai"])
+# Leave worker threads available to the rest of the API, including on cache waiters.
+_request_slots = threading.BoundedSemaphore(20)
 
 
 class LookupRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    item_id: int = Field(gt=0)
+    model_config = ConfigDict(extra="forbid", strict=True)
+    item_id: int = Field(gt=0, le=2 ** 53 - 1)
     max_results: int = Field(default=5, ge=1, le=8)
 
 
 @router.post("/lookup")
 def lookup(req: LookupRequest, authorization: str | None = Header(default=None)):
+    if not _request_slots.acquire(blocking=False):
+        raise HTTPException(429, detail={"code": "busy"}, headers={"Retry-After": "30"})
+    try:
+        return _lookup(req, authorization)
+    finally:
+        _request_slots.release()
+
+
+def _lookup(req, authorization):
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(401, detail={"code": "unauthorized"})
+    token = authorization[7:].strip()
+    if not token or len(token) > 8192 or any(character.isspace() for character in token):
+        raise HTTPException(401, detail={"code": "unauthorized"})
     try:
-        identity = supabase.auth.get_user(authorization[7:].strip())
+        identity = supabase.auth.get_user(token)
     except Exception:
         raise HTTPException(401, detail={"code": "unauthorized"}) from None
     if not identity or not identity.user:

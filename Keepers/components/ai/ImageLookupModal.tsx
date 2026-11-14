@@ -17,7 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppTheme } from '../../hooks/useAppTheme';
 import { TAB_CONTENT_MAX_WIDTH } from '../../constants/layout';
 import type { Item } from '../../models/Items';
-import type { AiLookupErrorCode, ImageLookupResult } from '../../services/ai';
+import { isSafeLookupUrl, type AiLookupErrorCode, type ImageLookupResult } from '../../services/ai';
 
 type ImageLookupModalProps = {
   errorCode: AiLookupErrorCode | null;
@@ -29,16 +29,8 @@ type ImageLookupModalProps = {
   result: ImageLookupResult | null;
 };
 
-function isSafeExternalUrl(value: string): boolean {
-  try {
-    return new URL(value).protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
-
 async function openExternalUrl(url: string) {
-  if (!isSafeExternalUrl(url)) {
+  if (!isSafeLookupUrl(url)) {
     Alert.alert('Link unavailable', 'Keepers blocked a link that was not a secure HTTPS address.');
     return;
   }
@@ -272,7 +264,7 @@ export function ImageLookupModal({
 
               <Text style={[styles.disclaimer, { color: theme.mutedText }]}>
                 {result.searchLinks.length > 0
-                  ? 'Gemini identified the item, and Keepers generated these marketplace searches locally. They are not verified listings. Check the product, seller, price, condition, and return policy before purchasing.'
+                  ? 'Gemini identified the item, and the Keepers server generated these marketplace searches. They are not verified listings. Check the product, seller, price, condition, and return policy before purchasing.'
                   : 'AI can misidentify products and sellers can change prices or availability. Verify the photo, seller, condition, price, and return policy before purchasing.'}
               </Text>
             </View>

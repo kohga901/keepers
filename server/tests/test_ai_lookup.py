@@ -10,6 +10,7 @@ import httpx
 
 from tests.support import BackendTest, app, store
 from services import ai_lookup_service as ai
+from routers import ai as ai_router
 
 
 IDENTIFIED = {"name": "Shirt & jacket", "brand": "unknown", "category": "tops",
@@ -267,3 +268,97 @@ class AiLookupTests(BackendTest):
                     patch.object(ai.socket, "getaddrinfo", return_value=addresses):
                 with self.assertRaises(ai.LookupError):
                     ai._image_data(client, "https://example.test/image")
+
+    def test_image_download_pins_validated_ip_and_preserves_tls_hostname(self):
+        def handler(request):
+            self.assertEqual(request.url.host, "8.8.8.8")
+            self.assertEqual(request.headers["host"], "example.test")
+            self.assertEqual(request.extensions["sni_hostname"], "example.test")
+            self.assertEqual(request.headers["accept-encoding"], "identity")
+            return httpx.Response(200, headers={"content-type": "image/jpeg"}, content=b"image")
+        with httpx.Client(transport=httpx.MockTransport(handler)) as client, \
+                patch.object(ai.socket, "getaddrinfo", return_value=[(0, 0, 0, "", ("8.8.8.8", 443))]) as dns:
+            self.assertEqual(ai._image_data(client, "https://example.test/image")["data"], "aW1hZ2U=")
+            dns.assert_called_once()
+
+    def test_empty_bearer_never_uses_an_implicit_server_session(self):
+        with patch.object(store.auth, "get_user", return_value=type("Session", (), {
+                "user": type("User", (), {"id": "alice"})()})()) as auth, \
+                patch.object(ai, "_lookup_provider", return_value=RESULT) as paid:
+            self.assertEqual(self.lookup(token="   ").status_code, 401)
+            auth.assert_not_called()
+            paid.assert_not_called()
+
+    def test_request_integers_are_strict_and_bounded(self):
+        with patch.object(ai, "_lookup_provider") as paid:
+            for item in (True, "1", 1.0, 2 ** 63):
+                self.assertEqual(self.lookup(item).status_code, 422)
+            for count in (True, "2", 2.0):
+                self.assertEqual(self.lookup(max_results=count).status_code, 422)
+            paid.assert_not_called()
+
+    def test_malformed_provider_envelopes_trigger_safe_fallback(self):
+        for body in ([], None, {"status": "completed", "output": [None]},
+                     {"status": "completed", "output": [{"type": "message", "content": [None]}]}):
+            with self.assertRaises(ai.LookupError) as raised:
+                self.provider_call("openai", lambda request: httpx.Response(200, json=body))
+            self.assertEqual(raised.exception.code, "unknown")
+
+    def test_busy_lookup_rejects_before_authentication_and_always_releases_capacity(self):
+        slots = threading.BoundedSemaphore(1)
+        with patch.object(ai_router, "_request_slots", slots), \
+                patch.object(store.auth, "get_user", wraps=store.auth.get_user) as auth, \
+                patch.object(ai, "_lookup_provider", return_value=RESULT):
+            slots.acquire()
+            try:
+                response = self.lookup()
+                self.assertEqual(response.status_code, 429)
+                self.assertEqual(response.json(), {"detail": {"code": "busy"}})
+                auth.assert_not_called()
+            finally:
+                slots.release()
+            self.assertEqual(self.lookup(token="expired").status_code, 401)
+            self.assertEqual(self.lookup().status_code, 200)
+
+    def test_image_dns_rejects_mixed_public_private_and_ipv6_addresses(self):
+        for ips in (("8.8.8.8", "10.0.0.1"), ("::1",), ("::ffff:127.0.0.1",), ("169.254.169.254",), ()):
+            with self.subTest(ips=ips), \
+                    httpx.Client(transport=httpx.MockTransport(lambda req: self.fail("Unsafe image fetched"))) as client, \
+                    patch.object(ai.socket, "getaddrinfo", return_value=[(0, 0, 0, "", (ip, 443)) for ip in ips]):
+                with self.assertRaises(ai.LookupError) as raised:
+                    ai._image_data(client, "https://example.test/image")
+                self.assertEqual(raised.exception.code, "invalid_image")
+
+    def test_image_stream_is_time_bounded_and_rejects_compression(self):
+        addresses = [(0, 0, 0, "", ("8.8.8.8", 443))]
+        for headers, code in (({"content-type": "image/jpeg", "content-encoding": "gzip"}, "invalid_image"),
+                              ({"content-type": "image/jpeg"}, "timeout")):
+            response = httpx.Response(200, headers=headers, stream=httpx.ByteStream(b"image"))
+            with httpx.Client(transport=httpx.MockTransport(lambda req: response)) as client, \
+                    patch.object(ai.socket, "getaddrinfo", return_value=addresses), \
+                    patch.object(ai.time, "monotonic", side_effect=[0, 16]):
+                with self.assertRaises(ai.LookupError) as raised:
+                    ai._image_data(client, "https://example.test/image")
+                self.assertEqual(raised.exception.code, code)
+
+    def test_cache_wait_timeout_is_reported_as_timeout(self):
+        from concurrent.futures import Future
+        waiting = Future()
+        with patch.object(ai, "_lookup_provider", return_value=RESULT):
+            self.assertEqual(self.lookup().status_code, 200)
+        with ai._lock:
+            cache_key = next(iter(ai._cache))
+            ai._cache.clear()
+            ai._in_flight[cache_key] = waiting
+        with patch.object(waiting, "result", side_effect=TimeoutError):
+            response = self.lookup()
+        self.assertEqual(response.status_code, 504)
+        self.assertEqual(response.json(), {"detail": {"code": "timeout"}})
+
+    def test_provider_clients_ignore_environment_proxies_and_credentials(self):
+        transport = httpx.MockTransport(lambda request: httpx.Response(500))
+        original_client = httpx.Client
+        with patch.object(ai.httpx, "Client", side_effect=lambda **kwargs: original_client(transport=transport, **kwargs)) as client:
+            with self.assertRaises(ai.LookupError):
+                ai._lookup_provider("openai", "test-model", "server-secret", "https://example.test/image", "Shirt", 2)
+            self.assertFalse(client.call_args.kwargs["trust_env"])

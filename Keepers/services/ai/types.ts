@@ -34,7 +34,20 @@ export const modelLookupSchema = z.object({
   listings: z.array(modelListingSchema).max(10),
 });
 
-const httpsUrlSchema = z.string().max(2_048).url().refine((value) => new URL(value).protocol === 'https:');
+export function isSafeLookupUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return /^https:\/\//i.test(value) && !!url.hostname && !url.username && !url.password
+      && !value.split('/')[2]?.includes('@') && (!url.port || url.port === '443')
+      && ![...value].some((character) => /\s/.test(character) || character.charCodeAt(0) < 32
+        || character.charCodeAt(0) === 127 || character === '\\');
+  } catch {
+    return false;
+  }
+}
+
+// Validate the original input before URL parsers can strip controls or userinfo.
+const httpsUrlSchema = z.string().max(2_048).refine(isSafeLookupUrl);
 
 export const imageLookupResultSchema = modelLookupSchema.extend({
   provider: aiProviderSchema,

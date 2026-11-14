@@ -99,9 +99,9 @@ def _https_url(value):
         return None
     try:
         parsed = urlsplit(value)
-        if (parsed.scheme == "https" and parsed.hostname and not parsed.username
-                and not parsed.password and parsed.port in (None, 443)
-                and not any(character.isspace() or ord(character) < 32 for character in value)
+        if (parsed.scheme == "https" and parsed.hostname and "@" not in parsed.netloc
+                and parsed.port in (None, 443)
+                and not any(character.isspace() or ord(character) < 32 or ord(character) == 127 for character in value)
                 and "\\" not in value):
             return value
     except ValueError:
@@ -142,7 +142,10 @@ def lookup_item(user_id, item, max_results=5):
             future = _in_flight[cache_key] = Future()
 
     if not owner:
-        return future.result(timeout=100)
+        try:
+            return future.result(timeout=100)
+        except TimeoutError:
+            raise LookupError("timeout", 504) from None
     try:
         result = _lookup_with_fallback(model, api_key, image_url, hint, max_results)
         with _lock:
@@ -185,21 +188,31 @@ def _post(client, url, headers, payload):
 
 
 def _image_data(client, image_url):
-    # Only catalog URLs reach this function, never a URL supplied by a caller.
-    host = urlsplit(image_url).hostname
+    if not _https_url(image_url):
+        raise LookupError("invalid_image", 422)
+    url = httpx.URL(image_url)
+    host = url.raw_host.decode("ascii")
     addresses = socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
     if not addresses or any(not ipaddress.ip_address(address[4][0]).is_global for address in addresses):
         raise LookupError("invalid_image", 422)
-    # Reject redirects and cap the download before sending inline image data to Gemini.
-    with client.stream("GET", image_url, timeout=10) as response:
+    # Pin the checked address so a second DNS answer cannot redirect us into the private network.
+    # Preserve the original Host and TLS certificate verification/SNI for the image CDN.
+    pinned_url = url.copy_with(host=addresses[0][4][0])
+    deadline = time.monotonic() + 15
+    with client.stream("GET", pinned_url, timeout=10, follow_redirects=False,
+                       headers={"Host": url.netloc.decode("ascii"), "Accept-Encoding": "identity"},
+                       extensions={"sni_hostname": host}) as response:
         mime = response.headers.get("content-type", "").split(";")[0].strip().lower()
-        if response.status_code != 200 or mime not in ("image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"):
+        if (response.status_code != 200 or mime not in ("image/jpeg", "image/png", "image/webp", "image/heic", "image/heif")
+                or response.headers.get("content-encoding", "identity").lower() != "identity"):
             raise LookupError("invalid_image", 422)
         data = bytearray()
         for chunk in response.iter_bytes():
-            data.extend(chunk)
-            if len(data) > 8 * 1024 * 1024:
+            if time.monotonic() >= deadline:
+                raise LookupError("timeout", 504)
+            if len(data) + len(chunk) > 8 * 1024 * 1024:
                 raise LookupError("invalid_image", 422)
+            data.extend(chunk)
         if not data:
             raise LookupError("invalid_image", 422)
     return {"mimeType": mime, "data": base64.b64encode(data).decode("ascii")}
@@ -231,7 +244,7 @@ For non-fashion images, return no listings and explain why."""
 
 def _lookup_provider(provider, model, api_key, image_url, hint, max_results):
     try:
-        with httpx.Client(timeout=40, follow_redirects=False) as client:
+        with httpx.Client(timeout=40, follow_redirects=False, trust_env=False) as client:
             if provider == "google":
                 return _google(client, model, api_key, image_url, hint, max_results)
             if provider == "openai":
@@ -245,7 +258,7 @@ def _lookup_provider(provider, model, api_key, image_url, hint, max_results):
         raise LookupError("timeout", 504) from None
     except (httpx.RequestError, OSError):
         raise LookupError("network", 502) from None
-    except (ValueError, KeyError, IndexError, TypeError):
+    except (ValueError, KeyError, IndexError, TypeError, AttributeError):
         raise LookupError("unknown", 502) from None
 
 

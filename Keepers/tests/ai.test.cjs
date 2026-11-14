@@ -8,14 +8,14 @@ const result = {
   searchLinks: [{ marketplace: 'eBay', query: 'blue shirt', title: 'Search eBay', url: 'https://www.ebay.com/sch/i.html?_nkw=blue' }],
 };
 const response = (status, body) => ({ ok: status >= 200 && status < 300, status, json: async () => body });
-function fixture({ fetch: request, sessionError = null, token = 'session-token', globals = {} } = {}) {
+function fixture({ fetch: request, sessionError = null, token = 'session-token', globals = {}, serverUrl = 'https://keepers.test/' } = {}) {
   const calls = [];
   let currentToken = token;
   const load = createLoader({
     '../../utils/supabase': { supabase: { auth: { getSession: async () => ({
       data: { session: currentToken ? { access_token: currentToken } : null }, error: sessionError,
     }) } } },
-    '../serverApi': { SERVER_BASE_URL: 'https://keepers.test/' },
+    '../serverApi': { SERVER_BASE_URL: serverUrl },
     'react-native': new Proxy({}, { get() { throw new Error('AI lookup must work without native APIs'); } }),
   }, { fetch: async (...args) => { calls.push(args); return request ? request(...args) : response(200, result); }, ...globals });
   return { api: load('services/ai/index.ts'), calls, setToken(value) { currentToken = value; } };
@@ -29,10 +29,31 @@ test('mobile and web lookup use the server with the current session and only a c
   assert.equal(options.headers.Authorization, 'Bearer session-token');
   assert.deepEqual(JSON.parse(options.body), { item_id: 12, max_results: 3 });
   assert.equal(options.method, 'POST');
+  assert.equal(options.redirect, 'error');
   app.setToken('another-session');
   await app.api.lookupPurchasableItem({ itemId: '12' });
   assert.equal(app.calls[1][1].headers.Authorization, 'Bearer another-session');
   assert.equal(JSON.parse(app.calls[1][1].body).max_results, 5);
+});
+
+test('lookup refuses unsafe backend destinations before sending a bearer token', async () => {
+  for (const serverUrl of ['', 'http://keepers.test', 'https://user:pass@keepers.test',
+    'https://keepers.test?forward=elsewhere', 'https://keepers.test#fragment']) {
+    const app = fixture({ serverUrl });
+    await assert.rejects(app.api.lookupPurchasableItem({ itemId: '1' }), { code: 'unavailable' });
+    assert.equal(app.calls.length, 0);
+  }
+  const dev = fixture({ serverUrl: 'http://localhost:8000', globals: { __DEV__: true } });
+  await dev.api.lookupPurchasableItem({ itemId: '1' });
+  assert.equal(dev.calls[0][0], 'http://localhost:8000/ai/lookup');
+});
+
+test('non-finite result limits never produce an invalid JSON request', async () => {
+  const app = fixture();
+  for (const maxResults of [NaN, Infinity, -Infinity]) {
+    await assert.rejects(app.api.lookupPurchasableItem({ itemId: '1', maxResults }), { code: 'invalid_image' });
+  }
+  assert.equal(app.calls.length, 0);
 });
 
 test('invalid catalog IDs, signed-out sessions and pre-cancelled requests never send a lookup', async () => {
@@ -72,6 +93,18 @@ test('malformed responses and unsafe result links cannot become UI results', asy
   }
   const offline = fixture({ fetch: async () => { throw new TypeError('connection failed'); } });
   await assert.rejects(offline.api.lookupPurchasableItem({ itemId: '1' }), { code: 'network' });
+});
+
+test('result links reject embedded credentials, controls, backslashes and custom ports', async () => {
+  for (const url of ['https://user:pass@shop.test/item', 'https://shop.test:8443/item',
+    'https://shop.test/\\evil', 'https://shop.test/\nitem', 'https://@shop.test/item']) {
+    for (const field of ['listings', 'sources', 'searchLinks']) {
+      const entry = field === 'listings' ? { title: 'Shirt', seller: 'Shop', displayedPrice: 'unknown',
+        condition: 'new', matchType: 'similar', confidence: .5, evidence: 'Cut', sourceBacked: false } : result.searchLinks[0];
+      const app = fixture({ fetch: async () => response(200, { ...result, [field]: [{ ...entry, url }] }) });
+      await assert.rejects(app.api.lookupPurchasableItem({ itemId: '1' }), { code: 'unknown' });
+    }
+  }
 });
 
 test('dismissing a lookup cancels the HTTP request and a later retry can succeed', async () => {

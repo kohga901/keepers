@@ -19,15 +19,30 @@ export async function lookupPurchasableItem(input: ImageLookupInput): Promise<Im
 
   try {
     if (input.signal?.aborted) throw new AiLookupError('cancelled');
+    let server: URL;
+    try {
+      server = new URL(SERVER_BASE_URL);
+      if ((server.protocol !== 'https:' && !(__DEV__ && server.protocol === 'http:'))
+          || server.username || server.password || server.search || server.hash
+          || SERVER_BASE_URL.split('/')[2]?.includes('@')
+          || [...SERVER_BASE_URL].some((character) => /\s/.test(character) || character === '\\')) {
+        throw new Error('Invalid backend URL');
+      }
+    } catch {
+      throw new AiLookupError('unavailable');
+    }
     const itemId = Number(input.itemId);
     if (!Number.isSafeInteger(itemId) || itemId <= 0) throw new AiLookupError('invalid_image');
+    const maxResults = input.maxResults ?? 5;
+    if (!Number.isFinite(maxResults)) throw new AiLookupError('invalid_image');
     const { data, error } = await supabase.auth.getSession();
     if (controller.signal.aborted) throw new AiLookupError(timedOut ? 'timeout' : 'cancelled');
     if (error || !data.session?.access_token) throw new AiLookupError('unauthorized');
-    const response = await fetch(`${SERVER_BASE_URL.replace(/\/$/, '')}/ai/lookup`, {
+    const response = await fetch(`${server.href.replace(/\/$/, '')}/ai/lookup`, {
       method: 'POST',
+      redirect: 'error',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session.access_token}` },
-      body: JSON.stringify({ item_id: itemId, max_results: Math.min(8, Math.max(1, Math.floor(input.maxResults ?? 5))) }),
+      body: JSON.stringify({ item_id: itemId, max_results: Math.min(8, Math.max(1, Math.floor(maxResults))) }),
       signal: controller.signal,
     });
     const body = await response.json().catch(() => null);
