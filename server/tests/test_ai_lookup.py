@@ -15,13 +15,13 @@ from services import ai_lookup_service as ai
 IDENTIFIED = {"name": "Shirt & jacket", "brand": "unknown", "category": "tops",
               "colors": ["blue"], "identifiers": ["A/B"]}
 OUTPUT = {"identifiedItem": IDENTIFIED, "searchSummary": "A blue shirt", "listings": []}
-RESULT = {**OUTPUT, "provider": "google", "model": "test-model", "sources": [], "searchLinks": []}
+RESULT = {**OUTPUT, "provider": "openai", "model": "test-model", "sources": [], "searchLinks": []}
 
 
 class AiLookupTests(BackendTest):
     def setUp(self):
         super().setUp()
-        patch.dict(os.environ, {"AI_LOOKUP_PROVIDER": "google", "AI_LOOKUP_MODEL": "test-model",
+        patch.dict(os.environ, {"AI_LOOKUP_MODEL": "test-model", "OPENAI_API_KEY": "server-secret",
                                 "GOOGLE_AI_API_KEY": "server-secret", "AI_LOOKUP_USER_DAILY_LIMIT": "20",
                                 "AI_LOOKUP_DAILY_LIMIT": "500"}).start()
         with ai._lock:
@@ -41,14 +41,14 @@ class AiLookupTests(BackendTest):
             for token in (None, "expired"):
                 self.assertEqual(self.lookup(token=token).status_code, 401)
             self.assertEqual(self.lookup(999).status_code, 404)
-            for body in ({"image_url": "https://attacker.test/a"}, {"provider": "openai"},
+            for body in ({"image_url": "https://attacker.test/a"}, {"provider": "google"},
                          {"api_key": "client-secret"}, {"user_id": "bob"}, {"max_results": 9}):
                 self.assertEqual(self.lookup(**body).status_code, 422)
             provider.assert_not_called()
             response = self.lookup()
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.json(), RESULT)
-            self.assertEqual(provider.call_args.args, ("google", "test-model", "server-secret",
+            self.assertEqual(provider.call_args.args, ("openai", "test-model", "server-secret",
                              "https://example.test/1.jpg", "Piece 1", 5))
 
     def test_cache_is_shared_across_users_expires_and_separates_model_and_max_results(self):
@@ -95,11 +95,12 @@ class AiLookupTests(BackendTest):
             self.assertEqual(paid.call_count, 1)
 
     def test_missing_configuration_and_failures_are_safe_and_retryable(self):
-        with patch.dict(os.environ, {"GOOGLE_AI_API_KEY": ""}), patch.object(ai, "_lookup_provider") as paid:
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "", "GOOGLE_AI_API_KEY": ""}), patch.object(ai, "_lookup_provider") as paid:
             response = self.lookup()
             self.assertEqual(response.status_code, 503)
             paid.assert_not_called()
-        with patch.object(ai, "_lookup_provider", side_effect=[ai.LookupError("quota", 429), RESULT]):
+        with patch.dict(os.environ, {"GOOGLE_AI_API_KEY": ""}), \
+                patch.object(ai, "_lookup_provider", side_effect=[ai.LookupError("quota", 429), RESULT]):
             self.assertEqual(self.lookup().status_code, 429)
             self.assertEqual(self.lookup().status_code, 200)
         with patch.object(ai, "_lookup_provider", side_effect=RuntimeError("server-secret")):
@@ -152,30 +153,80 @@ class AiLookupTests(BackendTest):
             output["isPurchasableFashionItem"] = False
             self.assertEqual(self.provider_call("google", handler)["searchLinks"], [])
 
-    def test_openai_uses_server_key_search_schema_and_citations(self):
+    def test_default_provider_uses_terra_server_key_search_schema_and_citations(self):
         def handler(request):
+            self.assertEqual(str(request.url), "https://api.openai.com/v1/responses")
             self.assertEqual(request.headers["Authorization"], "Bearer server-secret")
             payload = json.loads(request.content)
+            self.assertEqual(payload["model"], "gpt-6.1-terra")
+            self.assertEqual(payload["reasoning"], {"effort": "low"})
             self.assertFalse(payload["store"])
             self.assertEqual(payload["tools"][0]["type"], "web_search")
+            self.assertEqual(payload["tool_choice"], "required")
+            self.assertEqual(payload["input"][0]["content"][0],
+                             {"type": "input_image", "image_url": "https://example.test/1.jpg"})
             self.assertEqual(payload["text"]["format"]["schema"]["additionalProperties"], False)
             return httpx.Response(200, json={"status": "completed", "output": [
                 {"type": "message", "content": [{"type": "output_text", "text": json.dumps(OUTPUT),
                   "annotations": [{"url": "https://shop.test/item", "title": "Source"}]}]}]})
-        result = self.provider_call("openai", handler)
+        transport = httpx.MockTransport(handler)
+        original_client = httpx.Client
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "server-secret"}), \
+                patch.object(ai.httpx, "Client", side_effect=lambda **kwargs: original_client(transport=transport, **kwargs)):
+            os.environ.pop("AI_LOOKUP_PROVIDER", None)
+            os.environ.pop("AI_LOOKUP_MODEL", None)
+            response = self.lookup()
+        self.assertEqual(response.status_code, 200)
+        result = response.json()
         self.assertEqual(result["provider"], "openai")
+        self.assertEqual(result["model"], "gpt-6.1-terra")
         self.assertEqual(result["sources"], [{"url": "https://shop.test/item", "title": "Source"}])
 
-    def test_unsupported_provider_is_rejected_without_making_provider_requests(self):
-        with patch.dict(os.environ, {"AI_LOOKUP_PROVIDER": "unsupported"}), \
-                patch.object(ai, "_lookup_provider") as paid:
-            self.assertEqual(self.lookup().status_code, 503)
-            paid.assert_not_called()
-        with patch.object(ai, "_post") as paid:
-            with self.assertRaises(ai.LookupError) as raised:
-                self.provider_call("unsupported", lambda request: self.fail("Unexpected provider request"))
-            self.assertEqual(raised.exception.code, "unavailable")
-            paid.assert_not_called()
+    def test_successful_openai_lookup_including_empty_results_never_calls_google(self):
+        with patch.dict(os.environ, {"GOOGLE_AI_API_KEY": "google-secret", "AI_LOOKUP_PROVIDER": "google"}), \
+                patch.object(ai, "_lookup_provider", return_value=RESULT) as paid:
+            self.assertEqual(self.lookup().json(), RESULT)
+            self.assertEqual(paid.call_count, 1)
+            self.assertEqual(paid.call_args.args[0], "openai")
+
+    def test_provider_failures_fall_back_once_without_spending_another_lookup_allowance(self):
+        fallback = {**RESULT, "provider": "google", "model": "gemini-3.5-flash-lite"}
+        for item, code in enumerate(("timeout", "network", "quota", "unavailable", "unknown"), start=1):
+            with patch.dict(os.environ, {"GOOGLE_AI_API_KEY": "google-secret"}), \
+                    patch.object(ai, "_lookup_provider", side_effect=[ai.LookupError(code), fallback]) as paid:
+                response = self.lookup(item)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json(), fallback)
+                self.assertEqual([call.args[0] for call in paid.call_args_list], ["openai", "google"])
+                self.assertEqual(paid.call_args.args[1:3], ("gemini-3.5-flash-lite", "google-secret"))
+                self.assertEqual(ai._total_usage, item)
+                self.assertEqual(ai._user_usage["alice"], item)
+
+    def test_fallback_cache_is_brief_and_openai_is_retried_after_expiry(self):
+        fallback = {**RESULT, "provider": "google"}
+        with patch.dict(os.environ, {"GOOGLE_AI_API_KEY": "google-secret"}), \
+                patch.object(ai, "_lookup_provider", side_effect=[ai.LookupError("timeout"), fallback, RESULT]) as paid:
+            self.assertEqual(self.lookup().json(), fallback)
+            self.assertEqual(self.lookup(token="bob-token").json(), fallback)
+            self.assertEqual(paid.call_count, 2)
+            cached_at = next(iter(ai._cache.values()))[0]
+            with patch.object(ai.time, "monotonic", return_value=cached_at + ai.FALLBACK_CACHE_TTL + 1):
+                self.assertEqual(self.lookup().json(), RESULT)
+            self.assertEqual([call.args[0] for call in paid.call_args_list], ["openai", "google", "openai"])
+
+    def test_missing_primary_key_uses_google_and_both_provider_failures_remain_retryable(self):
+        fallback = {**RESULT, "provider": "google"}
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "", "GOOGLE_AI_API_KEY": "google-secret"}), \
+                patch.object(ai, "_lookup_provider", return_value=fallback) as paid:
+            self.assertEqual(self.lookup().json(), fallback)
+            self.assertEqual(paid.call_count, 1)
+            self.assertEqual(paid.call_args.args[0], "google")
+        with patch.dict(os.environ, {"GOOGLE_AI_API_KEY": "google-secret"}), \
+                patch.object(ai, "_lookup_provider", side_effect=[
+                    ai.LookupError("timeout", 504), ai.LookupError("unavailable", 503), RESULT]) as paid:
+            self.assertEqual(self.lookup(3).status_code, 503)
+            self.assertEqual(self.lookup(3).json(), RESULT)
+            self.assertEqual(paid.call_count, 3)
 
     def test_provider_errors_and_invalid_output_never_expose_raw_response(self):
         for status, code in [(401, "unavailable"), (404, "unavailable"), (429, "quota"), (500, "unknown")]:

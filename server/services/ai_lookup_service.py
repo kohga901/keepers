@@ -65,9 +65,10 @@ class SearchOutput(OutputModel):
 
 PROVIDERS = {
     "google": ("GOOGLE_AI_API_KEY", "gemini-3.5-flash-lite"),
-    "openai": ("OPENAI_API_KEY", "gpt-5-mini"),
+    "openai": ("OPENAI_API_KEY", "gpt-6.1-terra"),
 }
 CACHE_TTL = 3600
+FALLBACK_CACHE_TTL = 60
 CACHE_SIZE = 1024
 MAX_IN_FLIGHT = 4
 _lock = threading.Lock()
@@ -79,9 +80,7 @@ _total_usage = 0
 
 
 def _configuration():
-    provider = os.getenv("AI_LOOKUP_PROVIDER", "google").strip().lower()
-    if provider not in PROVIDERS:
-        raise LookupError("unavailable", 503)
+    provider = "openai"
     key_name, default_model = PROVIDERS[provider]
     key = os.getenv(key_name, "").strip()
     model = os.getenv("AI_LOOKUP_MODEL", default_model).strip()
@@ -90,7 +89,7 @@ def _configuration():
         total_limit = int(os.getenv("AI_LOOKUP_DAILY_LIMIT", "500"))
     except ValueError:
         raise LookupError("unavailable", 503) from None
-    if not key or not model or user_limit <= 0 or total_limit <= 0:
+    if not (key or os.getenv("GOOGLE_AI_API_KEY", "").strip()) or not model or user_limit <= 0 or total_limit <= 0:
         raise LookupError("unavailable", 503)
     return provider, model, key, user_limit, total_limit
 
@@ -128,7 +127,8 @@ def lookup_item(user_id, item, max_results=5):
             raise LookupError("quota", 429, 3600)
         _user_usage[user_id] = _user_usage.get(user_id, 0) + 1
         cached = _cache.get(cache_key)
-        if cached and now - cached[0] < CACHE_TTL:
+        ttl = FALLBACK_CACHE_TTL if cached and cached[1]["provider"] == "google" else CACHE_TTL
+        if cached and now - cached[0] < ttl:
             _cache.move_to_end(cache_key)
             return cached[1]
         future = _in_flight.get(cache_key)
@@ -144,7 +144,7 @@ def lookup_item(user_id, item, max_results=5):
     if not owner:
         return future.result(timeout=100)
     try:
-        result = _lookup_provider(provider, model, api_key, image_url, hint, max_results)
+        result = _lookup_with_fallback(model, api_key, image_url, hint, max_results)
         with _lock:
             _cache[cache_key] = (time.monotonic(), result)
             _cache.move_to_end(cache_key)
@@ -158,6 +158,19 @@ def lookup_item(user_id, item, max_results=5):
     finally:
         with _lock:
             _in_flight.pop(cache_key, None)
+
+
+def _lookup_with_fallback(model, api_key, image_url, hint, max_results):
+    fallback_key = os.getenv("GOOGLE_AI_API_KEY", "").strip()
+    if api_key:
+        try:
+            return _lookup_provider("openai", model, api_key, image_url, hint, max_results)
+        except LookupError:
+            if not fallback_key:
+                raise
+    if not fallback_key:
+        raise LookupError("unavailable", 503)
+    return _lookup_provider("google", PROVIDERS["google"][1], fallback_key, image_url, hint, max_results)
 
 
 def _post(client, url, headers, payload):

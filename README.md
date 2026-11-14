@@ -18,9 +18,22 @@ processing/ML pipelines in this repo.
 ## AI shopping lookup
 
 Find it works on mobile and web through the FastAPI server. Users sign in to
-Keepers and do not supply AI keys. Configure the provider key only on the backend;
-see [AI_LOOKUP.md](AI_LOOKUP.md) and `server/.env.example` for setup, limits and
-provider behavior. The recommendation pipeline is unchanged.
+Keepers and do not supply AI keys or choose a provider. The server first uses
+OpenAI's `gpt-6.1-terra`, then tries Gemini once if that provider lookup fails.
+Configure `OPENAI_API_KEY` and `GOOGLE_AI_API_KEY` only on the backend (in
+Render's environment settings for production). `AI_LOOKUP_MODEL` optionally
+overrides the OpenAI model; Gemini uses `gemini-3.5-flash-lite`.
+`AI_LOOKUP_PROVIDER` is no longer used. Missing OpenAI credentials also allow
+Gemini fallback; with no Gemini key, OpenAI errors are returned safely.
+See [server/.env.example](server/.env.example) for provider and usage-limit
+configuration. Keepers authentication, request validation and usage limits run
+before any provider work and do not trigger fallback. One lookup allowance can
+include both provider calls. Successful empty results do not trigger fallback.
+OpenAI results are cached for an hour; Gemini fallback results for one minute,
+after which a new search retries OpenAI. Gemini identifies the item and returns
+marketplace search links, rather than verified product listings. Limits and
+caches remain per process and reset on restart. The recommendation pipeline is
+unchanged.
 
 ## Price alerts
 

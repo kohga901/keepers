@@ -22,9 +22,12 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
 ### AI shopping lookup
 
 Find it uses the FastAPI backend on both mobile and web. Users do not enter an
-AI provider key. Configure the selected provider's secret only in `server/.env`
-or the backend host's environment, and keep `EXPO_PUBLIC_SERVER_URL` pointed at
-that server. See [AI_LOOKUP.md](../AI_LOOKUP.md) for setup and usage limits.
+AI provider key or choose a provider. The server uses OpenAI's `gpt-6.1-terra`
+first and automatically tries Gemini if the OpenAI lookup fails. Configure
+`OPENAI_API_KEY` and `GOOGLE_AI_API_KEY` only in `server/.env` or the backend
+host's environment, and keep
+`EXPO_PUBLIC_SERVER_URL` pointed at that server. See
+[server/.env.example](../server/.env.example) for setup and usage limits.
 
 In the output, you'll find options to open the app in a
 
