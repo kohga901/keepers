@@ -26,7 +26,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 # Load the environment variables from server/.env.
 load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 
-from routers import admin, clothes, relabel, users
+from routers import admin, ai, clothes, relabel, users
 from services import Startup
 
 @asynccontextmanager
@@ -51,6 +51,7 @@ app.include_router(clothes.router)
 app.include_router(users.router)
 app.include_router(admin.router)
 app.include_router(relabel.router)
+app.include_router(ai.router)
 
 # Serves static/upload.html (the "Easy Upload" page) and static/relabel.html at /static/.
 app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")

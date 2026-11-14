@@ -2,166 +2,111 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createLoader, deferred, plain } = require('./helpers/load.cjs');
 
-function lookupFixture({ lookup, platform = 'ios' } = {}) {
+const result = {
+  identifiedItem: { name: 'Shirt', brand: 'unknown', category: 'tops', colors: ['blue'], identifiers: [] },
+  searchSummary: 'A blue shirt', provider: 'google', model: 'server-model', listings: [], sources: [],
+  searchLinks: [{ marketplace: 'eBay', query: 'blue shirt', title: 'Search eBay', url: 'https://www.ebay.com/sch/i.html?_nkw=blue' }],
+};
+const response = (status, body) => ({ ok: status >= 200 && status < 300, status, json: async () => body });
+function fixture({ fetch: request, sessionError = null, token = 'session-token', globals = {} } = {}) {
   const calls = [];
-  let selected = 'google';
-  const provider = (name) => (key) => ({ lookup: async (input) => {
-    calls.push({ name, key, input });
-    return lookup ? lookup(input) : { provider: name, listings: [{ url: 'https://shop.test/piece' }] };
-  } });
+  let currentToken = token;
   const load = createLoader({
-    'react-native': { Platform: { OS: platform } },
-    './credentials': { getSelectedAiProvider: async () => selected, getProviderApiKeyForRequest: async () => 'test-key' },
-    './connection': {}, './developmentCredentials': {},
-    './providers/google': { createGoogleLookupProvider: provider('google') },
-    './providers/openai': { createOpenAiLookupProvider: provider('openai') },
-    './providers/anthropic': { createAnthropicLookupProvider: provider('anthropic') },
-  });
-  return { api: load('services/ai/index.ts'), calls, select(name) { selected = name; } };
+    '../../utils/supabase': { supabase: { auth: { getSession: async () => ({
+      data: { session: currentToken ? { access_token: currentToken } : null }, error: sessionError,
+    }) } } },
+    '../serverApi': { SERVER_BASE_URL: 'https://keepers.test/' },
+    'react-native': new Proxy({}, { get() { throw new Error('AI lookup must work without native APIs'); } }),
+  }, { fetch: async (...args) => { calls.push(args); return request ? request(...args) : response(200, result); }, ...globals });
+  return { api: load('services/ai/index.ts'), calls, setToken(value) { currentToken = value; } };
 }
-const input = { imageUrl: 'https://images.test/shirt.jpg', itemHint: 'Shirt' };
 
-test('AI lookup shares simultaneous work and caches normalized inputs separately by provider', async () => {
-  const pending = deferred();
-  const app = lookupFixture({ lookup: () => pending.promise });
-  const first = app.api.lookupPurchasableItem(input);
-  const second = app.api.lookupPurchasableItem({ ...input, itemHint: ' Shirt ', maxResults: 5 });
-  pending.resolve({ listings: [{ url: 'https://shop.test/1' }] });
-  const [a, b] = await Promise.all([first, second]);
-  assert.equal(a, b);
-  assert.equal(app.calls.length, 1);
-  assert.equal(await app.api.lookupPurchasableItem(input), a);
-  app.select('anthropic');
-  await app.api.lookupPurchasableItem(input);
-  await app.api.lookupPurchasableItem({ ...input, maxResults: 2 });
-  await app.api.lookupPurchasableItem({ ...input, imageUrl: 'https://images.test/pants.jpg' });
-  assert.equal(app.calls.length, 4);
-  assert.equal(app.calls[1].name, 'anthropic');
-  assert.equal(app.calls[2].input.maxResults, 2);
+test('mobile and web lookup use the server with the current session and only a catalog item ID', async () => {
+  const app = fixture();
+  assert.deepEqual(plain(await app.api.lookupPurchasableItem({ itemId: '12', maxResults: 3 })), result);
+  const [url, options] = app.calls[0];
+  assert.equal(url, 'https://keepers.test/ai/lookup');
+  assert.equal(options.headers.Authorization, 'Bearer session-token');
+  assert.deepEqual(JSON.parse(options.body), { item_id: 12, max_results: 3 });
+  assert.equal(options.method, 'POST');
+  app.setToken('another-session');
+  await app.api.lookupPurchasableItem({ itemId: '12' });
+  assert.equal(app.calls[1][1].headers.Authorization, 'Bearer another-session');
+  assert.equal(JSON.parse(app.calls[1][1].body).max_results, 5);
 });
 
-test('dismissing one lookup cancels that caller while another caller still receives the result', async () => {
-  const pending = deferred(), app = lookupFixture({ lookup: () => pending.promise });
-  const controller = new AbortController();
-  const first = app.api.lookupPurchasableItem({ ...input, signal: controller.signal });
-  const second = app.api.lookupPurchasableItem(input);
-  const rejected = assert.rejects(first, { code: 'cancelled' });
-  // Let the service select credentials and attach the caller's cancellation listener.
-  await new Promise((resolve) => setImmediate(resolve));
-  controller.abort();
-  await rejected;
-  pending.resolve({ listings: [{ url: 'https://shop.test/1' }] });
-  assert.equal((await second).listings.length, 1);
-  assert.equal(app.calls.length, 1);
-  assert.equal(app.calls[0].input.signal, undefined);
-  assert.equal((await app.api.lookupPurchasableItem(input)).listings.length, 1);
-});
-
-test('failed AI lookups expose safe errors and can be retried instead of poisoning the cache', async () => {
-  let attempts = 0;
-  const app = lookupFixture({ lookup: async () => {
-    if (++attempts === 1) throw { statusCode: 429, message: 'secret-key-must-not-leak' };
-    return { listings: [] };
-  } });
-  await assert.rejects(app.api.lookupPurchasableItem(input), (error) => error.code === 'quota' && !error.message.includes('secret-key'));
-  assert.equal((await app.api.lookupPurchasableItem(input)).listings.length, 0);
-  assert.equal(app.calls.length, 2);
-});
-
-test('invalid images, pre-cancelled requests and web lookup do not spend provider requests', async () => {
-  const app = lookupFixture();
-  for (const imageUrl of ['http://images.test/a', 'javascript:alert(1)', 'bad url', 'https://images.test/' + 'x'.repeat(2048)]) {
-    await assert.rejects(app.api.lookupPurchasableItem({ imageUrl }), { code: 'invalid_image' });
+test('invalid catalog IDs, signed-out sessions and pre-cancelled requests never send a lookup', async () => {
+  const app = fixture();
+  for (const itemId of ['', '0', '-1', '1.5', 'not-an-id', '9007199254740992']) {
+    await assert.rejects(app.api.lookupPurchasableItem({ itemId }), { code: 'invalid_image' });
   }
   const controller = new AbortController(); controller.abort();
-  await assert.rejects(app.api.lookupPurchasableItem({ ...input, signal: controller.signal }), { code: 'cancelled' });
+  await assert.rejects(app.api.lookupPurchasableItem({ itemId: '1', signal: controller.signal }), { code: 'cancelled' });
   assert.equal(app.calls.length, 0);
-  const web = lookupFixture({ platform: 'web' });
-  await assert.rejects(web.api.lookupPurchasableItem(input), { code: 'not_supported' });
-  assert.equal(web.calls.length, 0);
+  const signedOut = fixture({ token: null });
+  await assert.rejects(signedOut.api.lookupPurchasableItem({ itemId: '1' }), { code: 'unauthorized' });
+  assert.equal(signedOut.calls.length, 0);
+  const expired = fixture({ sessionError: new Error('expired') });
+  await assert.rejects(expired.api.lookupPurchasableItem({ itemId: '1' }), { code: 'unauthorized' });
+  assert.equal(expired.calls.length, 0);
 });
 
-test('purchase results remove unsafe and duplicate URLs and distinguish cited hosts from lookalikes', () => {
-  const { buildLookupResult } = createLoader()('services/ai/providers/shared.ts');
-  const listing = (url) => ({ title: 'Shirt', url, seller: 'Shop', displayedPrice: '$35', condition: 'new',
-    matchType: 'similar', confidence: .6, evidence: 'Same cut' });
-  const result = buildLookupResult('openai', 'test-model', { identifiedItem: { name: 'Shirt' }, searchSummary: 'Found shirts',
-    listings: [listing('javascript:alert(1)'), listing('http://shop.test/unsafe'), listing('https://shop.test/1'),
-      listing('https://shop.test/1'), listing('https://www.shop.test/2'), listing('https://shop.test.evil.test/3'), listing('https://other.test/4')] },
-  [{ url: 'https://shop.test/source', title: 'Source' }, { url: 'http://unsafe.test' }, null, { url: 'https://shop.test/source' }], 3);
-  assert.deepEqual(plain(result.listings.map(({ url, sourceBacked }) => ({ url, sourceBacked }))), [
-    { url: 'https://shop.test/1', sourceBacked: true }, { url: 'https://www.shop.test/2', sourceBacked: true },
-    { url: 'https://shop.test.evil.test/3', sourceBacked: false }]);
-  assert.equal(result.sources.length, 1);
-});
-
-test('lookup abort deadline, external cancellation and cleanup are deterministic', () => {
-  let timeout, cleared = 0;
-  const { createLookupAbortSignal } = createLoader({}, {
-    setTimeout(fn, ms) { assert.equal(ms, 90000); timeout = fn; return 1; },
-    clearTimeout() { cleared++; },
-  })('services/ai/providers/shared.ts');
-  const caller = new AbortController();
-  const first = createLookupAbortSignal(caller.signal); caller.abort();
-  assert.equal(first.signal.aborted, true); first.cleanup();
-  const second = createLookupAbortSignal(); timeout();
-  assert.equal(second.signal.aborted, true); second.cleanup();
-  const fresh = new AbortController(), cleaned = createLookupAbortSignal(fresh.signal);
-  cleaned.cleanup(); fresh.abort();
-  assert.equal(cleaned.signal.aborted, false);
-  assert.equal(cleared, 3);
-});
-
-function credentialFixture({ development = false, platform = 'ios', available = true } = {}) {
-  const values = new Map();
-  const secureStore = { WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'device-only', isAvailableAsync: async () => available,
-    getItemAsync: async (key) => values.get(key) ?? null,
-    setItemAsync: async (key, value, options) => { assert.equal(options.keychainAccessible, 'device-only'); values.set(key, value); },
-    deleteItemAsync: async (key) => values.delete(key) };
-  const load = createLoader({ 'react-native': { Platform: { OS: platform } }, 'expo-secure-store': secureStore }, {
-    __DEV__: development, process: { env: { EXPO_PUBLIC_KEEPERS_GOOGLE_AI_API_KEY: '  development-key  ' } },
-  });
-  return { api: load('services/ai/credentials.ts'), values };
-}
-
-test('credential storage trims keys, isolates providers and removes only the selected key', async () => {
-  const { api } = credentialFixture();
-  await api.saveProviderApiKey('google', '  google-key  ');
-  await api.saveProviderApiKey('anthropic', 'anthropic-key');
-  assert.equal(await api.getProviderApiKeyForRequest('google'), 'google-key');
-  await assert.rejects(api.getProviderApiKeyForRequest('openai'), { code: 'missing_key' });
-  await api.deleteProviderApiKey('google');
-  await assert.rejects(api.getProviderApiKeyForRequest('google'), { code: 'missing_key' });
-  assert.equal(await api.getProviderApiKeyForRequest('anthropic'), 'anthropic-key');
-  await assert.rejects(api.saveProviderApiKey('google', ' short '), /between 8 and 2048/);
-  await assert.rejects(api.saveProviderApiKey('google', 'x'.repeat(2049)), /between 8 and 2048/);
-});
-
-test('production credentials ignore development environment keys and reject unsupported storage', async () => {
-  const production = credentialFixture();
-  await assert.rejects(production.api.getProviderApiKeyForRequest('google'), { code: 'missing_key' });
-  const development = credentialFixture({ development: true });
-  assert.equal(await development.api.getProviderApiKeyForRequest('google'), 'development-key');
-  for (const options of [{ platform: 'web' }, { available: false }]) {
-    const app = credentialFixture(options);
-    await assert.rejects(app.api.saveProviderApiKey('google', 'sample-key'), { code: 'not_supported' });
-    assert.equal(app.values.size, 0);
+test('server errors are sanitized and do not direct users to enter API keys', async () => {
+  for (const [status, code] of [[401, 'unauthorized'], [422, 'invalid_image'], [503, 'unavailable'],
+    [429, 'quota'], [429, 'busy'], [504, 'timeout'], [502, 'network']]) {
+    const app = fixture({ fetch: async () => response(status, { detail: { code, message: 'server-secret' } }) });
+    await assert.rejects(app.api.lookupPurchasableItem({ itemId: '1' }), (error) => {
+      assert.equal(error.code, code);
+      assert.doesNotMatch(error.message, /server-secret|Settings|API key/);
+      return true;
+    });
   }
+  const unsafe = fixture({ fetch: async () => response(500, { detail: 'server-secret' }) });
+  await assert.rejects(unsafe.api.lookupPurchasableItem({ itemId: '1' }), { code: 'unknown' });
 });
 
-test('Google identification builds encoded shopping searches without inventing verified listings', async () => {
-  const output = { identifiedItem: { name: 'Shirt & jacket', brand: 'unknown', category: 'tops', colors: ['blue'], identifiers: ['A/B'] },
-    searchSummary: 'A blue shirt', isPurchasableFashionItem: true };
-  const load = createLoader({ '@ai-sdk/google': { createGoogleGenerativeAI: () => () => ({}) },
-    ai: { generateText: async () => ({ output }), Output: { object: (options) => options } } });
-  const provider = load('services/ai/providers/google.ts').createGoogleLookupProvider('fake-key');
-  const result = await provider.lookup({ ...input, maxResults: 2 });
-  assert.equal(result.listings.length, 0);
-  assert.equal(result.sources.length, 0);
-  assert.equal(result.searchLinks.length, 2);
-  const shopping = new URL(result.searchLinks[0].url);
-  assert.equal(shopping.searchParams.get('q'), 'Shirt & jacket A/B blue');
-  assert.equal(shopping.searchParams.get('tbm'), 'shop');
-  output.isPurchasableFashionItem = false;
-  assert.equal((await provider.lookup(input)).searchLinks.length, 0);
+test('malformed responses and unsafe result links cannot become UI results', async () => {
+  for (const body of [null, {}, { ...result, searchLinks: [{ ...result.searchLinks[0], url: 'javascript:alert(1)' }] }]) {
+    const app = fixture({ fetch: async () => response(200, body) });
+    await assert.rejects(app.api.lookupPurchasableItem({ itemId: '1' }), { code: 'unknown' });
+  }
+  const offline = fixture({ fetch: async () => { throw new TypeError('connection failed'); } });
+  await assert.rejects(offline.api.lookupPurchasableItem({ itemId: '1' }), { code: 'network' });
+});
+
+test('dismissing a lookup cancels the HTTP request and a later retry can succeed', async () => {
+  const started = deferred();
+  const app = fixture({ fetch: async (url, options) => {
+    if (app.calls.length > 1) return response(200, result);
+    started.resolve();
+    return new Promise((resolve, reject) => options.signal.addEventListener('abort', () => {
+      const error = new Error('aborted'); error.name = 'AbortError'; reject(error);
+    }, { once: true }));
+  } });
+  const controller = new AbortController();
+  const lookup = app.api.lookupPurchasableItem({ itemId: '1', signal: controller.signal });
+  await started.promise;
+  controller.abort();
+  await assert.rejects(lookup, { code: 'cancelled' });
+  assert.equal(app.calls[0][1].signal.aborted, true);
+  assert.equal((await app.api.lookupPurchasableItem({ itemId: '1' })).provider, 'google');
+});
+
+test('lookup timeout aborts the request and clears the timer', async () => {
+  let timeout, cleared = 0;
+  const started = deferred();
+  const app = fixture({ globals: {
+    setTimeout(fn, ms) { assert.equal(ms, 110000); timeout = fn; return 1; },
+    clearTimeout() { cleared++; },
+  }, fetch: async (url, options) => {
+    started.resolve();
+    return new Promise((resolve, reject) => options.signal.addEventListener('abort', () => {
+      const error = new Error('aborted'); error.name = 'AbortError'; reject(error);
+    }, { once: true }));
+  } });
+  const lookup = app.api.lookupPurchasableItem({ itemId: '1' });
+  await started.promise;
+  timeout();
+  await assert.rejects(lookup, { code: 'timeout' });
+  assert.equal(cleared, 1);
 });

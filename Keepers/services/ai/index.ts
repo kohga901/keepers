@@ -1,147 +1,49 @@
-import { Platform } from 'react-native';
+import { supabase } from '../../utils/supabase';
+import { SERVER_BASE_URL } from '../serverApi';
+import { AiLookupError, toAiLookupError, type AiLookupErrorCode } from './errors';
+import { imageLookupResultSchema, type ImageLookupInput, type ImageLookupResult } from './types';
 
-import { getProviderApiKeyForRequest, getSelectedAiProvider } from './credentials';
-import { AiLookupError, toAiLookupError } from './errors';
-import { createAnthropicLookupProvider } from './providers/anthropic';
-import { createGoogleLookupProvider } from './providers/google';
-import { createOpenAiLookupProvider } from './providers/openai';
-import { normalizedMaxResults } from './providers/shared';
-import type {
-  AiProvider,
-  ImageLookupInput,
-  ImageLookupProvider,
-  ImageLookupResult,
-} from './types';
-
-export * from './connection';
-export * from './credentials';
-export * from './developmentCredentials';
 export * from './errors';
 export * from './types';
 
-const lookupCache = new Map<string, ImageLookupResult>();
-const inFlightLookups = new Map<string, Promise<ImageLookupResult>>();
-
-function lookupCacheKey(provider: AiProvider, input: ImageLookupInput): string {
-  return JSON.stringify([
-    provider,
-    input.imageUrl,
-    input.itemHint?.trim().slice(0, 300) ?? '',
-    input.maxResults,
-  ]);
-}
-
-function readCachedLookup(key: string): ImageLookupResult | null {
-  return lookupCache.get(key) ?? null;
-}
-
-function cacheLookup(key: string, result: ImageLookupResult): void {
-  lookupCache.set(key, result);
-}
-
-function waitForLookup(
-  lookup: Promise<ImageLookupResult>,
-  signal?: AbortSignal,
-): Promise<ImageLookupResult> {
-  if (!signal) return lookup;
-  if (signal.aborted) return Promise.reject(new AiLookupError('cancelled'));
-
-  return new Promise((resolve, reject) => {
-    const stopWaiting = () => {
-      signal.removeEventListener('abort', stopWaiting);
-      reject(new AiLookupError('cancelled'));
-    };
-    const cleanup = () => signal.removeEventListener('abort', stopWaiting);
-
-    signal.addEventListener('abort', stopWaiting, { once: true });
-    lookup.then(
-      (result) => {
-        cleanup();
-        resolve(result);
-      },
-      (error: unknown) => {
-        cleanup();
-        reject(error);
-      },
-    );
-  });
-}
-
-function startBackgroundLookup(
-  cacheKey: string,
-  providerName: AiProvider,
-  input: ImageLookupInput,
-): Promise<ImageLookupResult> {
-  const lookup = (async () => {
-    try {
-      const apiKey = await getProviderApiKeyForRequest(providerName);
-      const provider = createProvider(providerName, apiKey);
-      const result = await provider.lookup({ ...input, signal: undefined });
-      cacheLookup(cacheKey, result);
-      return result;
-    } finally {
-      inFlightLookups.delete(cacheKey);
-    }
-  })();
-
-  inFlightLookups.set(cacheKey, lookup);
-  return lookup;
-}
-
-function createProvider(provider: AiProvider, apiKey: string): ImageLookupProvider {
-  switch (provider) {
-    case 'google':
-      return createGoogleLookupProvider(apiKey);
-    case 'openai':
-      return createOpenAiLookupProvider(apiKey);
-    case 'anthropic':
-      return createAnthropicLookupProvider(apiKey);
-  }
-}
-
-function validateImageUrl(value: string): void {
-  if (value.length > 2_048) {
-    throw new AiLookupError('invalid_image');
-  }
-
-  try {
-    const parsed = new URL(value);
-    if (parsed.protocol !== 'https:') {
-      throw new AiLookupError('invalid_image');
-    }
-  } catch (error) {
-    if (error instanceof AiLookupError) throw error;
-    throw new AiLookupError('invalid_image');
-  }
-}
+const SERVER_ERROR_CODES = new Set<AiLookupErrorCode>([
+  'unauthorized', 'invalid_image', 'unavailable', 'network', 'quota', 'busy', 'timeout', 'unknown',
+]);
 
 export async function lookupPurchasableItem(input: ImageLookupInput): Promise<ImageLookupResult> {
-  if (Platform.OS === 'web') {
-    throw new AiLookupError('not_supported');
-  }
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, 110_000);
+  input.signal?.addEventListener('abort', abort, { once: true });
 
   try {
     if (input.signal?.aborted) throw new AiLookupError('cancelled');
-    validateImageUrl(input.imageUrl);
-    const providerName = await getSelectedAiProvider();
-    if (input.signal?.aborted) throw new AiLookupError('cancelled');
-
-    const normalizedInput = {
-      ...input,
-      maxResults: normalizedMaxResults(input),
-    };
-    const cacheKey = lookupCacheKey(providerName, normalizedInput);
-    const cached = readCachedLookup(cacheKey);
-    if (cached) {
-      if (input.signal?.aborted) throw new AiLookupError('cancelled');
-      return cached;
+    const itemId = Number(input.itemId);
+    if (!Number.isSafeInteger(itemId) || itemId <= 0) throw new AiLookupError('invalid_image');
+    const { data, error } = await supabase.auth.getSession();
+    if (controller.signal.aborted) throw new AiLookupError(timedOut ? 'timeout' : 'cancelled');
+    if (error || !data.session?.access_token) throw new AiLookupError('unauthorized');
+    const response = await fetch(`${SERVER_BASE_URL.replace(/\/$/, '')}/ai/lookup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session.access_token}` },
+      body: JSON.stringify({ item_id: itemId, max_results: Math.min(8, Math.max(1, Math.floor(input.maxResults ?? 5))) }),
+      signal: controller.signal,
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok) {
+      const code = body?.detail?.code as AiLookupErrorCode | undefined;
+      if (code && SERVER_ERROR_CODES.has(code)) throw new AiLookupError(code);
+      throw toAiLookupError({ status: response.status });
     }
-
-    const lookup =
-      inFlightLookups.get(cacheKey) ??
-      startBackgroundLookup(cacheKey, providerName, normalizedInput);
-    return await waitForLookup(lookup, input.signal);
+    const result = imageLookupResultSchema.safeParse(body);
+    if (!result.success) throw new AiLookupError('unknown');
+    return result.data;
   } catch (error) {
+    if (controller.signal.aborted) throw new AiLookupError(timedOut ? 'timeout' : 'cancelled');
     throw toAiLookupError(error);
+  } finally {
+    clearTimeout(timer);
+    input.signal?.removeEventListener('abort', abort);
   }
 }

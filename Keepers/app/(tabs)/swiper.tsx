@@ -6,7 +6,7 @@
  */
 
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
+import { useFocusEffect, useNavigation } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Dimensions, Platform, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Text } from '../../components/Text';
@@ -65,7 +65,6 @@ const App: React.FC = () => {
   const VERTICAL_SWIPE_THRESHOLD = swipeHeight / 5;
   const VERTICAL_LABEL_HINT = swipeHeight / 10;
   const filterRightInset = 16 + (Platform.OS === 'web' ? Math.max(0, (viewportWidth - TAB_CONTENT_MAX_WIDTH) / 2) : 0);
-  const router = useRouter();
   const swiper = useRef<any>(null);
   const loadedUserId = useRef<string | null>(null);
   const lookupAbortController = useRef<AbortController | null>(null);
@@ -300,8 +299,7 @@ const App: React.FC = () => {
 
     try {
       const result = await lookupPurchasableItem({
-        imageUrl: item.imageUrl,
-        itemHint: item.name,
+        itemId: item.id,
         maxResults: 5,
         signal: controller.signal,
       });
@@ -340,11 +338,6 @@ const App: React.FC = () => {
         swiper.current?.jumpToCardIndex(cardIndexToRestore);
       }, 0);
     }
-  };
-
-  const openSettings = () => {
-    closeLookup();
-    router.push('/settings');
   };
 
   if (!isAuthReady || (isAuthenticated && isFeedLoading)) {
@@ -416,7 +409,7 @@ const App: React.FC = () => {
                   </Text>
                 </View>
                 <Pressable
-                  accessibilityHint="Uses your selected AI provider to search for purchase listings"
+                  accessibilityHint="Searches for shopping options for this item"
                   accessibilityLabel={`Find ${card.name} with AI`}
                   accessibilityRole="button"
                   onPress={() => void startLookup(card, cardIndex)}
@@ -502,7 +495,6 @@ const App: React.FC = () => {
         item={lookupItem}
         loading={lookupLoading}
         onClose={closeLookup}
-        onOpenSettings={openSettings}
         onRetry={() => {
           if (lookupItem) void startLookup(lookupItem);
         }}

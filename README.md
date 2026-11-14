@@ -15,6 +15,13 @@ processing/ML pipelines in this repo.
 | `ML_Pipeline/` | ML scripts used to build/update the recommendation model |
 | `Scrapers/` | Scrapers used to collect clothing item data/images |
 
+## AI shopping lookup
+
+Find it works on mobile and web through the FastAPI server. Users sign in to
+Keepers and do not supply AI keys. Configure the provider key only on the backend;
+see [AI_LOOKUP.md](AI_LOOKUP.md) and `server/.env.example` for setup, limits and
+provider behavior. The recommendation pipeline is unchanged.
+
 ## Price alerts
 
 Price alerts work inside Expo Go: set a target on a liked item in History, then

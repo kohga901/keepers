@@ -43,14 +43,7 @@
       "expo-font",
       "expo-web-browser",
       "expo-image",
-      "expo-status-bar",
-      [
-        "expo-secure-store",
-        {
-          "configureAndroidBackup": true,
-          "faceIDPermission": "Allow Keepers to protect your AI API keys."
-        }
-      ]
+      "expo-status-bar"
     ],
     "experiments": {
       "typedRoutes": true,
