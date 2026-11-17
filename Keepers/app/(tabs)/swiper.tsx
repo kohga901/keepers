@@ -408,12 +408,6 @@ const App: React.FC = () => {
                   contentFit={Platform.OS === 'web' && viewportWidth > TAB_CONTENT_MAX_WIDTH ? 'contain' : 'cover'}
                   transition={1000}
                 />
-                {card.requested && (
-                  <View style={styles.requestedBadge}>
-                    <Ionicons name="checkmark-circle" color="#FFFFFF" size={16} />
-                    <Text style={styles.requestedBadgeText}>You requested this</Text>
-                  </View>
-                )}
               </View>
               <View style={styles.cardInfo}>
                 <View style={styles.cardDetails}>
@@ -433,6 +427,12 @@ const App: React.FC = () => {
                   <Text style={styles.lookupButtonText}>Find it</Text>
                 </Pressable>
               </View>
+              {card.requested && (
+                <View style={styles.requestedBadge}>
+                  <Ionicons name="checkmark-circle" color="#FFFFFF" size={16} />
+                  <Text style={styles.requestedBadgeText}>You requested this</Text>
+                </View>
+              )}
             </View>
             );
           }}
