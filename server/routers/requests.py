@@ -14,18 +14,21 @@ sees and changes their own requests):
     - POST /requests/{id}/seen    — mark a finished request as shown to the user
 
 Admin endpoints (only enabled where ENABLE_ADMIN_UPLOAD=1 is set, because
-approving loads CLIP):
+approving loads CLIP, and only for callers who send the ADMIN_TOKEN from server/.env
+in an "X-Admin-Token" header):
     - GET  /requests/admin/pending        — requests waiting for a decision (or that errored)
     - POST /requests/admin/{id}/approve   — upload the item and mark the request approved
     - POST /requests/admin/{id}/reject    — mark the request rejected, with an optional reason
 """
 
+import hmac
 import ipaddress
 import logging as log
+import os
 import socket
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from db import supabase, supabase_execute as _supabase_execute
@@ -90,13 +93,23 @@ def _check_public_https(url: str, field: str) -> None:
             raise HTTPException(status_code=400, detail=f"{field} must point to a public website.")
 
 
-def _require_admin() -> None:
-    """Raises a 503 where approving is switched off (the hosted server)."""
+def _require_admin(x_admin_token: str | None = Header(default=None)) -> None:
+    """
+    Guards the admin endpoints. They are off where ENABLE_ADMIN_UPLOAD isn't set (the hosted
+    server), and elsewhere they need the ADMIN_TOKEN from server/.env, so a server that is
+    reachable through a tunnel can't be used to approve requests by whoever has its URL.
+    """
     if not _upload_enabled():
         raise HTTPException(
             status_code=503,
             detail="Reviewing requests is disabled on this server. Run it locally with ENABLE_ADMIN_UPLOAD=1.",
         )
+
+    expected = os.getenv("ADMIN_TOKEN")
+    if not expected:
+        raise HTTPException(status_code=503, detail="Set ADMIN_TOKEN in server/.env to review requests.")
+    if not x_admin_token or not hmac.compare_digest(x_admin_token.encode(), expected.encode()):
+        raise HTTPException(status_code=401, detail="Wrong admin token.")
 
 
 def _get_request(request_id: int) -> dict:
@@ -180,11 +193,9 @@ def mark_seen(request_id: int, authorization: str | None = Header(default=None))
 
 # --- Admin endpoints ---
 
-@router.get("/admin/pending")
+@router.get("/admin/pending", dependencies=[Depends(_require_admin)])
 def pending_requests():
     """Requests waiting for a decision, plus ones whose last approval attempt errored. Oldest first."""
-    _require_admin()
-
     # SELECT ... FROM "Item_Requests" WHERE status IN ('pending', 'error') ORDER BY created_at
     response = _supabase_execute(
         supabase.table("Item_Requests")
@@ -196,11 +207,9 @@ def pending_requests():
     return {"requests": response.data}
 
 
-@router.post("/admin/{request_id}/approve")
+@router.post("/admin/{request_id}/approve", dependencies=[Depends(_require_admin)])
 def approve_request(request_id: int, req: ApproveIn):
     """Uploads the (possibly edited) item through the Easy Upload flow and marks the request approved."""
-    _require_admin()
-
     row = _get_request(request_id)
     if row["status"] not in ("pending", "error"):
         raise HTTPException(status_code=409, detail=f"This request was already {row['status']}.")
@@ -230,11 +239,9 @@ def approve_request(request_id: int, req: ApproveIn):
     return {"status": result.status, "item_id": result.item_id, "error": result.error}
 
 
-@router.post("/admin/{request_id}/reject")
+@router.post("/admin/{request_id}/reject", dependencies=[Depends(_require_admin)])
 def reject_request(request_id: int, req: RejectIn):
     """Marks a request rejected, with an optional reason the user can see."""
-    _require_admin()
-
     row = _get_request(request_id)
     if row["status"] not in ("pending", "error"):
         raise HTTPException(status_code=409, detail=f"This request was already {row['status']}.")

@@ -103,6 +103,24 @@
   const listEl = document.getElementById('requests');
   const statusLine = document.getElementById('status-line');
 
+  // The ADMIN_TOKEN from server/.env. Kept for this browser tab only.
+  function adminToken() {
+    let token = sessionStorage.getItem('adminToken');
+    if (!token) {
+      token = (window.prompt('Admin token (ADMIN_TOKEN in server/.env):') || '').trim();
+      if (token) sessionStorage.setItem('adminToken', token);
+    }
+    return token;
+  }
+
+  // A wrong token is forgotten, so the next action asks for it again.
+  function adminHeaders(extra = {}) {
+    return { 'X-Admin-Token': adminToken(), ...extra };
+  }
+  function forgetTokenIf401(response) {
+    if (response.status === 401) sessionStorage.removeItem('adminToken');
+  }
+
   let existingTags = []; // [{ Tag, Category }, ...] from the master Tags table.
   const tagsLoaded = fetch('/admin/tags')
     .then(r => r.json())
@@ -220,7 +238,7 @@
       try {
         const response = await fetch(`/requests/admin/${r.id}/approve`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: adminHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
             item_name: get('item_name'),
             item_img: get('item_img'),
@@ -230,6 +248,7 @@
             item_tags: card._tags,
           }),
         });
+        forgetTokenIf401(response);
         if (!response.ok) throw new Error(await errorText(response));
         const data = await response.json();
         if (data.status !== 'ok') throw new Error(data.error || 'Upload failed');
@@ -247,9 +266,10 @@
       try {
         const response = await fetch(`/requests/admin/${r.id}/reject`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: adminHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ reason: get('reason') || null }),
         });
+        forgetTokenIf401(response);
         if (!response.ok) throw new Error(await errorText(response));
         card.remove();
         setStatus('Rejected.', 'ok');
@@ -272,7 +292,8 @@
   async function load() {
     await tagsLoaded;
     try {
-      const response = await fetch('/requests/admin/pending');
+      const response = await fetch('/requests/admin/pending', { headers: adminHeaders() });
+      forgetTokenIf401(response);
       if (!response.ok) throw new Error(await errorText(response));
       const { requests } = await response.json();
       listEl.innerHTML = '';
