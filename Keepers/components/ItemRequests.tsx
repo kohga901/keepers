@@ -46,8 +46,16 @@ export function ItemRequests() {
   }, []);
 
   useEffect(() => {
-    void loadRequests();
-  }, [loadRequests]);
+    let active = true;
+    void fetchMyItemRequests().then((result) => {
+      if (!active) return;
+      setRequests(result.requests);
+      setLoadError(result.error);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const setField = (field: keyof typeof EMPTY_FORM) => (value: string) =>
     setForm((prev) => ({ ...prev, [field]: value }));
