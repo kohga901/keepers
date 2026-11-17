@@ -15,6 +15,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { ImageLookupModal } from '../../components/ai/ImageLookupModal';
 
 import { useAppTheme } from '../../hooks/useAppTheme';
+import { TAB_CONTENT_MAX_WIDTH } from '../../constants/layout';
 import type { AppTheme } from '../../constants/theme';
 import type { Item } from '../../models/Items';
 import {
@@ -157,6 +158,8 @@ export default function StyleWraps() {
   return (
     <View style={[styles.screen, { backgroundColor: theme.background }]}>
       <ScrollView
+        showsVerticalScrollIndicator={false}
+        showsHorizontalScrollIndicator={false}
         contentContainerStyle={[styles.content, { paddingTop: headerHeight + 24 }]}
         // Refresh feedback is shown in the keepers card once data is available.
         refreshControl={<RefreshControl refreshing={false} onRefresh={() => void load()} tintColor={theme.text} progressViewOffset={headerHeight} />}
@@ -274,7 +277,7 @@ export default function StyleWraps() {
 const createStyles = (theme: AppTheme) => StyleSheet.create({
   screen: { flex: 1 },
   flex: { flex: 1, minWidth: 0 },
-  content: { paddingHorizontal: 20, paddingBottom: 32, gap: 16, maxWidth: 760, width: '100%', alignSelf: 'center' },
+  content: { paddingHorizontal: 20, paddingBottom: 32, gap: 16, maxWidth: TAB_CONTENT_MAX_WIDTH, width: '100%', alignSelf: 'center' },
   headingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
   eyebrow: { fontSize: 11, fontWeight: '800', letterSpacing: 1, color: theme.text, flexShrink: 1 },
   pageTitle: { fontFamily: 'GeorgiaProBold', fontSize: 32, marginTop: 7 },
@@ -312,12 +315,12 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
   detailRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   detailIcon: { width: 25, height: 25, flexShrink: 0 },
   gallery: { flexDirection: 'row', gap: 12 },
-  galleryItem: { flex: 1, gap: 8 },
+  galleryItem: { flex: 1, minWidth: 0, gap: 8 },
   galleryItemPressed: { opacity: 0.65 },
-  itemImage: { width: '100%', aspectRatio: 0.8, borderRadius: 12 },
-  galleryItemName: { marginTop: 8 },
+  itemImage: { width: '100%', aspectRatio: 0.8, flexShrink: 0, borderRadius: 12 },
+  galleryItemName: { marginTop: 8, minHeight: 34 },
   shopLink: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
-  lookupButton: { alignItems: 'center', borderRadius: 10, flexDirection: 'row', gap: 5, justifyContent: 'center', paddingHorizontal: 8, paddingVertical: 10 },
+  lookupButton: { marginTop: 'auto', alignItems: 'center', borderRadius: 10, flexDirection: 'row', gap: 5, justifyContent: 'center', paddingHorizontal: 8, paddingVertical: 10 },
   lookupButtonText: { fontSize: 12, fontWeight: '700' },
   textButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44, gap: 10 },
   linkText: { fontWeight: '700', fontSize: 14 },

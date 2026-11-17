@@ -2,7 +2,7 @@ export type MapPoint = { clothesId: number; x: number; y: number };
 export type Position = { x: number; y: number };
 export type Camera = Position & { scale: number };
 export type MapMode = 'focus' | 'whole';
-export type MapLayout = { width: number; height: number; top: number; bottom: number };
+export type MapLayout = { width: number; height: number; top: number; bottom: number; side?: number };
 export type PreviewPoint = Position & { clothesId: number };
 export type MapFrame = {
   type: 'frame'; mode: MapMode; count: number; nearTaste: boolean;
@@ -91,12 +91,14 @@ export const MAP_GEOMETRY_SOURCE = String.raw`function createMapGeometry() {
         if (!preference)
             return null;
         const p = project(preference, camera, layout, mode);
-        return p.x > 16 && p.x < layout.width - 100 && p.y > layout.top + 24 && p.y < layout.height - layout.bottom - 24 ? p : null;
+        const side = layout.side || 0;
+        return p.x > side + 16 && p.x < layout.width - side - 100 && p.y > layout.top + 24 && p.y < layout.height - layout.bottom - 24 ? p : null;
     }
     function safePreview(p, layout, taste) {
-        if (p.x < 28 || p.x > layout.width - 28 || p.y < layout.top + 28 || p.y > layout.height - layout.bottom - 28)
+        const side = layout.side || 0;
+        if (p.x < side + 28 || p.x > layout.width - side - 28 || p.y < layout.top + 28 || p.y > layout.height - layout.bottom - 28)
             return false;
-        if (p.x > layout.width - 80 && p.y < layout.top + 126)
+        if (p.x > layout.width - side - 80 && p.y < layout.top + 126)
             return false;
         if (taste && p.x + 24 > taste.x - 18 && p.x - 24 < taste.x + 100 && p.y + 28 > taste.y - 25 && p.y - 28 < taste.y + 28)
             return false;

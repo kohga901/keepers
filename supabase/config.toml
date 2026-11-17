@@ -1,0 +1,3 @@
+[functions.price-alert-emails]
+# The handler validates the project's default secret API key on the apikey header.
+verify_jwt = false

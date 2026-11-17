@@ -8,7 +8,9 @@
 
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router';
+import { Platform, View } from 'react-native';
 
+import { TAB_CONTENT_MAX_WIDTH } from '../../constants/layout';
 import { StackHeaderHeightProvider } from '../../contexts/StackHeaderHeightContext';
 import { useAppTheme } from '../../hooks/useAppTheme';
 
@@ -24,6 +26,12 @@ export default function TabLayout() {
   return (
     <StackHeaderHeightProvider>
       <Tabs
+        screenLayout={Platform.OS === 'web' ? ({ children, route }) => (
+          route.name === 'graph' || route.name === 'likelist' ? children :
+          <View style={{ flex: 1, maxWidth: TAB_CONTENT_MAX_WIDTH, width: '100%', alignSelf: 'center' }}>
+            {children}
+          </View>
+        ) : undefined}
         screenOptions={{
           headerShown: false,
           tabBarShowLabel: false,

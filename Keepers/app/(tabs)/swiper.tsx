@@ -8,8 +8,9 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Dimensions, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Dimensions, Platform, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Text } from '../../components/Text';
+import { TAB_CONTENT_MAX_WIDTH } from '../../constants/layout';
 import Swiper from 'react-native-deck-swiper';
 import {getRecommendationsFromServer, getTagsFromServer, sendSwipeToServer} from '../../services/serverApi';
 
@@ -19,6 +20,7 @@ import { ImageLookupModal } from '../../components/ai/ImageLookupModal';
 import { TagFilter } from '../../components/TagFilter';
 import { emptyDeckMessage, sameSelection, type Tag } from '../../utils/tagFilter';
 import { usePriceDisplay } from '../../contexts/PriceDisplayContext';
+import { useStackHeaderHeight } from '../../contexts/StackHeaderHeightContext';
 import { useAppTheme } from '../../hooks/useAppTheme';
 import { supabase } from '../../utils/supabase';
 import { getPriceTierSymbol } from '../../utils/price';
@@ -34,13 +36,6 @@ const { width, height } = Dimensions.get('window');
 const CARD_HEIGHT_RATIO = 0.7;
 const CARD_VERTICAL_MARGIN = (height * (1 - CARD_HEIGHT_RATIO)) / 2;
 
-// Swipe sensitivity. A swipe counts once the card passes the threshold; the LIKE/NOPE
-// label starts fading in at the hint distance and is fully visible at the threshold,
-// so users can see the decision before letting go.
-const HORIZONTAL_SWIPE_THRESHOLD = width / 6;
-const HORIZONTAL_LABEL_HINT = width / 20;
-const VERTICAL_SWIPE_THRESHOLD = height / 5;
-const VERTICAL_LABEL_HINT = height / 10;
 // The library's typings declare 3 values here, but at runtime it must match the 5-value input range.
 const LABEL_OPACITY_OUTPUT = [1, 0, 0, 0, 1] as unknown as [number, number, number];
 
@@ -61,6 +56,16 @@ const toItem = (row: ClothingRow): Item => ({
 });
 
 const App: React.FC = () => {
+  const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
+  const headerHeight = useStackHeaderHeight();
+  // Match web swipe sensitivity to the current viewport after browser bars or orientation change.
+  const swipeWidth = Platform.OS === 'web' ? Math.min(viewportWidth, TAB_CONTENT_MAX_WIDTH) : width;
+  const swipeHeight = Platform.OS === 'web' ? viewportHeight : height;
+  const HORIZONTAL_SWIPE_THRESHOLD = swipeWidth / 6;
+  const HORIZONTAL_LABEL_HINT = swipeWidth / 20;
+  const VERTICAL_SWIPE_THRESHOLD = swipeHeight / 5;
+  const VERTICAL_LABEL_HINT = swipeHeight / 10;
+  const filterRightInset = 16 + (Platform.OS === 'web' ? Math.max(0, (viewportWidth - TAB_CONTENT_MAX_WIDTH) / 2) : 0);
   const router = useRouter();
   const swiper = useRef<any>(null);
   const loadedUserId = useRef<string | null>(null);
@@ -176,12 +181,14 @@ const App: React.FC = () => {
       if (!stack || !isAuthenticated) return;
 
       stack.setOptions({
-        headerRight: () => <TagFilter tags={tags} selected={selectedTags} onChange={applyFilter} />,
+        headerRight: () => <View style={{ marginRight: filterRightInset }}>
+          <TagFilter tags={tags} selected={selectedTags} onChange={applyFilter} />
+        </View>,
       });
       return () => stack.setOptions({ headerRight: undefined });
       // applyFilter only reads refs and state setters, so the copy captured here never goes stale.
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [navigation, isAuthenticated, tags, selectedTags])
+    }, [navigation, isAuthenticated, tags, selectedTags, filterRightInset])
   );
 
   // The filter options, loaded once the user is signed in.
@@ -394,10 +401,11 @@ const App: React.FC = () => {
              <View style={styles.card}>
               <View style={styles.imagePlaceholder}>
                 <Image
-                  style={styles.image}
+                  draggable={false}
+                  style={[styles.image, Platform.OS === 'web' && { backgroundColor: 'transparent' }]}
                   source={{ uri: card.imageUrl }}
                   placeholder={{ blurhash }}
-                  contentFit="cover"
+                  contentFit={Platform.OS === 'web' && viewportWidth > TAB_CONTENT_MAX_WIDTH ? 'contain' : 'cover'}
                   transition={1000}
                 />
                 {card.requested && (
@@ -488,6 +496,9 @@ const App: React.FC = () => {
           stackSize={3}
           stackSeparation={15}
           cardVerticalMargin={CARD_VERTICAL_MARGIN}
+          cardStyle={Platform.select({ web: { width: 'auto', height: 'auto', top: headerHeight + 12, bottom: 24,
+            right: 20, userSelect: 'none', cursor: 'grab', touchAction: 'none' } })}
+          containerStyle={Platform.select({ web: { overflow: 'hidden', touchAction: 'none' } })}
           backgroundColor="transparent"
         />
       )}
