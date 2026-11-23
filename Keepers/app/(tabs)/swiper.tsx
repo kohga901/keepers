@@ -52,6 +52,7 @@ const toItem = (row: ClothingRow): Item => ({
   liked: false,
   itemUrl: row.item_web_listing,
   gender: row.item_gender,
+  requested: row.requested_by_you,
 });
 
 const App: React.FC = () => {
@@ -426,6 +427,12 @@ const App: React.FC = () => {
                   <Text style={styles.lookupButtonText}>Find it</Text>
                 </Pressable>
               </View>
+              {card.requested && (
+                <View style={styles.requestedBadge}>
+                  <Ionicons name="checkmark-circle" color="#FFFFFF" size={16} />
+                  <Text style={styles.requestedBadgeText}>You requested this</Text>
+                </View>
+              )}
             </View>
             );
           }}
@@ -583,6 +590,23 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingVertical: 8,
     paddingHorizontal: 10,
+  },
+  requestedBadge: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#2E8B57',
+  },
+  requestedBadgeText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   card: {
     flex: 1,

@@ -56,6 +56,8 @@ class ClothingItem(BaseModel):
     item_img: str | None
     item_web_listing: str | None
     item_tags: list[str] | None = None
+    # True for an item the user asked for (see routers/requests.py) that was approved since they last saw it.
+    requested_by_you: bool = False
 
 class RecommendationResponse(BaseModel):
     recommendations: list[ClothingItem]
@@ -83,6 +85,45 @@ def _fetch_clothing_items(item_ids: list[int]) -> list[dict]:
 
     # Return the items in the same order as item_ids.
     return sorted(response.data, key=lambda x: order.get(x["item_id"], 999))
+
+def _take_approved_requests(user_id: str, limit: int) -> tuple[list[dict], list[int]]:
+    """
+    DB function. Returns up to `limit` of the user's approved item requests that they haven't been
+    shown yet, as Clothing rows, plus the ids of the requests so they can be marked seen afterwards.
+    Any failure just means no requested items this time, so it never breaks the feed.
+    """
+    try:
+        # SELECT id, clothes_id FROM "Item_Requests" WHERE user_id = ... AND status = 'approved' AND seen_by_user = false
+        response = _supabase_execute(
+            supabase.table("Item_Requests")
+            .select("id, clothes_id")
+            .eq("user_id", user_id)
+            .eq("status", "approved")
+            .eq("seen_by_user", False)
+            .not_.is_("clothes_id", "null")
+            .order("created_at")
+            .limit(limit)
+        )
+        if not response.data:
+            return [], []
+
+        # Keep each request paired with its item, in case an item row has gone missing.
+        items = {item["item_id"]: item for item in _fetch_clothing_items([r["clothes_id"] for r in response.data])}
+        taken = [r for r in response.data if r["clothes_id"] in items]
+        return [items[r["clothes_id"]] for r in taken], [r["id"] for r in taken]
+    except Exception as e:
+        log.warning("Could not load approved item requests for user=%s: %r", user_id, e)
+        return [], []
+
+def _mark_requests_seen(request_ids: list[int]) -> None:
+    """
+    DB function. Marks item requests as shown to the user, so they aren't put at the front of the feed again.
+    """
+    try:
+        # UPDATE "Item_Requests" SET seen_by_user = true WHERE id IN (request_ids)
+        _supabase_execute(supabase.table("Item_Requests").update({"seen_by_user": True}).in_("id", request_ids))
+    except Exception as e:
+        log.warning("Could not mark item requests %s as seen: %r", request_ids, e)
 
 def _save_pref_vec(user_id: str, pref_vec: np.ndarray) -> None:
     """
@@ -182,19 +223,20 @@ def _undo_swipe(user_id: str, item_id: int, liked: bool, background_tasks: Backg
     # The swipe history changed, so save the new pref_vec and coordinates.
     background_tasks.add_task(_sync_user, user_id, liked_ids, disliked_ids)
 
-def _user_from_token(authorization: str | None) -> str:
+def _user_from_token(authorization: str | None, detail: str = "Sign in again to clear your history.") -> str:
     """
     Returns the id of the user who owns the Supabase access token in an
     "Authorization: Bearer <token>" header, so a user can only change their own data.
+    `detail` is the message returned with the 401 error.
     """
     if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(status_code=401, detail="Sign in again to clear your history.")
+        raise HTTPException(status_code=401, detail=detail)
     try:
         response = supabase.auth.get_user(authorization[7:].strip())
     except Exception:
-        raise HTTPException(status_code=401, detail="Sign in again to clear your history.")
+        raise HTTPException(status_code=401, detail=detail)
     if not response or not response.user:
-        raise HTTPException(status_code=401, detail="Sign in again to clear your history.")
+        raise HTTPException(status_code=401, detail=detail)
     return response.user.id
 
 def _clear_taste(user_id: str) -> None:
@@ -272,7 +314,7 @@ def clear_history(req: ClearHistoryRequest, authorization: str | None = Header(d
     return {"status": "ok"}
 
 @router.post("/recommendations")
-def recommendations(req: RecommendationRequest) -> RecommendationResponse:
+def recommendations(req: RecommendationRequest, background_tasks: BackgroundTasks) -> RecommendationResponse:
 
     # If the server is still warming up, return a 503 Service Unavailable error.
     if not Startup.ready:
@@ -316,7 +358,15 @@ def recommendations(req: RecommendationRequest) -> RecommendationResponse:
         # Fetch the recommended items from the db.
         items = _fetch_clothing_items(results) if results else []
 
+        # Items the user asked for that were approved go first, so they can see the request worked.
+        # A tag filter is the user choosing what to see, so they wait until it is cleared.
+        requested_items, requested_request_ids = ([], []) if req.categories else _take_approved_requests(req.user_id, n)
+        for item in requested_items:
+            item["requested_by_you"] = True
+        requested_ids = {item["item_id"] for item in requested_items}
+
         # Keep the first n items. They all passed the tag filter already.
+        items = requested_items + [i for i in items if i["item_id"] not in requested_ids]
         items = items[:n]
 
         # Attach each item's tags.
@@ -325,6 +375,10 @@ def recommendations(req: RecommendationRequest) -> RecommendationResponse:
 
         # Remember what was sent so it is never sent to this user again.
         user_state.mark_served(req.user_id, [i["item_id"] for i in items], filtered=allowed_ids is not None)
+
+        # The requested items are on their way, so they won't be put first again.
+        if requested_request_ids:
+            background_tasks.add_task(_mark_requests_seen, requested_request_ids)
 
     # Log the request and how long it took.
     log.info("recommendations user=%s sent=%d/%d personalised=%s (likes=%d dislikes=%d) took=%dms",
