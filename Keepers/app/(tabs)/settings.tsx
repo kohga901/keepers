@@ -118,8 +118,11 @@ export default function Settings() {
     <ScrollView
       contentContainerStyle={[
         styles.content,
-        { paddingBottom: insets.bottom + 32, paddingTop: insets.top + 72 },
+        // Extra room at the bottom so the last form fields can be scrolled clear of the keyboard.
+        { paddingBottom: insets.bottom + 220, paddingTop: insets.top + 72 },
       ]}
+      // iOS: scroll the focused text field above the keyboard.
+      automaticallyAdjustKeyboardInsets
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
       style={[styles.container, { backgroundColor: theme.background }]}
