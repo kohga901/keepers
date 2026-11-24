@@ -61,7 +61,6 @@ test('currency, availability, zero, ranges, and conditional prices require revie
   for (const [extra, reason] of [
     [{ priceCurrency: 'CAD' }, 'currency_not_usd'],
     [{ priceCurrency: undefined }, 'currency_not_usd'],
-    [{ availability: 'https://schema.org/OutOfStock' }, 'not_in_stock'],
     [{ availability: undefined }, 'availability_unknown'],
     [{ priceValidUntil: '2000-01-01' }, 'expired_offer'],
     [{ eligibleCustomerType: 'members' }, 'conditional_offer'],
@@ -91,6 +90,9 @@ test('scoped product metadata is supported; generic metadata and unverified vari
   assert.equal(extractPrice(page, url).verified, true);
   assert.equal(extractPrice(page.replace("content='product'", "content='website'"), url).verified, false);
   assert.equal(extractPrice(page, `${url}?variant=blue`).verified, false);
+  const soldOut = extractPrice(page.replace("content='in stock'", "content='out of stock'"), url);
+  assert.equal(soldOut.verified, true);
+  assert.equal(soldOut.availability, 'OutOfStock');
 });
 
 test('price parsing is bounded decimal cents and rejects ambiguous or malformed values', () => {
@@ -138,7 +140,9 @@ test('reads the exact marked embedded Shopify variant using cents and per-varian
   assert.equal(result.verified, true);
   assert.equal(result.extracted_price, '$29.99');
   assert.equal(result.source, 'embedded_product_json');
-  assert.equal(extractPrice(embeddedPage({ available: false }), `${url}?variant=12345`).reason, 'not_in_stock');
+  const outOfStock = extractPrice(embeddedPage({ available: false }), `${url}?variant=12345`);
+  assert.equal(outOfStock.verified, true);
+  assert.equal(outOfStock.availability, 'OutOfStock');
 });
 
 test('embedded variants require product identity, known USD, explicit stock, and a trusted product-data marker', () => {
@@ -162,4 +166,61 @@ test('percent-escape spelling and Unicode handles do not prevent exact product i
   const lowerUrl = unicodeUrl.replaceAll('%E2%84%A2', '%e2%84%a2');
   const data = product({ url: lowerUrl, offers: offer({ url: `${lowerUrl}?variant=123` }) });
   assert.equal(extractPrice(html(data), `${unicodeUrl}?variant=123`).verified, true);
+});
+
+test('includes out-of-stock and sold-out prices with their availability intact', () => {
+  for (const availability of ['OutOfStock', 'SoldOut']) {
+    const result = extractPrice(html(product({ offers: offer({ availability }) })), url);
+    assert.equal(result.verified, true);
+    assert.equal(result.extracted_price, '$24.99');
+    assert.equal(result.availability, availability);
+  }
+  assert.equal(extractPrice(html(product({ offers: offer({ availability: undefined }) })), url).verified, false);
+});
+
+test('matches canonical Shopify aliases by exact long variant ID without accepting a different offer or retailer', () => {
+  const actual = `${url}-canonical?variant=39297397260412`;
+  const data = { '@type': 'ProductGroup', hasVariant: [product({ url: undefined, offers: offer({ url: actual }) })] };
+  assert.equal(extractPrice(html(data), `${url}?variant=39297397260412`).verified, true);
+  assert.equal(extractPrice(html(data), `${url}?variant=39297397260413`).verified, false);
+  assert.equal(extractPrice(html(data), 'https://other.retailer.com/products/shirt?variant=39297397260412').verified, false);
+  assert.equal(extractPrice(html(product({ offers: offer({ url: `${url}-canonical?variant=blue` }) })), `${url}?variant=blue`).verified, false);
+});
+
+test('normalizes only malformed leading-zero GTIN identifiers, retaining exact variant and price checks', () => {
+  const raw = html(product({ gtin12: '023794104068', offers: offer({ url: `${url}?variant=12345678` }) }))
+    .replace('"gtin12":"023794104068"', '"gtin12":023794104068');
+  assert.equal(extractPrice(raw, `${url}?variant=12345678`).verified, true);
+  assert.equal(extractPrice(raw.replace('"price":"24.99"', '"price":024.99'), `${url}?variant=12345678`).verified, false);
+});
+
+test('accepts an explicit aggregate price but never collapses a conflicting range', () => {
+  assert.equal(extractPrice(html(product({ offers: offer({ '@type': 'AggregateOffer', lowPrice: '24.99' }) })), url).verified, true);
+  assert.equal(extractPrice(html(product({ offers: offer({ '@type': 'AggregateOffer', lowPrice: '10' }) })), url).reason, 'price_range');
+  assert.equal(extractPrice(html(product({ offers: offer({ '@type': 'AggregateOffer', lowPrice: '24.99', highPrice: '40' }) })), url).verified, false);
+});
+
+test('matches Gap style/color pids to full size SKUs only within the exact selected style/color', () => {
+  const page = 'https://athleta.gap.com/browse/product.do?pid=1174194022&vid=1';
+  const gapOffer = (pid, extra = {}) => offer({ url: `https://athleta.gap.com/browse/product.do?pid=${pid}`, sku: pid, ...extra });
+  const data = product({ url: undefined, offers: [gapOffer('11741940222018'), gapOffer('11741940222020')] });
+  assert.equal(extractPrice(html(data), page).verified, true);
+  assert.equal(extractPrice(html(data), page.replace('1174194022', '1174194072')).verified, false);
+  assert.equal(extractPrice(html(data), page.replace('vid=1', 'vid=2')).verified, false);
+  assert.equal(extractPrice(html(data), page + '&size=XL').verified, false);
+  const ranged = product({ url: undefined, offers: [gapOffer('11741940222018'), gapOffer('11741940222020', { price: '30' })] });
+  assert.equal(extractPrice(html(ranged), page).reason, 'ambiguous_offers');
+});
+
+test('Midway advertising and canonical product hosts share an identity only for matching product and pid', () => {
+  const page = 'https://ads.midwayusa.com/product/1019190989?pid=872434';
+  const data = product({ url: undefined, offers: offer({ url: 'https://www.midwayusa.com/product/1019190989?pid=872434' }) });
+  assert.equal(extractPrice(html(data), page).verified, true);
+  assert.equal(extractPrice(html(data), page.replace('872434', '872435')).verified, false);
+  assert.equal(extractPrice(html(data), page.replace('ads.midwayusa.com', 'unrelated.midwayusa.com')).verified, false);
+});
+
+test('reports challenge pages and client-rendered price shells as distinct failures', () => {
+  assert.equal(extractPrice('<title>Client Challenge</title><script>/* no product */</script>', url).reason, 'merchant_challenge');
+  assert.equal(extractPrice('<title>Store</title><div class="skel__price"></div>', url).reason, 'requires_browser_rendering');
 });

@@ -1,6 +1,6 @@
-import { extractPrice, priceCents, formatPrice, sameProduct, sameMerchant } from './extract.mjs';
+import { createPriceExtractor, priceCents, formatPrice, sameProduct, sameMerchant } from './extract.mjs';
 
-const MAX_BYTES = 2 * 1024 * 1024;
+const MAX_BYTES = 16 * 1024 * 1024;
 const MAX_REPORT_ROWS = 50;
 
 export function publicUrl(value) {
@@ -15,23 +15,28 @@ export function publicUrl(value) {
   return url;
 }
 
-async function limitedText(response) {
+async function extractResponse(response, pageUrl) {
   if (Number(response.headers.get('content-length')) > MAX_BYTES) {
     await response.body?.cancel();
     throw new Error('page_too_large');
   }
-  if (!response.body) return '';
+  const extractor = createPriceExtractor(pageUrl);
+  if (!response.body) return extractor.finish();
   const reader = response.body.getReader(), decoder = new TextDecoder();
-  let text = '', size = 0;
+  let size = 0;
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       size += value.byteLength;
       if (size > MAX_BYTES) throw new Error('page_too_large');
-      text += decoder.decode(value, { stream: true });
+      // Parse incrementally: large CSS/JS/page markup is never retained as one HTML string.
+      for (let start = 0; start < value.length; start += 16 * 1024) {
+        extractor.write(decoder.decode(value.subarray(start, start + 16 * 1024), { stream: true }));
+      }
     }
-    return text + decoder.decode();
+    extractor.write(decoder.decode());
+    return extractor.finish();
   } finally { await reader.cancel().catch(() => {}); }
 }
 
@@ -76,7 +81,7 @@ export async function fetchProduct(value, fetcher = fetch) {
     if (!/^(text\/html|application\/xhtml\+xml)(;|$)/i.test(response.headers.get('content-type') ?? '')) {
       await response.body?.cancel(); throw new Error('unsupported_content_type');
     }
-    const observation = extractPrice(await limitedText(response), url.href);
+    const observation = await extractResponse(response, url.href);
     // A renamed page must identify the exact preserved variant, not just expose a generic price.
     if (!sameProduct(original.href, url.href) && original.searchParams.has('variant') &&
         observation.variant_id !== original.searchParams.get('variant')) {
@@ -101,7 +106,8 @@ export function catalogConfig(env) {
 async function database(config, params, fetcher, options = {}) {
   const url = new URL('/rest/v1/Clothing', config.url);
   for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
-  const response = await fetcher(url.href, { method: 'GET', redirect: 'error', ...options,
+  // Workers supports manual/follow, not redirect:error. Reject 3xx without forwarding credentials.
+  const response = await fetcher(url.href, { method: 'GET', redirect: 'manual', ...options,
     signal: AbortSignal.timeout(15_000), headers: { ...config.headers, ...options.headers } });
   if (!response.ok) throw new Error(`supabase_http_${response.status}`);
   const data = await response.json();
@@ -155,7 +161,7 @@ export async function runBatch(env, { afterId = '0', limit = 50, dryRun = true }
         observation = await fetched.get(url);
       } catch (error) {
         result.status = 'error';
-        result.reason = /^(unsafe_|invalid_|merchant_http_|page_too_large|unsupported_content_type|redirect_changed_product|too_many_redirects)/.test(error.message)
+        result.reason = /^(unsafe_|invalid_|merchant_http_|page_too_large|product_data_too_large|unsupported_content_type|redirect_changed_product|too_many_redirects)/.test(error.message)
           ? error.message : 'merchant_request_failed';
         if (error.redirects) result.redirects = error.redirects;
         continue;

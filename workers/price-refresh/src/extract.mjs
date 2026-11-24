@@ -1,4 +1,5 @@
 import { Parser } from 'htmlparser2';
+import { inlineProductData, retailerProducts } from './retailer-data.mjs';
 
 // Currency must be established separately; a dollar sign alone is not evidence of USD.
 export function priceCents(value) {
@@ -16,7 +17,8 @@ export const variantParams = url => [...url.searchParams.keys()].filter(key =>
   /^(variant|sku[-_]?id|sku|pid|colou?r[-_]?id|colou?r|size|seq)$|^dwvar_/i.test(key));
 const path = url => decodeURI(url.pathname).normalize('NFC').replace(/\/+$/, '') || '/';
 
-export const sameMerchant = (a, b) => a.hostname.replace(/^www\./, '') === b.hostname.replace(/^www\./, '');
+const merchantHost = url => url.hostname === 'ads.midwayusa.com' ? 'midwayusa.com' : url.hostname.replace(/^www\./, '');
+export const sameMerchant = (a, b) => merchantHost(a) === merchantHost(b);
 
 export function sameProduct(left, right) {
   try {
@@ -28,24 +30,40 @@ export function sameProduct(left, right) {
 function exactVariant(candidate, pageUrl) {
   try {
     const page = new URL(pageUrl), other = new URL(candidate, page);
-    return sameProduct(other.href, page.href) && variantParams(page).every(key =>
+    // Long Shopify variant IDs identify the offer even when the page's canonical slug differs.
+    const id = page.searchParams.get('variant');
+    const variantAlias = /^\d{8,20}$/.test(id ?? '') && other.searchParams.get('variant') === id &&
+      /\/products\/[^/]+\/?$/.test(page.pathname) && /\/products\/[^/]+\/?$/.test(other.pathname) && sameMerchant(page, other);
+    return (sameProduct(other.href, page.href) || variantAlias) && variantParams(page).every(key =>
       page.searchParams.getAll(key).length === 1 && other.searchParams.getAll(key).length === 1 &&
       page.searchParams.get(key) === other.searchParams.get(key));
   } catch { return false; }
 }
 
-function readPage(html) {
+function parseProductJson(text) {
+  try { return JSON.parse(text); } catch {
+    // Some Shopify themes emit GTIN identifiers as illegal leading-zero numbers.
+    // Quote only those identifier fields; never repair or alter malformed prices.
+    return JSON.parse(text.replace(/("gtin(?:8|12|13|14)?"\s*:\s*)(0\d+)(?=\s*[,}])/g, '$1"$2"'));
+  }
+}
+
+function createPageReader() {
   const scripts = [], embeddedProducts = [], meta = new Map();
+  const inline = { shopifyViews: [], asosStock: [] };
   let script = null, canonical = null;
-  let scriptKind = null;
+  let scriptKind = null, retained = 0, title = '', inTitle = false, shell = false;
   const parser = new Parser({
     onopentag(name, attributes) {
       if (name === 'script') {
         const type = attributes.type?.toLowerCase().split(';')[0].trim();
         scriptKind = type === 'application/ld+json' ? 'json_ld' : type === 'application/json' &&
-          (Object.hasOwn(attributes, 'data-product-json') || Object.hasOwn(attributes, 'data-product')) ? 'product_json' : null;
+          (Object.hasOwn(attributes, 'data-product-json') || Object.hasOwn(attributes, 'data-product')) ? 'product_json' :
+          !attributes.src && (!type || type === 'text/javascript' || type === 'application/javascript') ? 'inline' : null;
         if (scriptKind) script = '';
       }
+      if (name === 'title') inTitle = true;
+      if (attributes.class?.split(/\s+/).includes('skel__price')) shell = true;
       if (name === 'meta') {
         const key = (attributes.property ?? attributes.name ?? '').toLowerCase();
         if (!meta.has(key)) meta.set(key, attributes.content ?? '');
@@ -53,18 +71,40 @@ function readPage(html) {
       }
       if (name === 'link' && attributes.rel?.toLowerCase().split(/\s+/).includes('canonical')) canonical = attributes.href;
     },
-    ontext(text) { if (script !== null) script += text; },
+    ontext(text) {
+      if (inTitle && title.length < 500) title += text.slice(0, 500 - title.length);
+      if (script === null) return;
+      if (script.length + text.length > 2 * 1024 * 1024) {
+        if (scriptKind === 'inline') { script = null; scriptKind = null; return; }
+        throw new Error('product_data_too_large');
+      }
+      script += text;
+    },
     onclosetag(name) {
+      if (name === 'title') inTitle = false;
       if (name === 'script' && script !== null) {
-        try { (scriptKind === 'json_ld' ? scripts : embeddedProducts).push(JSON.parse(script)); }
+        try {
+          if (scriptKind === 'inline') {
+            const data = inlineProductData(script);
+            if (data.shopifyViews.length || data.asosStock.length) {
+              retained += script.length;
+              inline.shopifyViews.push(...data.shopifyViews); inline.asosStock.push(...data.asosStock);
+            }
+          } else {
+            retained += script.length;
+            (scriptKind === 'json_ld' ? scripts : embeddedProducts).push(parseProductJson(script));
+          }
+        }
         catch { /* Other valid product blocks may remain. */ }
+        if (retained > 4 * 1024 * 1024) throw new Error('product_data_too_large');
         script = null;
         scriptKind = null;
       }
     },
   }, { decodeEntities: true });
-  parser.end(html);
-  return { scripts, embeddedProducts, meta, canonical };
+  return { write: text => parser.write(text), finish() {
+    parser.end(); return { scripts, embeddedProducts, meta, canonical, inline, title, shell };
+  } };
 }
 
 function productsFrom(scripts) {
@@ -93,7 +133,10 @@ function offerValue(offer, resolve) {
   offer = resolve(offer);
   if (!offer || typeof offer !== 'object') return null;
   if (types(offer).includes('AggregateOffer')) {
-    if (priceCents(offer.lowPrice) === null || priceCents(offer.lowPrice) !== priceCents(offer.highPrice)) {
+    const low = priceCents(offer.lowPrice), high = priceCents(offer.highPrice), explicit = priceCents(offer.price);
+    if ((low !== null && high !== null && low !== high) ||
+        (explicit !== null && ((low !== null && low !== explicit) || (high !== null && high !== explicit))) ||
+        (explicit === null && (low === null || high === null))) {
       return { reason: 'price_range' };
     }
   }
@@ -102,23 +145,52 @@ function offerValue(offer, resolve) {
   const cents = priceCents(offer.price ?? (types(offer).includes('AggregateOffer') ? offer.lowPrice : null));
   if (cents === null) return { reason: 'missing_or_invalid_price' };
   const currency = String(offer.priceCurrency ?? '').toUpperCase();
-  const availability = String(offer.availability ?? '').split('/').pop();
+  const rawAvailability = String(offer.availability ?? '').split('/').pop().trim();
+  const availability = ({ instock: 'InStock', outofstock: 'OutOfStock', soldout: 'SoldOut' })[
+    rawAvailability.toLowerCase().replace(/[ _-]/g, '')] ?? rawAvailability;
   const expires = offer.priceValidUntil && Date.parse(offer.priceValidUntil.length === 10
     ? `${offer.priceValidUntil}T23:59:59.999Z` : offer.priceValidUntil);
   return { cents, currency, availability, url: offer.url,
     reason: currency !== 'USD' ? 'currency_not_usd' :
       offer.validForMemberTier || offer.eligibleCustomerType ? 'conditional_offer' :
       expires && expires < Date.now() ? 'expired_offer' :
-      availability !== 'InStock' ? (availability ? 'not_in_stock' : 'availability_unknown') : null };
+      !['InStock', 'OutOfStock', 'SoldOut'].includes(availability) ?
+        (availability ? 'unsupported_availability' : 'availability_unknown') : null };
 }
 
 export function extractPrice(html, pageUrl) {
-  const { scripts, embeddedProducts, meta, canonical } = readPage(html);
+  const extractor = createPriceExtractor(pageUrl);
+  extractor.write(html);
+  return extractor.finish();
+}
+
+export function createPriceExtractor(pageUrl) {
+  const reader = createPageReader();
+  return { write: reader.write, finish: () => extractPage(reader.finish(), pageUrl) };
+}
+
+function matchesOffer(offer, pageUrl) {
+  if (!offer.url) return false;
+  if (exactVariant(offer.url, pageUrl)) return true;
+  // Gap-family short style/color pids omit the four size digits in each full offer SKU.
+  try {
+    const page = new URL(pageUrl), candidate = new URL(offer.url, page);
+    const pid = page.searchParams.get('pid'), full = candidate.searchParams.get('pid');
+    return /^(athleta|bananarepublic|oldnavy|www)\.gap\.com$/.test(page.hostname) &&
+      page.pathname === '/browse/product.do' && sameProduct(candidate.href, pageUrl) &&
+      /^\d{9,10}$/.test(pid ?? '') && /^\d+$/.test(full ?? '') && full.length === pid.length + 4 &&
+      full.startsWith(pid) && String(offer.sku) === full && variantParams(page).every(key => key === 'pid') &&
+      page.searchParams.getAll('pid').length === 1 && ['1', null].includes(page.searchParams.get('vid'));
+  } catch { return false; }
+}
+
+function extractPage({ scripts, embeddedProducts, meta, canonical, inline, title, shell }, pageUrl) {
   const { products, resolve } = productsFrom(scripts);
+  products.push(...retailerProducts(inline, pageUrl, canonical, sameProduct));
   const selectedVariant = variantParams(new URL(pageUrl)).length > 0;
   const offersOf = product => [product.offers].flat().map(resolve).filter(Boolean);
   // Some ProductGroup children omit Product.url but identify themselves through Offer.url.
-  const exactOffers = products.filter(product => offersOf(product).some(offer => offer.url && exactVariant(offer.url, pageUrl)));
+  const exactOffers = products.filter(product => offersOf(product).some(offer => matchesOffer(offer, pageUrl)));
   const identified = products.filter(product => (product.url && sameProduct(product.url, pageUrl)) ||
     offersOf(product).some(offer => offer.url && sameProduct(offer.url, pageUrl)));
   const exactProducts = selectedVariant ? identified.filter(product => product.url && exactVariant(product.url, pageUrl)) : [];
@@ -127,7 +199,7 @@ export function extractPrice(html, pageUrl) {
   const values = [];
   for (const product of primary) {
     let offers = offersOf(product);
-    const matches = offers.filter(offer => offer.url && exactVariant(offer.url, pageUrl));
+    const matches = offers.filter(offer => matchesOffer(offer, pageUrl));
     if (selectedVariant) {
       const productMatches = product.url && exactVariant(product.url, pageUrl);
       if (matches.length) offers = matches;
@@ -135,7 +207,7 @@ export function extractPrice(html, pageUrl) {
         try { return offer.url && variantParams(new URL(offer.url, pageUrl)).length > 0; } catch { return true; }
       })) { values.push({ reason: 'variant_not_verified' }); continue; }
     } else if (matches.length) offers = matches;
-    values.push(...offers.map(offer => ({ ...offerValue(offer, resolve), product_name: product.name, source: 'json_ld',
+    values.push(...offers.map(offer => ({ ...offerValue(offer, resolve), product_name: product.name, source: product._source ?? 'json_ld',
       ...(matches.length && new URL(pageUrl).searchParams.has('variant')
         ? { variant_id: new URL(pageUrl).searchParams.get('variant') } : {}) })));
   }
@@ -153,7 +225,8 @@ export function extractPrice(html, pageUrl) {
       source: 'product_meta', product_name: meta.get('og:title') });
     }
   }
-  if (!values.length) return { verified: false, reason: products.length ? 'product_or_offer_not_verified' : 'no_supported_product_data' };
+  if (!values.length) return { verified: false, reason: /client challenge|access denied|just a moment|verify you are human/i.test(title)
+    ? 'merchant_challenge' : shell ? 'requires_browser_rendering' : products.length ? 'product_or_offer_not_verified' : 'no_supported_product_data' };
   const priced = values.filter(value => value.cents != null);
   const unique = new Set(priced.map(value => `${value.currency}:${value.cents}`));
   if (unique.size > 1) return { verified: false, reason: 'ambiguous_offers' };
@@ -165,7 +238,7 @@ export function extractPrice(html, pageUrl) {
     reason: reason ?? null,
     extracted_price: first.cents == null ? null : formatPrice(first.cents),
     currency: first.currency ?? null,
-    availability: first.availability ?? null,
+    availability: new Set(priced.map(value => value.availability)).size > 1 ? 'Mixed' : first.availability ?? null,
     source: first.source,
     product_name: first.product_name ?? null,
     ...(first.variant_id ? { variant_id: first.variant_id } : {}),

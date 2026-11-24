@@ -81,7 +81,7 @@ test('live conflict, unsupported offers, and failed pages cannot be reported as 
   const conflict = network([row], () => page(), []);
   assert.equal((await runBatch({ ...env, DRY_RUN: 'false' }, { dryRun: false }, conflict.fetch)).summary.conflict, 1);
   for (const merchant of [() => page('0'), () => page('5', { priceCurrency: 'EUR' }),
-    () => page('5', { availability: 'https://schema.org/OutOfStock' }),
+    () => page('5', { availability: undefined }),
     () => new Response('blocked', { status: 403 }), () => { throw new Error('private credential details'); }]) {
     const n = network([row], merchant);
     const report = await runBatch({ ...env, DRY_RUN: 'false' }, { dryRun: false }, n.fetch);
@@ -152,9 +152,9 @@ test('redirect handling preserves product identity and selected variant before f
 
 test('oversized and non-HTML responses are rejected', async () => {
   await assert.rejects(fetchProduct(productUrl, async () => new Response('x', {
-    headers: { 'Content-Type': 'text/html', 'Content-Length': String(3 * 1024 * 1024) },
+    headers: { 'Content-Type': 'text/html', 'Content-Length': String(17 * 1024 * 1024) },
   })), /page_too_large/);
-  await assert.rejects(fetchProduct(productUrl, async () => new Response('x'.repeat(2 * 1024 * 1024 + 1), {
+  await assert.rejects(fetchProduct(productUrl, async () => new Response('x'.repeat(16 * 1024 * 1024 + 1), {
     headers: { 'Content-Type': 'text/html' },
   })), /page_too_large/);
   await assert.rejects(fetchProduct(productUrl, async () => Response.json({ price: 1 })), /unsupported_content_type/);
@@ -281,4 +281,49 @@ test('same-path tracking cleanup is allowed but price, market, and unknown query
   const result = await fetchProduct(`${productUrl}&srsltid=tracking&menu=cat123`, async () => ++calls === 1
     ? new Response(null, { status: 301, headers: { location: productUrl } }) : page());
   assert.equal(result.verified, true);
+});
+
+test('large HTML is streamed through the extractor, including script data near the end', async () => {
+  const data = await page('19.99').text();
+  const bigPage = '<html><script>' + 'x'.repeat(3 * 1024 * 1024) + '</script>' + data + '</html>';
+  const result = await fetchProduct(productUrl, async () => new Response(bigPage, { headers: { 'Content-Type': 'text/html' } }));
+  assert.equal(result.verified, true);
+  assert.equal(result.extracted_price, '$19.99');
+});
+
+test('streamed parsing preserves split UTF-8 and JSON tokens across response chunks', async () => {
+  const data = new TextEncoder().encode((await page('20').text()).replace('"Shirt"', '"Café shirt"'));
+  const stream = new ReadableStream({ start(controller) {
+    for (let start = 0; start < data.length; start += 3) controller.enqueue(data.subarray(start, start + 3));
+    controller.close();
+  } });
+  const result = await fetchProduct(productUrl, async () => new Response(stream, { headers: { 'Content-Type': 'text/html' } }));
+  assert.equal(result.verified, true);
+  assert.equal(result.product_name, 'Café shirt');
+});
+
+test('oversized product data is rejected even inside an otherwise permitted HTML response', async () => {
+  const body = `<script type="application/ld+json">${JSON.stringify({ '@type': 'Product', description: 'x'.repeat(2 * 1024 * 1024) })}</script>`;
+  await assert.rejects(fetchProduct(productUrl, async () => new Response(body,
+    { headers: { 'Content-Type': 'text/html' } })), /product_data_too_large/);
+});
+
+test('out-of-stock prices appear in dry-run proposals while every database call remains read-only', async () => {
+  const n = network([row], () => page('15', { availability: 'https://schema.org/OutOfStock' }));
+  const report = await runBatch({ ...env, DRY_RUN: 'false' }, { dryRun: true }, n.fetch);
+  assert.equal(report.summary.would_update, 1);
+  assert.equal(report.summary.updated, 0);
+  assert.equal(report.results[0].availability, 'OutOfStock');
+  assert.equal(report.results[0].extracted_price, '$15.00');
+  assert.ok(n.calls.every(call => call.options.method === 'GET'));
+});
+
+test('database requests use Workers-compatible manual redirects and never forward credentials on a redirect', async () => {
+  let calls = 0;
+  await assert.rejects(runBatch(env, {}, async (_url, options) => {
+    calls++;
+    assert.equal(options.redirect, 'manual');
+    return new Response(null, { status: 302, headers: { location: 'https://other.retailer.com/' } });
+  }), /supabase_http_302/);
+  assert.equal(calls, 1);
 });

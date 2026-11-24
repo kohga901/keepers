@@ -112,6 +112,24 @@ It also supports page-level Open Graph product-price metadata with a matching
 product URL. It does not take the first dollar amount on a page or use search
 to replace a saved URL.
 
+Additional supported page data:
+
+- Literal Shopify `Viewed Product` data with a matching canonical product URL,
+  selected variant, explicit currency and stock. The script is read as data,
+  never executed.
+- ASOS embedded stock/price responses for the exact product ID and selected
+  variant when supplied. Only the current price is used; previous, unrelated,
+  conditional and ranged prices remain excluded.
+- Gap-family short style/color product IDs mapped to matching full size SKUs.
+  A different style/color is not substituted when the saved selection is absent.
+- Midway's advertising and canonical product hosts for the same product and pid.
+- Leading-zero GTIN identifiers emitted as malformed JSON numbers. Only these
+  identifier fields are quoted; malformed prices are never repaired.
+
+Long numeric Shopify variant IDs can also verify a structured offer whose
+canonical product slug differs from the fetched alias. Other merchants and
+different variant IDs still fail identity checks.
+
 For pages with marked Shopify product JSON (`data-product-json` or
 `data-product`), it can read the exact saved `variant` ID's integer-cent price
 and explicit stock status. The embedded product handle must match the fetched
@@ -119,9 +137,13 @@ product path, and matching page product data must establish USD. It does not
 execute scripts or use unrelated product/recommendation JSON. Subscription-only
 variants and expired/member-only offer evidence remain excluded.
 
-An automatic update requires a positive, single USD price and explicit InStock
-availability. Price ranges, expired offers, conditional member offers, unknown
-currency/stock and conflicting offers are left for review. Known variant/SKU,
+An eligible price requires a positive, single USD amount and explicit InStock,
+OutOfStock or SoldOut availability. **Out-of-stock prices are included** and their
+availability is retained in the report. Multiple matching offers with the same
+price but different stock states are labelled `Mixed`. Price ranges, expired
+offers, conditional member offers, unknown currency/stock and conflicting prices
+are left for review. An explicit single AggregateOffer price is supported only
+when any published lower/upper bounds agree with it. Known variant/SKU,
 color and size selectors (including `seq`) in the saved URL must match the product
 or offer URL. Embedded JSON fallback supports only a single `variant` selector;
 additional size/color selectors still require a matching structured offer.
@@ -129,8 +151,13 @@ There is no guess based on another product's name or photo. Current catalog
 prices remain strings such as `$24.99` for compatibility with the app and its
 existing price-alert trigger.
 
-Merchant requests have a 15-second timeout, a 2 MiB body limit and at most three
-redirects. Same-merchant product slug changes are accepted when they preserve the
+Merchant requests have a 15-second timeout, a 16 MiB decompressed body limit and
+at most three redirects. HTML is parsed as it streams instead of collecting the
+entire page in memory, so product data near the end of a large page is supported.
+Retained scripts are limited to 2 Mi characters each and 4 Mi characters combined;
+oversized generic JavaScript is ignored and oversized structured product data is
+reported as `product_data_too_large`. A truncated/oversized response never yields
+a verified partial price. Same-merchant product slug changes are accepted when they preserve the
 saved variant ID or a stable numeric product ID. A renamed variant page must
 provide a matching offer URL or marked embedded variant data before its price
 can be verified. Extraction uses the final product URL; reports retain the
@@ -148,6 +175,9 @@ Pages that render prices only in JavaScript, omit stock/currency, use unsupporte
 markup or present unusual variant selectors may be skipped. Structured data can
 itself be stale. Pilot coverage must be measured against real merchant pages;
 add targeted adapters or browser rendering only for demonstrated gaps.
+Recognized HTTP-200 challenge pages are labelled `merchant_challenge`, and known
+client-rendered price shells are labelled `requires_browser_rendering` rather
+than being mistaken for product data. Neither is treated as a usable price.
 
 ## Enable writes only after reviewing real dry-run results
 
@@ -163,6 +193,10 @@ match, so a concurrent edit causes a conflict rather than being overwritten.
 The key needs UPDATE access for live mode. There are no catalog inserts, deletes,
 or embedding changes. Updates can immediately fire existing price alerts and
 queue emails if those migrations are installed; confirm their deployed state.
+Availability is currently recorded in reports, not in a new Clothing column.
+The existing alert trigger compares only price: if live writes are enabled,
+included out-of-stock price changes can also trigger alerts. Live writes remain
+disabled until the price results and that behavior have been reviewed.
 
 KV is eventually consistent and is not a distributed lock. Concurrent scans can
 repeat work, and compare-and-set is not a substitute for strict observation
