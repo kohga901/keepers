@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePriceDisplay } from '../../contexts/PriceDisplayContext';
 import { useTutorial } from '../../contexts/TutorialContext';
 import { clearHistoryOnServer, type ClearHistoryScope } from '../../services/serverApi';
+import { ItemRequests } from '../../components/ItemRequests';
 import { EmailNotificationSettings } from '../../components/EmailNotificationSettings';
 import { useAppTheme } from '../../hooks/useAppTheme';
 import { supabase } from '../../utils/supabase';
@@ -116,8 +117,11 @@ export default function Settings() {
     <ScrollView
       contentContainerStyle={[
         styles.content,
-        { paddingBottom: insets.bottom + 32, paddingTop: insets.top + 72 },
+        // Extra room at the bottom so the last form fields can be scrolled clear of the keyboard.
+        { paddingBottom: insets.bottom + 220, paddingTop: insets.top + 72 },
       ]}
+      // iOS: scroll the focused text field above the keyboard.
+      automaticallyAdjustKeyboardInsets
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
       style={[styles.container, { backgroundColor: theme.background }]}
@@ -313,6 +317,10 @@ export default function Settings() {
             {clearStatus.message}
           </Text>
         )}
+      </View>
+
+      <View style={styles.section}>
+        <ItemRequests />
       </View>
     </ScrollView>
   );

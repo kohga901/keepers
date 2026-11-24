@@ -13,8 +13,8 @@ export interface Item {
   price: string;
   itemUrl: string;
   liked: boolean;
-  
-  
+  // True when the user asked for this item and it was approved since they last saw it.
+  requested?: boolean;
 }
 
 export type ClothingRow = {
@@ -24,4 +24,5 @@ export type ClothingRow = {
   item_img: string;
   item_web_listing: string;
   item_gender: string;
+  requested_by_you?: boolean;
 };
