@@ -84,7 +84,7 @@ deploy_web:
       : "${CLOUDFLARE_PAGES_PROJECT_NAME:?Set CLOUDFLARE_PAGES_PROJECT_NAME in GitLab CI/CD variables}"
       export EXPO_NO_DOTENV=1
       export EXPO_PUBLIC_SERVER_URL=https://keepers-fu6r.onrender.com
-      unset EXPO_PUBLIC_KEEPERS_GOOGLE_AI_API_KEY EXPO_PUBLIC_KEEPERS_OPENAI_API_KEY EXPO_PUBLIC_KEEPERS_ANTHROPIC_API_KEY
+      unset EXPO_PUBLIC_KEEPERS_GOOGLE_AI_API_KEY EXPO_PUBLIC_KEEPERS_OPENAI_API_KEY
       npm run build:web
     # Direct Upload projects can use a production branch name other than main.
     - |

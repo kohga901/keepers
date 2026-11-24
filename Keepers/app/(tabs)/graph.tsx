@@ -1,6 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Image } from 'expo-image';
-import { router } from 'expo-router';
 import { getDefaultHeaderHeight, useFocusEffect, useIsFocused } from 'expo-router/react-navigation';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Switch, View } from 'react-native';
@@ -227,7 +226,7 @@ export default function GraphTab() {
     lookupRequest.current = controller;
     setLookupItem(item); setLookupLoading(true); setLookupResult(null); setLookupError(null);
     try {
-      const result = await lookupPurchasableItem({ imageUrl: item.imageUrl, itemHint: item.name, maxResults: 5, signal: controller.signal });
+      const result = await lookupPurchasableItem({ itemId: item.id, maxResults: 5, signal: controller.signal });
       if (!controller.signal.aborted && request === lookupId.current) setLookupResult(result);
     } catch (error) {
       const safe = toAiLookupError(error);
@@ -314,7 +313,7 @@ export default function GraphTab() {
               {saving ? <ActivityIndicator size="small" color={theme.text} /> : <Ionicons name={status === 'liked' ? 'heart' : status === 'passed' ? 'remove-circle-outline' : 'heart-outline'} size={16} color={theme.text} />}
               <Text style={[styles.buttonText, textColor]}>{saving ? 'Liking…' : status === 'liked' ? 'Liked' : status === 'passed' ? 'Passed' : status === 'unknown' ? 'Checking…' : 'Like'}</Text>
             </Pressable>
-            <Pressable accessibilityRole="button" accessibilityLabel="Find this piece with AI" accessibilityHint="Uses your selected AI provider to search for purchase listings" disabled={!selectedItem?.imageUrl}
+            <Pressable accessibilityRole="button" accessibilityLabel="Find this piece with AI" accessibilityHint="Searches for shopping options for this item" disabled={!selectedItem?.imageUrl}
               onPress={() => selectedItem && void startLookup(selectedItem)} style={[styles.action, styles.flex, { backgroundColor: theme.accentGold, opacity: selectedItem?.imageUrl ? 1 : .55 }]}><Ionicons name="search" size={16} color={theme.text} /><Text style={[styles.buttonText, textColor]}>Find it</Text></Pressable>
             <Pressable accessibilityRole="button" accessibilityLabel="Next piece in this area" onPress={() => command({ type: 'next' })} style={[styles.action, { backgroundColor: theme.background }]}><Ionicons name="chevron-forward" size={19} color={theme.text} /></Pressable>
           </View>
@@ -327,7 +326,7 @@ export default function GraphTab() {
       {mapError && <View style={[styles.empty, StyleSheet.absoluteFill, { backgroundColor: theme.background }]}><Text style={textColor}>Your style map could not load.</Text><Pressable accessibilityRole="button" style={[styles.pick, surface]} onPress={() => { ready.current = false; setMapError(false); setRendered(false); setWebKey((key) => key + 1); }}><Text style={textColor}>Reload map</Text></Pressable></View>}
     </View>
     <ImageLookupModal item={lookupItem} loading={lookupLoading} result={lookupResult} errorCode={lookupError?.code ?? null} errorMessage={lookupError?.message ?? null}
-      onClose={closeLookup} onOpenSettings={() => { closeLookup(); router.push('/settings'); }} onRetry={() => { if (lookupItem) void startLookup(lookupItem); }} />
+      onClose={closeLookup} onRetry={() => { if (lookupItem) void startLookup(lookupItem); }} />
   </View>;
 }
 

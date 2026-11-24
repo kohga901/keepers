@@ -112,8 +112,7 @@ export default function StyleWraps() {
 
     try {
       const result = await lookupPurchasableItem({
-        imageUrl: target.imageUrl,
-        itemHint: target.name,
+        itemId: target.id,
         maxResults: 5,
         signal: controller.signal,
       });
@@ -139,11 +138,6 @@ export default function StyleWraps() {
     setLookupLoading(false);
     setLookupResult(null);
     setLookupError(null);
-  }
-
-  function openSettings() {
-    closeLookup();
-    router.push('/settings');
   }
 
   if (loading && !data) {
@@ -237,7 +231,7 @@ export default function StyleWraps() {
                   <Text numberOfLines={2} style={[styles.small, styles.galleryItemName, { color: theme.text }]}>{item.name ?? 'A keeper'}</Text>
                   <View style={styles.shopLink}><Text style={[styles.small, { color: theme.text }]}>Shop item</Text><Ionicons name="open-outline" size={14} color={theme.text} /></View>
                 </Pressable>
-                <Pressable accessibilityHint="Uses your selected AI provider to search for purchase listings" accessibilityLabel={`Find ${item.name ?? 'this liked item'} with AI`} accessibilityRole="button" onPress={() => void startLookup(item)} style={({ pressed }) => [styles.lookupButton, { backgroundColor: theme.primary }, pressed && styles.galleryItemPressed]}>
+                <Pressable accessibilityHint="Searches for shopping options for this item" accessibilityLabel={`Find ${item.name ?? 'this liked item'} with AI`} accessibilityRole="button" onPress={() => void startLookup(item)} style={({ pressed }) => [styles.lookupButton, { backgroundColor: theme.primary }, pressed && styles.galleryItemPressed]}>
                   <Ionicons name="search" size={15} color={BUTTON_TEXT} />
                   <Text style={[styles.lookupButtonText, { color: BUTTON_TEXT }]}>Find it</Text>
                 </Pressable>
@@ -263,7 +257,6 @@ export default function StyleWraps() {
         item={lookupItem}
         loading={lookupLoading}
         onClose={closeLookup}
-        onOpenSettings={openSettings}
         onRetry={() => {
           const item = featuredKeepers.find((keeper) => keeper.id === lookupItem?.id);
           if (item) void startLookup(item);

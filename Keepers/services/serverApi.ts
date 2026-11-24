@@ -11,7 +11,7 @@ import { supabase } from '../utils/supabase';
 import { getClothing } from './dataServices';
 import type { Tag } from '../utils/tagFilter';
 
-const SERVER_BASE_URL = process.env.EXPO_PUBLIC_SERVER_URL ?? 'https://trial-exact-usable.ngrok-free.dev';
+export const SERVER_BASE_URL = process.env.EXPO_PUBLIC_SERVER_URL || 'https://keepers-fu6r.onrender.com';
 
 type SwipePayload = {
   user_id: string;

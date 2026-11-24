@@ -1,29 +1,8 @@
 import { z } from 'zod';
 
-export const aiProviderSchema = z.enum(['google', 'openai', 'anthropic']);
+export const aiProviderSchema = z.enum(['google', 'openai']);
 
 export type AiProvider = z.infer<typeof aiProviderSchema>;
-
-export const PROVIDER_DETAILS: Record<
-  AiProvider,
-  { label: string; model: string; keyLabel: string }
-> = {
-  google: {
-    label: 'Google Gemini',
-    model: 'gemini-3.5-flash-lite',
-    keyLabel: 'Gemini API key',
-  },
-  openai: {
-    label: 'OpenAI \nGPT',
-    model: 'gpt-5-mini',
-    keyLabel: 'OpenAI API key',
-  },
-  anthropic: {
-    label: 'Anthropic Claude',
-    model: 'claude-sonnet-5',
-    keyLabel: 'Anthropic API key',
-  },
-};
 
 const modelListingSchema = z.object({
   title: z.string().min(1).max(240).describe('The listing title shown by the seller'),
@@ -55,41 +34,34 @@ export const modelLookupSchema = z.object({
   listings: z.array(modelListingSchema).max(10),
 });
 
-export type ModelLookup = z.infer<typeof modelLookupSchema>;
+export function isSafeLookupUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return /^https:\/\//i.test(value) && !!url.hostname && !url.username && !url.password
+      && !value.split('/')[2]?.includes('@') && (!url.port || url.port === '443')
+      && ![...value].some((character) => /\s/.test(character) || character.charCodeAt(0) < 32
+        || character.charCodeAt(0) === 127 || character === '\\');
+  } catch {
+    return false;
+  }
+}
 
-export type LookupSource = {
-  title: string;
-  url: string;
-};
+// Validate the original input before URL parsers can strip controls or userinfo.
+const httpsUrlSchema = z.string().max(2_048).refine(isSafeLookupUrl);
 
-export type PurchaseListing = z.infer<typeof modelListingSchema> & {
-  sourceBacked: boolean;
-};
+export const imageLookupResultSchema = modelLookupSchema.extend({
+  provider: aiProviderSchema,
+  model: z.string().min(1),
+  listings: z.array(modelListingSchema.extend({ url: httpsUrlSchema, sourceBacked: z.boolean() })).max(10),
+  searchLinks: z.array(z.object({
+    marketplace: z.string(), query: z.string(), title: z.string(), url: httpsUrlSchema,
+  })).max(8),
+  sources: z.array(z.object({ title: z.string(), url: httpsUrlSchema })).max(30),
+});
 
-export type ShoppingSearchLink = {
-  marketplace: string;
-  query: string;
-  title: string;
-  url: string;
-};
-
-export type ImageLookupResult = Omit<ModelLookup, 'listings'> & {
-  provider: AiProvider;
-  model: string;
-  listings: PurchaseListing[];
-  searchLinks: ShoppingSearchLink[];
-  sources: LookupSource[];
-};
-
+export type ImageLookupResult = z.infer<typeof imageLookupResultSchema>;
 export type ImageLookupInput = {
-  imageUrl: string;
-  itemHint?: string;
+  itemId: string;
   maxResults?: number;
   signal?: AbortSignal;
 };
-
-export interface ImageLookupProvider {
-  readonly name: AiProvider;
-  readonly model: string;
-  lookup(input: ImageLookupInput): Promise<ImageLookupResult>;
-}

@@ -17,7 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppTheme } from '../../hooks/useAppTheme';
 import { TAB_CONTENT_MAX_WIDTH } from '../../constants/layout';
 import type { Item } from '../../models/Items';
-import type { AiLookupErrorCode, ImageLookupResult } from '../../services/ai';
+import { isSafeLookupUrl, type AiLookupErrorCode, type ImageLookupResult } from '../../services/ai';
 
 type ImageLookupModalProps = {
   errorCode: AiLookupErrorCode | null;
@@ -25,21 +25,12 @@ type ImageLookupModalProps = {
   item: Item | null;
   loading: boolean;
   onClose: () => void;
-  onOpenSettings: () => void;
   onRetry: () => void;
   result: ImageLookupResult | null;
 };
 
-function isSafeExternalUrl(value: string): boolean {
-  try {
-    return new URL(value).protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
-
 async function openExternalUrl(url: string) {
-  if (!isSafeExternalUrl(url)) {
+  if (!isSafeLookupUrl(url)) {
     Alert.alert('Link unavailable', 'Keepers blocked a link that was not a secure HTTPS address.');
     return;
   }
@@ -57,7 +48,6 @@ export function ImageLookupModal({
   item,
   loading,
   onClose,
-  onOpenSettings,
   onRetry,
   result,
 }: ImageLookupModalProps) {
@@ -109,8 +99,7 @@ export function ImageLookupModal({
               <ActivityIndicator color={theme.primary} size="large" />
               <Text style={[styles.stateTitle, { color: theme.text }]}>Identifying this item…</Text>
               <Text style={[styles.stateBody, { color: theme.mutedText }]}>
-                The AI is identifying the item and preparing shopping options. This can take up to a
-                minute.
+                The AI is identifying the item and preparing shopping options. This may take a minute or two.
               </Text>
             </View>
           )}
@@ -121,29 +110,18 @@ export function ImageLookupModal({
               <Text style={[styles.stateTitle, { color: theme.text }]}>Lookup didn’t finish</Text>
               <Text style={[styles.stateBody, { color: theme.mutedText }]}>{errorMessage}</Text>
               <View style={styles.stateActions}>
-                {errorCode === 'missing_key' || errorCode === 'invalid_key' ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={onOpenSettings}
-                    style={({ pressed }) => [
-                      styles.primaryButton,
-                      { backgroundColor: theme.primary, opacity: pressed ? 0.72 : 1 },
-                    ]}
-                  >
-                    <Text style={styles.primaryButtonText}>Open settings</Text>
-                  </Pressable>
-                ) : (
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={onRetry}
-                    style={({ pressed }) => [
-                      styles.primaryButton,
-                      { backgroundColor: theme.primary, opacity: pressed ? 0.72 : 1 },
-                    ]}
-                  >
-                    <Text style={styles.primaryButtonText}>Try again</Text>
-                  </Pressable>
-                )}
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={errorCode === 'unauthorized' ? onClose : onRetry}
+                  style={({ pressed }) => [
+                    styles.primaryButton,
+                    { backgroundColor: theme.primary, opacity: pressed ? 0.72 : 1 },
+                  ]}
+                >
+                  <Text style={styles.primaryButtonText}>
+                    {errorCode === 'unauthorized' ? 'Close' : 'Try again'}
+                  </Text>
+                </Pressable>
               </View>
             </View>
           )}
@@ -176,8 +154,8 @@ export function ImageLookupModal({
               {result.listings.length === 0 && result.searchLinks.length === 0 && (
                 <View style={[styles.emptyCard, { borderColor: theme.border }]}>
                   <Text style={[styles.stateBody, { color: theme.mutedText }]}>
-                    No trustworthy purchase links were returned for this image. Try another photo or
-                    provider.
+                    No trustworthy purchase links were returned for this item. Try again later or
+                    search for another item.
                   </Text>
                 </View>
               )}
@@ -266,7 +244,7 @@ export function ImageLookupModal({
                 <View style={styles.sourcesSection}>
                   <Text style={[styles.sectionTitle, { color: theme.text }]}>Search sources</Text>
                   <Text style={[styles.sourceHelp, { color: theme.mutedText }]}>
-                    Sources used by the provider. Links and listing details can change.
+                    Sources for these results. Links and listing details can change.
                   </Text>
                   {result.sources.map((source, index) => (
                     <Pressable
@@ -286,7 +264,7 @@ export function ImageLookupModal({
 
               <Text style={[styles.disclaimer, { color: theme.mutedText }]}>
                 {result.searchLinks.length > 0
-                  ? 'Gemini identified the item, and Keepers generated these marketplace searches locally. They are not verified listings. Check the product, seller, price, condition, and return policy before purchasing.'
+                  ? 'Gemini identified the item, and the Keepers server generated these marketplace searches. They are not verified listings. Check the product, seller, price, condition, and return policy before purchasing.'
                   : 'AI can misidentify products and sellers can change prices or availability. Verify the photo, seller, condition, price, and return policy before purchasing.'}
               </Text>
             </View>
