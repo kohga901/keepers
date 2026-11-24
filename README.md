@@ -44,9 +44,16 @@ price or less. Each saved alert fires once and can be set again.
 Apply `supabase/price_alerts.sql`, then `supabase/price_alert_increases.sql` in the
 Supabase SQL editor before running the updated app. For an existing installation,
 apply only `supabase/price_alert_increases.sql`; existing alerts keep watching for
-decreases. Alerts depend on updates to existing catalog prices;
-automatic merchant-price refresh and remote push are outside this implementation.
+decreases. Alerts depend on updates to existing catalog prices. Automatic
+merchant-price refresh is provided by the optional Worker below; remote push
+is outside the price-alert implementation.
 See [PRICE_ALERTS.md](PRICE_ALERTS.md) for the implementation choices and setup.
+
+An optional [Cloudflare price-refresh Worker](workers/price-refresh/README.md)
+reads the catalog's existing retailer URLs and extracts current offer prices.
+It ships in dry-run mode with reviewable reports and makes no Supabase changes
+until writes are explicitly enabled. See its README for local preview,
+deployment, supported sources and limitations.
 
 For increase/decrease labels in notifications and emails with item images, apply
 `supabase/price_notification_details.sql` after the increases and email-queue SQL,

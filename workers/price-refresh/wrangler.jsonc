@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "keepers-price-refresh",
+  "main": "src/index.mjs",
+  "compatibility_date": "2026-11-24",
+  "workers_dev": true,
+  "vars": {
+    "DRY_RUN": "true",
+    "BATCH_SIZE": "50"
+  },
+  "triggers": { "crons": ["*/15 * * * *"] },
+  // Wrangler provisions this namespace on first deployment. Local dev uses local KV.
+  "kv_namespaces": [{ "binding": "PRICE_REFRESH" }],
+  "observability": { "enabled": true }
+}

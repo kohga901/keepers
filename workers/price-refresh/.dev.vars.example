@@ -1,0 +1,5 @@
+SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+# A server-side key with SELECT access to Clothing. Dry runs never write to Supabase.
+SUPABASE_KEY=
+# A separate random token for the Worker's administrative endpoints (at least 32 characters).
+ADMIN_TOKEN=
