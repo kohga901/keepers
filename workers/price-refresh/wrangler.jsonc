@@ -6,7 +6,8 @@
   "workers_dev": true,
   "vars": {
     "DRY_RUN": "true",
-    "BATCH_SIZE": "50"
+    "BATCH_SIZE": "50",
+    "BROWSER_FALLBACK_LIMIT": "0"
   },
   "triggers": { "crons": ["*/15 * * * *"] },
   // Wrangler provisions this namespace on first deployment. Local dev uses local KV.

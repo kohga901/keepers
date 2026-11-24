@@ -168,8 +168,8 @@ Known tracking/navigation parameters may disappear during redirects. Private/IP
 URLs, credentials, non-HTTPS targets, unrelated merchant or home/category
 redirects, and redirects dropping/changing meaningful or unknown query
 parameters remain rejected. Currency and country comparisons ignore letter case.
-The worker never forwards Supabase/admin credentials to merchants. Blocked pages
-are reported; there is no CAPTCHA bypass or automatic browser fallback.
+The worker never forwards Supabase/admin/Cloudflare credentials to merchants.
+Browser recovery is optional and off by default. It does not bypass CAPTCHAs.
 
 Pages that render prices only in JavaScript, omit stock/currency, use unsupported
 markup or present unusual variant selectors may be skipped. Structured data can
@@ -178,6 +178,74 @@ add targeted adapters or browser rendering only for demonstrated gaps.
 Recognized HTTP-200 challenge pages are labelled `merchant_challenge`, and known
 client-rendered price shells are labelled `requires_browser_rendering` rather
 than being mistaken for product data. Neither is treated as a usable price.
+
+## Recover failed listings without writing prices
+
+Every skipped/error row includes a `recovery.action` and `next_step`. Create an
+offline plan for all failures from an earlier report (no credentials/network):
+
+```powershell
+npm run recover -- --input reports/full-catalog-2026-11-24/failures.json --output reports/recovery-plan.json
+```
+
+| Failure | Recovery |
+| --- | --- |
+| 429, 5xx, temporary failure | One bounded retry; respect `Retry-After`, report a cooldown for longer waits. |
+| JavaScript-only price or unsupported HTML | Render the saved URL, then repeat product/variant/USD checks. |
+| 403, challenge, access denial | Bounded browser probe; persistent blocks need merchant-approved API/feed access or manual review. |
+| 404/410, homepage/category redirect | Repair the exact listing URL or retire the item; a different product is not a price source. |
+| Unverified variant | Repair an obsolete size/color/SKU selector or obtain an exact matching offer. |
+| Conflicting offers or range | Verify selected seller/variant and unconditional price; never assume the minimum. |
+| Missing price or stock | Inspect the exact page/feed. Retain the old price as unverified when no price is published. |
+| Non-USD | Review a US USD listing for the same variant; do not convert or relabel foreign amounts. |
+| Expired/member-only | Obtain a fresh unconditional offer; rendering cannot make an expired offer valid. |
+| Legacy HTTP | Fetch HTTPS with identical path/query; never request HTTP or rewrite the database URL. |
+
+Express renamed slugs use its stable `/pro/` ID, preserving selected color, fit
+and size. Uniqlo color/size display codes and marketplace seller selectors must
+match. Standard Schema.org statuses such as `OnlineOnly`, `PreOrder` and
+`BackOrder` retain their labels alongside out-of-stock prices.
+
+For local browser recovery, provide your installed Chrome/Edge executable.
+`puppeteer-core` is development-only, downloads no browser and uses a fresh
+context per listing without your personal cookies/profile:
+
+```powershell
+npm run recover -- --input reports/recovery-plan.json --retry --actions browser,verify_variant --browser-limit 20 --local-browser "C:/Program Files/Google/Chrome/Application/chrome.exe" --output reports/recovery-check.json
+```
+
+This CLI uses saved report rows, no real Supabase connection or key. It always
+requests `dryRun:true` and rejects database mutations. `--limit N` caps rows
+rechecked. `--browser-limit` caps actual browser loads across the entire run
+(maximum 200); rows beyond it remain unresolved. Completed batches checkpoint
+every 50 rows. Unchecked rows are marked `rechecked:false`. Keep the original
+report when retrying again so successful rows are not lost.
+
+For Cloudflare's [Browser Run content endpoint](https://developers.cloudflare.com/browser-run/quick-actions/content-endpoint/),
+add `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_BROWSER_TOKEN` to gitignored `.dev.vars`.
+Use an account-scoped token with **Browser Run – Edit** permission. Use
+`--env-file .dev.vars` instead of `--local-browser`. Cloud browser requests incur
+usage according to your Cloudflare plan; start with a small cap. Only Cloudflare
+receives that token. Merchant requests never receive it.
+
+The Worker and regular `npm run dry-run` enable cloud recovery only with
+`BROWSER_FALLBACK_LIMIT=1..5` and both credentials. The cap resets each batch;
+keep it at `0` until the cloud pilot is reviewed. Deploy credentials with
+Wrangler secrets. Do not change `DRY_RUN`: price writes remain disabled.
+
+Only one browser load runs at a time per renderer to bound memory/concurrency.
+A merchant is paused for that run/batch after a rendered challenge or access
+denial; healthy merchants continue. HTML is capped at 16 MiB; the Cloudflare API
+envelope at 24 MiB. Browser final-URL evidence is mandatory; homepages, changed
+variants, unsafe targets and cross-merchant redirects are rejected. Recovery
+retains the original failure and is labelled `transport:"browser"`. Rendered
+pages still lacking supported data get adapter/feed review instead of another
+blind render.
+
+Cloudflare [identifies Browser Run as a bot](https://developers.cloudflare.com/browser-run/quick-actions/content-endpoint/#set-a-custom-user-agent).
+Moving a denied request to Cloudflare does not guarantee access. Deleted
+listings, unpublished prices and inaccessible exact variants cannot reliably
+be filled in by scraping a similar item or inventing a price.
 
 ## Enable writes only after reviewing real dry-run results
 

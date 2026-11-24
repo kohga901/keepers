@@ -55,9 +55,9 @@ export function inlineProductData(text) {
   return result;
 }
 
-export function retailerProducts(data, pageUrl, canonical, sameProduct) {
+export function retailerProducts(data, pageUrl, canonical, sameProduct, variantParams) {
   const page = new URL(pageUrl), products = [];
-  const selectorKeys = [...page.searchParams.keys()].filter(key => /^(variant|sku|sku-id|pid|size|color|colour|seq|dwvar_)/i.test(key));
+  const selectorKeys = variantParams(page);
   const selected = page.searchParams.get('variant');
   if (canonical && sameProduct(canonical, pageUrl) && selectorKeys.every(key => key === 'variant') &&
       (!selected || page.searchParams.getAll('variant').length === 1)) {

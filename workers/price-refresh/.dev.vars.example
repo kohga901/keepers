@@ -3,3 +3,8 @@ SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 SUPABASE_KEY=
 # A separate random token for the Worker's administrative endpoints (at least 32 characters).
 ADMIN_TOKEN=
+# Optional browser recovery. Account-scoped API token with Browser Run - Edit permission.
+CLOUDFLARE_ACCOUNT_ID=
+CLOUDFLARE_BROWSER_TOKEN=
+# Explicit per-batch cap (0 disables browser calls; maximum 5 in the Worker).
+BROWSER_FALLBACK_LIMIT=0

@@ -14,7 +14,7 @@ export const formatPrice = cents => `$${(cents / 100).toFixed(2)}`;
 
 const types = node => [node?.['@type']].flat().map(type => String(type).split('/').pop());
 export const variantParams = url => [...url.searchParams.keys()].filter(key =>
-  /^(variant|sku[-_]?id|sku|pid|colou?r[-_]?id|colou?r|size|seq)$|^dwvar_/i.test(key));
+  /^(variant|sku[-_]?id|sku|skuCode|pid|colou?r[-_]?id|colou?r|size|seq|colorDisplayCode|sizeDisplayCode|selectedSellerId)$|^dwvar_/i.test(key));
 const path = url => decodeURI(url.pathname).normalize('NFC').replace(/\/+$/, '') || '/';
 
 const merchantHost = url => url.hostname === 'ads.midwayusa.com' ? 'midwayusa.com' : url.hostname.replace(/^www\./, '');
@@ -23,13 +23,27 @@ export const sameMerchant = (a, b) => merchantHost(a) === merchantHost(b);
 export function sameProduct(left, right) {
   try {
     const a = new URL(left, right), b = new URL(right);
-    return sameMerchant(a, b) && path(a) === path(b);
+    if (!sameMerchant(a, b)) return false;
+    if (path(a) === path(b)) return true;
+    // Express changes descriptive slugs and appends selections; the /pro/ ID is stable.
+    if (merchantHost(a) !== 'express.com') return false;
+    const productId = url => url.pathname.match(/\/pro\/(\d{8})(?:\/|$)/)?.[1];
+    if (!productId(a) || productId(a) !== productId(b)) return false;
+    for (const key of ['color', 'size', 'e']) {
+      const selection = url => path(url).match(new RegExp(`/${key}/([^/]+)(?:/|$)`))?.[1];
+      if (selection(a) && selection(b) && selection(a) !== selection(b)) return false;
+    }
+    return true;
   } catch { return false; }
 }
 
 function exactVariant(candidate, pageUrl) {
   try {
     const page = new URL(pageUrl), other = new URL(candidate, page);
+    if (merchantHost(page) === 'express.com') for (const key of ['color', 'size', 'e']) {
+      const selected = path(page).match(new RegExp(`/${key}/([^/]+)(?:/|$)`))?.[1];
+      if (selected && path(other).match(new RegExp(`/${key}/([^/]+)(?:/|$)`))?.[1] !== selected) return false;
+    }
     // Long Shopify variant IDs identify the offer even when the page's canonical slug differs.
     const id = page.searchParams.get('variant');
     const variantAlias = /^\d{8,20}$/.test(id ?? '') && other.searchParams.get('variant') === id &&
@@ -52,7 +66,7 @@ function createPageReader() {
   const scripts = [], embeddedProducts = [], meta = new Map();
   const inline = { shopifyViews: [], asosStock: [] };
   let script = null, canonical = null;
-  let scriptKind = null, retained = 0, title = '', inTitle = false, shell = false;
+  let scriptKind = null, retained = 0, title = '', inTitle = false, shell = false, challenge = false;
   const parser = new Parser({
     onopentag(name, attributes) {
       if (name === 'script') {
@@ -74,6 +88,7 @@ function createPageReader() {
     ontext(text) {
       if (inTitle && title.length < 500) title += text.slice(0, 500 - title.length);
       if (script === null) return;
+      if (scriptKind === 'inline' && /istlWasHere|_Incapsula_Resource|window\[['"]_px/.test(text)) challenge = true;
       if (script.length + text.length > 2 * 1024 * 1024) {
         if (scriptKind === 'inline') { script = null; scriptKind = null; return; }
         throw new Error('product_data_too_large');
@@ -103,7 +118,7 @@ function createPageReader() {
     },
   }, { decodeEntities: true });
   return { write: text => parser.write(text), finish() {
-    parser.end(); return { scripts, embeddedProducts, meta, canonical, inline, title, shell };
+    parser.end(); return { scripts, embeddedProducts, meta, canonical, inline, title, shell, challenge };
   } };
 }
 
@@ -154,7 +169,7 @@ function offerValue(offer, resolve) {
     reason: currency !== 'USD' ? 'currency_not_usd' :
       offer.validForMemberTier || offer.eligibleCustomerType ? 'conditional_offer' :
       expires && expires < Date.now() ? 'expired_offer' :
-      !['InStock', 'OutOfStock', 'SoldOut'].includes(availability) ?
+      !['InStock', 'OutOfStock', 'SoldOut', 'OnlineOnly', 'InStoreOnly', 'LimitedAvailability', 'PreOrder', 'PreSale', 'BackOrder', 'Discontinued', 'Reserved'].includes(availability) ?
         (availability ? 'unsupported_availability' : 'availability_unknown') : null };
 }
 
@@ -184,10 +199,11 @@ function matchesOffer(offer, pageUrl) {
   } catch { return false; }
 }
 
-function extractPage({ scripts, embeddedProducts, meta, canonical, inline, title, shell }, pageUrl) {
+function extractPage({ scripts, embeddedProducts, meta, canonical, inline, title, shell, challenge }, pageUrl) {
   const { products, resolve } = productsFrom(scripts);
-  products.push(...retailerProducts(inline, pageUrl, canonical, sameProduct));
-  const selectedVariant = variantParams(new URL(pageUrl)).length > 0;
+  products.push(...retailerProducts(inline, pageUrl, canonical, sameProduct, variantParams));
+  const selectedVariant = variantParams(new URL(pageUrl)).length > 0 ||
+    (new URL(pageUrl).hostname.replace(/^www\./, '') === 'express.com' && /\/(color|size|e)\//.test(new URL(pageUrl).pathname));
   const offersOf = product => [product.offers].flat().map(resolve).filter(Boolean);
   // Some ProductGroup children omit Product.url but identify themselves through Offer.url.
   const exactOffers = products.filter(product => offersOf(product).some(offer => matchesOffer(offer, pageUrl)));
@@ -225,7 +241,7 @@ function extractPage({ scripts, embeddedProducts, meta, canonical, inline, title
       source: 'product_meta', product_name: meta.get('og:title') });
     }
   }
-  if (!values.length) return { verified: false, reason: /client challenge|access denied|just a moment|verify you are human/i.test(title)
+  if (!values.length) return { verified: false, reason: challenge || /client challenge|access denied|just a moment|verify you are human|robot or human/i.test(title)
     ? 'merchant_challenge' : shell ? 'requires_browser_rendering' : products.length ? 'product_or_offer_not_verified' : 'no_supported_product_data' };
   const priced = values.filter(value => value.cents != null);
   const unique = new Set(priced.map(value => `${value.currency}:${value.cents}`));
@@ -236,7 +252,7 @@ function extractPage({ scripts, embeddedProducts, meta, canonical, inline, title
   return {
     verified: !reason && priced.length === values.length,
     reason: reason ?? null,
-    extracted_price: first.cents == null ? null : formatPrice(first.cents),
+    extracted_price: first.cents == null ? null : first.currency === 'USD' ? formatPrice(first.cents) : `${first.currency || 'UNKNOWN'} ${(first.cents / 100).toFixed(2)}`,
     currency: first.currency ?? null,
     availability: new Set(priced.map(value => value.availability)).size > 1 ? 'Mixed' : first.availability ?? null,
     source: first.source,

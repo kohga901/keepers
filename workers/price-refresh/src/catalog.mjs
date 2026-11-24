@@ -1,4 +1,6 @@
 import { createPriceExtractor, priceCents, formatPrice, sameProduct, sameMerchant } from './extract.mjs';
+import { createCloudflareRenderer } from './browser.mjs';
+import { recoveryFor, browserCandidate, failureObservation } from './recovery.mjs';
 
 const MAX_BYTES = 16 * 1024 * 1024;
 const MAX_REPORT_ROWS = 50;
@@ -13,6 +15,14 @@ export function publicUrl(value) {
       /\.(supabase\.co|supabase\.net)$/.test(host)) throw new Error('unsafe_product_url');
   url.hash = '';
   return url;
+}
+
+export function listingUrl(value) {
+  let url;
+  try { url = new URL(value); } catch { throw new Error('invalid_product_url'); }
+  // Upgrade legacy catalog links without making an insecure HTTP request or changing selections.
+  if (url.protocol === 'http:' && (!url.port || url.port === '80')) { url.protocol = 'https:'; url.port = ''; }
+  return publicUrl(url.href);
 }
 
 async function extractResponse(response, pageUrl) {
@@ -40,7 +50,28 @@ async function extractResponse(response, pageUrl) {
   } finally { await reader.cancel().catch(() => {}); }
 }
 
-export async function fetchProduct(value, fetcher = fetch) {
+export function validateDestination(original, next) {
+  if (!sameMerchant(next, original)) throw new Error('redirect_changed_product');
+  if (original.hostname.replace(/^www\./, '') === 'express.com') for (const key of ['color', 'size', 'e']) {
+    const selection = url => decodeURI(url.pathname).match(new RegExp(`/${key}/([^/]+)(?:/|$)`))?.[1];
+    if (selection(original) && selection(next) !== selection(original)) throw new Error('redirect_changed_product');
+  }
+  const variant = original.searchParams.get('variant');
+  const renamedVariant = variant && original.searchParams.getAll('variant').length === 1 &&
+    next.searchParams.getAll('variant').length === 1 && next.searchParams.get('variant') === variant &&
+    /\/products\/[^/]+\/?$/.test(original.pathname) && /\/products\/[^/]+\/?$/.test(next.pathname);
+  const productId = input => input.pathname.match(/\/(\d{6,}(?:_\d+)*)(?:\.html)?\/?$/)?.[1];
+  const renamedId = productId(original) && productId(original) === productId(next);
+  if (!sameProduct(next.href, original.href) && !renamedVariant && !renamedId) throw new Error('redirect_changed_product');
+  for (const [key, val] of original.searchParams) {
+    if (/^(utm_|gclid$|fbclid$|srsltid$|source$|menu$|ip$|sty_de_label$|tid$)/i.test(key)) continue;
+    const insensitive = /^(currency|country|locale)$/i.test(key), actual = next.searchParams.get(key);
+    if (actual === null || (insensitive ? actual.toLowerCase() !== val.toLowerCase() : actual !== val) ||
+        next.searchParams.getAll(key).length !== original.searchParams.getAll(key).length) throw new Error('redirect_changed_product');
+  }
+}
+
+async function fetchProductOnce(value, fetcher) {
   const original = publicUrl(value);
   let url = original;
   const history = [];
@@ -55,29 +86,20 @@ export async function fetchProduct(value, fetcher = fetch) {
       if (!location) throw new Error('invalid_redirect');
       const next = publicUrl(new URL(location, url).href);
       history.push({ status: response.status, from: url.href, to: next.href });
-      const reject = () => { throw Object.assign(new Error('redirect_changed_product'), { redirects: history }); };
-      if (!sameMerchant(next, original)) reject();
-      // Slug changes need a preserved variant ID or a stable numeric product ID.
-      const variant = original.searchParams.get('variant');
-      const renamedVariant = variant && original.searchParams.getAll('variant').length === 1 &&
-        next.searchParams.getAll('variant').length === 1 && next.searchParams.get('variant') === variant &&
-        /\/products\/[^/]+\/?$/.test(original.pathname) && /\/products\/[^/]+\/?$/.test(next.pathname);
-      const productId = input => input.pathname.match(/\/(\d{6,}(?:_\d+)*)(?:\.html)?\/?$/)?.[1];
-      const renamedId = productId(original) && productId(original) === productId(next);
-      if (!sameProduct(next.href, original.href) && !renamedVariant && !renamedId) reject();
-      // Tracking/navigation parameters can disappear; variant, market and unknown parameters cannot.
-      for (const [key, val] of original.searchParams) {
-        if (!/^(utm_|gclid$|fbclid$|srsltid$|source$|menu$|ip$|sty_de_label$|tid$)/i.test(key)) {
-          const insensitive = /^(currency|country|locale)$/i.test(key);
-          const actual = next.searchParams.get(key);
-          if (actual === null || (insensitive ? actual.toLowerCase() !== val.toLowerCase() : actual !== val) ||
-              next.searchParams.getAll(key).length !== original.searchParams.getAll(key).length) reject();
-        }
-      }
+      try { validateDestination(original, next); }
+      catch (error) { throw Object.assign(error, { redirects: history }); }
       url = next;
       continue;
     }
-    if (!response.ok) { await response.body?.cancel(); throw new Error(`merchant_http_${response.status}`); }
+    if (!response.ok) {
+      await response.body?.cancel();
+      const retryAfter = response.headers.get('retry-after');
+      const delay = retryAfter === null ? 1000 : /^\d+$/.test(retryAfter) ? Number(retryAfter) * 1000 : Date.parse(retryAfter) - Date.now();
+      const retryTime = Date.now() + Math.max(0, delay);
+      throw Object.assign(new Error(`merchant_http_${response.status}`),
+        /^(429|5\d\d)$/.test(String(response.status)) && Number.isFinite(delay)
+          ? { retry_delay: Math.max(0, delay), ...(retryTime <= 8.64e15 ? { retry_at: new Date(retryTime).toISOString() } : {}) } : {});
+    }
     if (!/^(text\/html|application\/xhtml\+xml)(;|$)/i.test(response.headers.get('content-type') ?? '')) {
       await response.body?.cancel(); throw new Error('unsupported_content_type');
     }
@@ -91,6 +113,50 @@ export async function fetchProduct(value, fetcher = fetch) {
     return { ...observation, fetched_url: url.href, ...(history.length ? { redirects: history } : {}) };
   }
   throw new Error('too_many_redirects');
+}
+
+export async function fetchProduct(value, fetcher = fetch, { sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try { return await fetchProductOnce(value, fetcher); }
+    catch (error) {
+      const transient = /^merchant_http_(429|5\d\d)$/.test(error.message) || ['TimeoutError', 'AbortError', 'TypeError'].includes(error.name);
+      if (attempt || !transient || error.retry_delay > 5000) throw error;
+      await sleep(Math.max(1000, error.retry_delay ?? 1000));
+    }
+  }
+}
+
+export async function observeProduct(value, fetcher = fetch, renderer = null) {
+  const original = listingUrl(value);
+  let observation;
+  try { observation = await fetchProduct(original.href, fetcher); }
+  catch (error) { observation = failureObservation(error); }
+  if (String(value).startsWith('http:')) observation.url_upgrade = { from: value, to: original.href };
+  if (observation.verified || !renderer || !browserCandidate(observation.reason)) return observation;
+  const recovery = { attempted: false, initial_reason: observation.reason };
+  try {
+    recovery.attempted = true;
+    const rendered = await renderer(original.href);
+    const final = publicUrl(rendered.url);
+    if (!Number.isInteger(rendered.status) || rendered.status < 200 || rendered.status >= 300) throw new Error(`merchant_http_${rendered.status}`);
+    try { validateDestination(original, final); }
+    catch (error) { throw Object.assign(error, { destination: final.href }); }
+    const result = await extractResponse(new Response(rendered.html), final.href);
+    if (!sameProduct(original.href, final.href) && original.searchParams.has('variant') && result.variant_id !== original.searchParams.get('variant')) {
+      result.verified = false; result.reason = 'variant_not_verified';
+    }
+    recovery.outcome = result.verified ? 'recovered' : result.reason;
+    if (result.reason === 'merchant_challenge') renderer.block?.(original.href);
+    return { ...result, ...(observation.url_upgrade ? { url_upgrade: observation.url_upgrade } : {}), fetched_url: final.href, transport: 'browser', browser_recovery: recovery };
+  } catch (error) {
+    const safe = /^(browser_(host_paused|budget_exhausted|http_\d+|page_too_large|invalid_response)|merchant_http_\d+|redirect_changed_product|unsafe_product_url|page_too_large|product_data_too_large)$/;
+    recovery.outcome = safe.test(error.message) ? error.message : 'browser_request_failed';
+    if (error.destination) recovery.destination = error.destination;
+    if (['browser_host_paused', 'browser_budget_exhausted'].includes(recovery.outcome)) recovery.attempted = false;
+    if (recovery.outcome === 'redirect_changed_product' && /\/blocked(?:\?|$)|siteclosed\./.test(String(error.destination ?? ''))) renderer.block?.(original.href);
+    if (/^merchant_http_(401|402|403|405|406)$/.test(recovery.outcome)) renderer.block?.(original.href);
+    return { ...observation, browser_recovery: recovery };
+  }
 }
 
 export function catalogConfig(env) {
@@ -133,12 +199,13 @@ function storedCents(value) {
   return priceCents(text.replace(/^(\$|USD\s+)/, '').replaceAll(',', ''));
 }
 
-export async function runBatch(env, { afterId = '0', limit = 50, dryRun = true } = {}, fetcher = fetch) {
+export async function runBatch(env, { afterId = '0', limit = 50, dryRun = true } = {}, fetcher = fetch, renderer = undefined) {
   const config = catalogConfig(env);
   afterId = cursorId(afterId);
   if (!Number.isInteger(limit) || limit < 1 || limit > MAX_REPORT_ROWS) throw new Error('invalid_batch_size');
   // Neither an HTTP body nor a missing/misspelled environment variable can enable writes.
   if (!dryRun && env.DRY_RUN !== 'false') throw new Error('writes_disabled');
+  renderer ??= createCloudflareRenderer(env, fetcher);
   const startedAt = new Date().toISOString();
   const rows = await database(config, { select: 'item_id,item_name,item_price,item_web_listing',
     item_id: `gt.${afterId}`, order: 'item_id.asc', limit: String(limit) }, fetcher);
@@ -156,17 +223,17 @@ export async function runBatch(env, { afterId = '0', limit = 50, dryRun = true }
       if (!row.item_web_listing?.trim()) { result.reason = 'missing_product_url'; continue; }
       let observation;
       try {
-        const url = publicUrl(row.item_web_listing).href;
-        if (!fetched.has(url)) fetched.set(url, fetchProduct(url, fetcher));
+        const url = row.item_web_listing;
+        listingUrl(url);
+        if (!fetched.has(url)) fetched.set(url, observeProduct(row.item_web_listing, fetcher, renderer));
         observation = await fetched.get(url);
       } catch (error) {
         result.status = 'error';
-        result.reason = /^(unsafe_|invalid_|merchant_http_|page_too_large|product_data_too_large|unsupported_content_type|redirect_changed_product|too_many_redirects)/.test(error.message)
-          ? error.message : 'merchant_request_failed';
-        if (error.redirects) result.redirects = error.redirects;
+        Object.assign(result, failureObservation(error));
         continue;
       }
       Object.assign(result, observation);
+      if (observation.request_failed) result.status = 'error';
       if (!observation.verified) continue;
       const cents = storedCents(observation.extracted_price);
       if (cents === storedCents(row.item_price)) { result.status = 'unchanged'; continue; }
@@ -188,6 +255,7 @@ export async function runBatch(env, { afterId = '0', limit = 50, dryRun = true }
     }
   }
   await Promise.all(Array.from({ length: Math.min(3, rows.length) }, processRows));
+  for (const result of results) if (['error', 'skipped'].includes(result.status)) result.recovery = recoveryFor(result);
   const complete = rows.length < limit;
   return { id: crypto.randomUUID(), mode: dryRun ? 'dry_run' : 'live', started_at: startedAt,
     finished_at: new Date().toISOString(), after_id: afterId,
@@ -195,5 +263,5 @@ export async function runBatch(env, { afterId = '0', limit = 50, dryRun = true }
     summary: results.reduce((counts, result) => { counts[result.status] = (counts[result.status] ?? 0) + 1; return counts; },
       { checked: rows.length, would_update: 0, updated: 0, unchanged: 0, skipped: 0, error: 0, conflict: 0 }),
     warning: rows.length === 0 && afterId === '0' ? 'No visible Clothing rows. Verify the key has SELECT access; RLS can hide rows without an error.' : null,
-    results };
+    ...(renderer?.stats ? { browser: { ...renderer.stats } } : {}), results };
 }

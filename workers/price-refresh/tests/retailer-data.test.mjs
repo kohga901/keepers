@@ -27,6 +27,7 @@ test('Shopify viewed-product data supplies the selected URL price with currency 
   }
   assert.equal(extractPrice(viewedPage({}, 'https://shop.retailer.com/products/other'), shopUrl).verified, false);
   assert.equal(extractPrice(viewedPage().replace('ShopifyAnalytics.lib.track', 'unrelated.track'), shopUrl).verified, false);
+  assert.equal(extractPrice(viewedPage({}, shopUrl), shopUrl + '&selectedSellerId=0').verified, false);
 });
 
 const asosUrl = 'https://www.asos.com/us/brand/shirt/prd/207588422';
