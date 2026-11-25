@@ -1,0 +1,65 @@
+import fs from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { resolve, join } from 'node:path';
+import { createHash } from 'node:crypto';
+import assert from 'node:assert/strict';
+const directory=resolve(process.argv[2]??'reports/website-audit-2026-11-24');
+const read=async file=>JSON.parse(await fs.readFile(join(directory,file),'utf8'));
+const catalog=await read('catalog-results.json'),links=await read('replacement-links.json'),coverage=await read('website-coverage.json');
+const ids=new Set(links.results.map(row=>row.item_id)),required=catalog.results.filter(row=>row.listing_repair_required||(!row.verified&&row.recovery?.action==='repair_listing'));
+assert.ok(required.every(row=>ids.has(row.item_id)),'Every current broken/changed listing must be included in replacement research.');
+assert.ok(links.results.every(row=>row.search_attempted),'Unsearched replacement target.');
+assert.equal(catalog.database_writes,0);assert.equal(links.database_writes,0);
+assert.equal(coverage.websites.reduce((sum,site)=>sum+site.items,0),catalog.items);
+const urls=[...new Set(links.results.flatMap(row=>row.candidates.map(candidate=>candidate.url)))];
+for(const url of urls)assert.ok(existsSync(join(directory,'candidate-checks',createHash('sha256').update(url).digest('hex')+'.json')),'Unchecked candidate URL.');
+const exact=links.results.filter(row=>row.replacement_url);
+for(const row of exact) {
+  assert.ok(['verified_exact_listing','verified_canonical_replacement'].includes(row.replacement_status));
+  const observation=row.replacement_status==='verified_canonical_replacement'?row.original_check:row.candidates[0].live_check.observation;
+  assert.equal(observation.verified,true);assert.equal(observation.currency,'USD');
+}
+const snapshot=await read('catalog-snapshot.json'),byId=new Map(snapshot.rows.map(row=>[String(row.item_id),row]));
+const baseline=new Map((await read('baseline/results.json')).results.map(row=>[row.item_id,row]));
+for(const row of catalog.results){const original=byId.get(row.item_id);assert.ok(original);assert.equal(row.url,original.item_web_listing);assert.deepEqual(row.stored_price,original.item_price);}
+const gains=catalog.results.filter(row=>row.verified&&!baseline.get(row.item_id)?.verified);
+const quarantined=catalog.results.filter(row=>!row.verified&&baseline.get(row.item_id)?.verified);
+const changed=catalog.results.filter(row=>row.status==='would_update');
+const price=value=>Number(String(value??'').replace(/[^0-9.]/g,''));
+const increases=changed.filter(row=>price(row.extracted_price)>price(row.stored_price)).length;
+const decreases=changed.filter(row=>price(row.extracted_price)<price(row.stored_price)).length;
+const esc=value=>String(value??'').replaceAll('|','\\|').replace(/[\r\n]+/g,' ');
+const link=(title,url)=>`[${esc(title)}](<${url.replaceAll('>','%3E')}>)`;
+const table=(object)=>'| Outcome | Rows |\n|---|---:|\n'+Object.entries(object).map(([k,v])=>`| ${k} | ${v} |`).join('\n')+'\n';
+let text=`# Catalog price and replacement review — November 24, 2026\n\n**No database changes. No deployment. Price updates remain disabled.**\n\n`;
+text+=`Checked all **${catalog.items.toLocaleString('en-US')} clothing rows across ${catalog.websites} original hostnames**. The snapshot was read at ${catalog.snapshot_at}; evidence files retain their actual fetch times. This is a point-in-time audit, not a promise that a merchant's price remains unchanged.\n\n`;
+text+=`${coverage.websites.filter(site=>site.verified).length} hostnames have at least one verified price; ${coverage.websites.filter(site=>!site.verified).length} currently have none. Coverage means every saved URL was checked, not that every site yielded a price.\n\n`;
+text+=`## Price results\n\nVerified **${catalog.verified} prices**: **${catalog.proposed_changes} proposed changes** and **${catalog.statuses.unchanged} unchanged prices**. ${catalog.unresolved} rows remain unresolved. ${increases} proposed amounts increase and ${decreases} decrease. Nothing has been applied.\n\n`;
+text+=`${catalog.newly_verified} rows became verifiable compared with the ${catalog.baseline_verified}-price baseline. ${catalog.baseline_prices_quarantined} previously accepted rows were excluded by stricter selection/date/fragment checks or conflicting evidence. Net change: +${catalog.verified-catalog.baseline_verified} verified rows.\n\n`;
+const pass=process.argv[3]??'final-review';assert.match(pass,/^[a-z0-9-]+$/);
+const raw=await read(pass+'/results.json');
+text+=`The ordinary HTTP/public-JSON pass verifies ${raw.results.filter(row=>row.verified).length} prices. The consolidated total also uses saved local Chrome evidence and the public-variant cross-check. Cloud browser fallback remains disabled in the Worker; deploying the extractor alone would not reproduce every local-browser recovery. ${catalog.results.filter(row=>row.verified&&row.listing_repair_required).length} verified prices still have a shopping-page URL requiring repair; those links must be resolved before applying their price proposals.\n\n`;
+text+=`${(catalog.availability.OutOfStock??0)+(catalog.availability.SoldOut??0)} verified observations are explicitly out of stock/sold out. ${catalog.availability.Mixed??0} retain mixed availability within the published offers; ${catalog.availability.MixedEvidence??0} have availability differences between observations. Prices must agree before being proposed. Availability is not a database update in this audit.\n\n`;
+text+=`- [Proposed price changes](proposed-prices.md) and [full JSON evidence](proposed-prices.json)\n- [All catalog rows](catalog-results.json)\n- [Coverage for every website](website-coverage.md)\n- [Every unresolved row and next step](unresolved.json)\n\n`;
+text+=`## Replacement links\n\nResearched **${links.total} historically or currently flagged listings**, including every one of the **${required.length} listings currently requiring repair**. All ${links.searched} targets were searched; all ${urls.length} distinct retained candidate URLs received a public live check. Cached browser evidence was reparsed with the current extractor.\n\n`;
+text+=`**${links.exact_replacements} verified exact/canonical replacement proposals** are ready for review. ${links.statuses.original_listing_now_verified??0} original URLs now verify without replacement. Other links remain candidates, with identity/variant/access uncertainty recorded. Titles and search snippets never establish a current price or exact variant.\n\n`;
+text+=table(links.statuses)+'\n';
+text+='- [Verified replacement proposals only](verified-replacements.md) / [JSON](verified-replacements.json)\n- [Complete replacement research, including unresolved targets](replacement-links.md) / [JSON](replacement-links.json)\n\n';
+text+='A verified out-of-stock replacement preserves the exact item identity but does not guarantee that it can be purchased. A public product-JSON price can be valid even when the shopping page is blocked; that alone never marks the original listing as working. Prior flags are retained for traceability, including URLs later identified as access challenges.\n\n';
+text+='## Remaining failures\n\n'+table(catalog.recovery_actions)+'\n';
+text+=`${catalog.missing_published_variants} saved Shopify variant IDs are absent from a complete published list below the endpoint's 250-variant cap. They require a product/variant decision; a default size/color is not substituted. ${catalog.conflicting_prices} item has conflicting verified prices and is quarantined. Truncated or inaccessible variant lists are inconclusive.\n\n`;
+text+='Access challenges are separated from real removed pages and changed products. Raw and rendered pages still lacking a usable exact offer remain unresolved. The audit tried ordinary HTML, standards-based structured data/microdata, scoped retailer data, public product JSON and bounded ordinary browser rendering, including full-resource retries. It did not bypass challenges, solve CAPTCHAs, use paid search services, infer prices from snippets, or substitute a different variant.\n\n';
+text+='Representative remaining evidence: Zara serves an interstitial instead of product data; Patagonia pages returned maintenance content; several Bonobos dress-shirt URLs no longer publish the saved colors; Target pages omit current prices for some exact items; Lyst often publishes aggregate/out-of-stock data without the saved size/offer; some Cider offers have different size prices without proof of the saved SKU. These are not filled with the lowest or default price. Per-row evidence and recovery actions identify the specific case.\n\n';
+text+='## Implementation and validation\n\nAdded exact SKU/fragment checks, merchant route aliases, microdata, active sale PriceSpecifications, current offer-date validation, and adapters for Walmart, Vuori, Talbots, Gap Factory and Buckle. Shopify public JSON accepts its observed JavaScript MIME type but is parsed strictly as JSON, with independent USD proof.\n\n';
+const tests=await fs.readFile(join(directory,'tests.log'),'utf8');const testCount=tests.match(/tests (\d+)/)?.[1];
+assert.ok(testCount&&/fail 0/.test(tests));
+assert.ok((await fs.readFile(join(directory,'build.log'),'utf8')).includes('--dry-run: exiting now.'));
+for(const file of ['runtime-large-page.log','runtime-browser.log']){const runtime=await read(file);assert.equal(runtime.mode,'dry_run');assert.equal(runtime.summary.updated,0);}
+text+=`Validation: **${testCount} tests pass**, Wrangler dry-build passes, and local workerd checks pass for the 8.7 MB page and mocked browser recovery. Audit assertions check full snapshot coverage, original price/URL preservation, source hashes, zero writes, all replacement targets searched, and every retained candidate checked.\n\n`;
+text+=`Source SHA-256: \`${catalog.code_hash}\`. Saved evidence is under \`cache/\`, \`rendered/\`, \`rendered-full/\`, \`shopify-checks/\` and \`search/\`. Intermediate iteration reports are retained; use the files linked above for the final consolidated review.\n`;
+await fs.writeFile(join(directory,'REVIEW.md'),text);
+await fs.writeFile(join(directory,'proposed-prices.md'),'# Proposed prices — not applied\n\nOnly verified USD amounts are included. Out-of-stock prices are retained. Full evidence and observation times are in [proposed-prices.json](proposed-prices.json). Repair flagged shopping-page URLs before applying their price proposals.\n\n| Item ID | Item / original URL | Stored | Proposed | Availability | Source | Listing |\n|---|---|---:|---:|---|---|---|\n'+changed.map(row=>`| ${row.item_id} | ${link(row.item_name,row.url)} | ${esc(row.stored_price)} | ${esc(row.extracted_price)} | ${esc(row.availability)} | ${esc(row.source)} | ${row.listing_repair_required?'Repair required':row.listing_access_verified?'Page verified':'Public price; page access unconfirmed'} |`).join('\n')+'\n');
+await fs.writeFile(join(directory,'baseline-comparison.json'),JSON.stringify({database_writes:0,newly_verified:gains,previous_prices_quarantined:quarantined},null,2));
+const integrity={database_writes:0,price_updates_enabled:false,catalog_rows:catalog.items,websites:coverage.total,replacement_targets:links.total,currently_require_listing_repair:required.length,
+  all_targets_searched:true,candidate_urls_checked:urls.length,exact_replacements:exact.length,source_code_hash:catalog.code_hash,tests:Number(testCount),build:'passed',local_workerd:'passed',completed_at:new Date().toISOString()};
+await fs.writeFile(join(directory,'integrity-check.json'),JSON.stringify(integrity,null,2));console.log(JSON.stringify(integrity,null,2));

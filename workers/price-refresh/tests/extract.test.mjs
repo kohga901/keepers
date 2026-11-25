@@ -210,6 +210,9 @@ test('matches Gap style/color pids to full size SKUs only within the exact selec
   assert.equal(extractPrice(html(data), page + '&size=XL').verified, false);
   const ranged = product({ url: undefined, offers: [gapOffer('11741940222018'), gapOffer('11741940222020', { price: '30' })] });
   assert.equal(extractPrice(html(ranged), page).reason, 'ambiguous_offers');
+  const factoryPage=page.replace('athleta.gap.com','bananarepublicfactory.gapfactory.com');
+  assert.equal(extractPrice(html(data).replaceAll('athleta.gap.com','bananarepublicfactory.gapfactory.com'),factoryPage).verified,true);
+  assert.equal(extractPrice(html(data).replaceAll('athleta.gap.com','bananarepublicfactory.gapfactory.com'),factoryPage.replace('vid=1','vid=3')).verified,false);
 });
 
 test('Midway advertising and canonical product hosts share an identity only for matching product and pid', () => {

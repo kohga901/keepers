@@ -59,6 +59,24 @@ export function retailerProducts(data, pageUrl, canonical, sameProduct, variantP
   const page = new URL(pageUrl), products = [];
   const selectorKeys = variantParams(page);
   const selected = page.searchParams.get('variant');
+  if (page.hostname.replace(/^www\./, '') === 'walmart.com' && /^\/ip\//.test(page.pathname)) {
+    const id = page.pathname.match(/\/(\d+)\/?$/)?.[1];
+    const sellers = page.searchParams.getAll('selectedSellerId'), offers = page.searchParams.getAll('selectedOfferId');
+    const conditions=page.searchParams.getAll('conditionGroupCode');
+    if (id && sellers.length <= 1 && offers.length <= 1 && conditions.length <= 1 &&
+        (!conditions.length || conditions[0]==='1') && selectorKeys.every(key => ['selectedSellerId', 'selectedOfferId', 'conditionGroupCode'].includes(key))) {
+      for (const product of data.walmartProducts ?? []) {
+        if (String(product.usItemId) !== id || !product.canonicalUrl || !sameProduct(new URL(product.canonicalUrl, page).href, pageUrl)) continue;
+        if (sellers.length && ![String(product.catalogSellerId ?? ''), String(product.sellerId ?? '')].includes(sellers[0])) continue;
+        if (offers.length && String(product.offerId ?? '') !== offers[0]) continue;
+        if (conditions.length && (product.conditionType!=='New'||product.isConditionNew!==true)) continue;
+        const price = product.priceInfo?.currentPrice, codes = product.priceInfo?.priceDisplayCodes;
+        if (codes?.isB2BPrice || codes?.priceDisplayCondition || (product.conditionType && product.conditionType !== 'New')) continue;
+        products.push({ '@type': 'Product', url: pageUrl, name: product.name, _source: 'walmart_next_data',
+          offers: { '@type': 'Offer', url: pageUrl, price: price?.price, priceCurrency: price?.currencyUnit, availability: product.availabilityStatus } });
+      }
+    }
+  }
   if (canonical && sameProduct(canonical, pageUrl) && selectorKeys.every(key => key === 'variant') &&
       (!selected || page.searchParams.getAll('variant').length === 1)) {
     for (const view of data.shopifyViews) {

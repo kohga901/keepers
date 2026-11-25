@@ -1,6 +1,7 @@
-import { createPriceExtractor, priceCents, formatPrice, sameProduct, sameMerchant } from './extract.mjs';
+import { createPriceExtractor, priceCents, formatPrice, sameProduct, sameMerchant, fragmentSelection } from './extract.mjs';
 import { createCloudflareRenderer } from './browser.mjs';
 import { recoveryFor, browserCandidate, failureObservation } from './recovery.mjs';
+import { fetchShopifyVariant } from './shopify.mjs';
 
 const MAX_BYTES = 16 * 1024 * 1024;
 const MAX_REPORT_ROWS = 50;
@@ -22,7 +23,7 @@ export function listingUrl(value) {
   try { url = new URL(value); } catch { throw new Error('invalid_product_url'); }
   // Upgrade legacy catalog links without making an insecure HTTP request or changing selections.
   if (url.protocol === 'http:' && (!url.port || url.port === '80')) { url.protocol = 'https:'; url.port = ''; }
-  return publicUrl(url.href);
+  const validated = publicUrl(url.href); validated.hash = url.hash; return validated;
 }
 
 async function extractResponse(response, pageUrl) {
@@ -52,6 +53,7 @@ async function extractResponse(response, pageUrl) {
 
 export function validateDestination(original, next) {
   if (!sameMerchant(next, original)) throw new Error('redirect_changed_product');
+  if (fragmentSelection(original) && fragmentSelection(original).signature !== fragmentSelection(next)?.signature) throw new Error('redirect_changed_product');
   if (original.hostname.replace(/^www\./, '') === 'express.com') for (const key of ['color', 'size', 'e']) {
     const selection = url => decodeURI(url.pathname).match(new RegExp(`/${key}/([^/]+)(?:/|$)`))?.[1];
     if (selection(original) && selection(next) !== selection(original)) throw new Error('redirect_changed_product');
@@ -73,6 +75,7 @@ export function validateDestination(original, next) {
 
 async function fetchProductOnce(value, fetcher) {
   const original = publicUrl(value);
+  original.hash = new URL(value).hash;
   let url = original;
   const history = [];
   // One deadline includes redirects and the response body, not just response headers.
@@ -85,6 +88,7 @@ async function fetchProductOnce(value, fetcher) {
       const location = response.headers.get('location');
       if (!location) throw new Error('invalid_redirect');
       const next = publicUrl(new URL(location, url).href);
+      next.hash = location.includes('#') ? new URL(location, url).hash : url.hash;
       history.push({ status: response.status, from: url.href, to: next.href });
       try { validateDestination(original, next); }
       catch (error) { throw Object.assign(error, { redirects: history }); }
@@ -126,34 +130,44 @@ export async function fetchProduct(value, fetcher = fetch, { sleep = ms => new P
   }
 }
 
+export async function extractRenderedProduct(value, rendered) {
+  const original = listingUrl(value), final = listingUrl(rendered.url);
+  if (!Number.isInteger(rendered.status) || rendered.status < 200 || rendered.status >= 300) throw new Error(`merchant_http_${rendered.status}`);
+  try { validateDestination(original, final); }
+  catch (error) { throw Object.assign(error, { destination: final.href }); }
+  const result = await extractResponse(new Response(rendered.html), final.href);
+  if (!sameProduct(original.href, final.href) && original.searchParams.has('variant') && result.variant_id !== original.searchParams.get('variant')) {
+    result.verified = false; result.reason = 'variant_not_verified';
+  }
+  return { ...result, fetched_url: final.href, transport: 'browser' };
+}
+
 export async function observeProduct(value, fetcher = fetch, renderer = null) {
   const original = listingUrl(value);
   let observation;
   try { observation = await fetchProduct(original.href, fetcher); }
   catch (error) { observation = failureObservation(error); }
+  if (!observation.verified && ['variant_not_verified', 'no_supported_product_data', 'product_or_offer_not_verified', 'missing_or_invalid_price', 'availability_unknown',
+    'merchant_http_403','merchant_http_405','merchant_http_406','merchant_challenge','page_too_large','product_data_too_large','requires_browser_rendering'].includes(observation.reason)) {
+    const product = await fetchShopifyVariant(original.href, fetcher);
+    if (product) observation = { ...product, recovered_from: observation.reason };
+  }
   if (String(value).startsWith('http:')) observation.url_upgrade = { from: value, to: original.href };
   if (observation.verified || !renderer || !browserCandidate(observation.reason)) return observation;
   const recovery = { attempted: false, initial_reason: observation.reason };
   try {
     recovery.attempted = true;
     const rendered = await renderer(original.href);
-    const final = publicUrl(rendered.url);
-    if (!Number.isInteger(rendered.status) || rendered.status < 200 || rendered.status >= 300) throw new Error(`merchant_http_${rendered.status}`);
-    try { validateDestination(original, final); }
-    catch (error) { throw Object.assign(error, { destination: final.href }); }
-    const result = await extractResponse(new Response(rendered.html), final.href);
-    if (!sameProduct(original.href, final.href) && original.searchParams.has('variant') && result.variant_id !== original.searchParams.get('variant')) {
-      result.verified = false; result.reason = 'variant_not_verified';
-    }
+    const result = await extractRenderedProduct(original.href, rendered);
     recovery.outcome = result.verified ? 'recovered' : result.reason;
     if (result.reason === 'merchant_challenge') renderer.block?.(original.href);
-    return { ...result, ...(observation.url_upgrade ? { url_upgrade: observation.url_upgrade } : {}), fetched_url: final.href, transport: 'browser', browser_recovery: recovery };
+    return { ...result, ...(observation.url_upgrade ? { url_upgrade: observation.url_upgrade } : {}), browser_recovery: recovery };
   } catch (error) {
     const safe = /^(browser_(host_paused|budget_exhausted|http_\d+|page_too_large|invalid_response)|merchant_http_\d+|redirect_changed_product|unsafe_product_url|page_too_large|product_data_too_large)$/;
     recovery.outcome = safe.test(error.message) ? error.message : 'browser_request_failed';
     if (error.destination) recovery.destination = error.destination;
     if (['browser_host_paused', 'browser_budget_exhausted'].includes(recovery.outcome)) recovery.attempted = false;
-    if (recovery.outcome === 'redirect_changed_product' && /\/blocked(?:\?|$)|siteclosed\./.test(String(error.destination ?? ''))) renderer.block?.(original.href);
+    if (recovery.outcome === 'redirect_changed_product' && /\/(?:blocked|verify|px)(?:[/?]|$)|siteclosed\.|\/captcha(?:[/?]|$)|\/PX-Show(?:[/?]|$)/i.test(String(error.destination ?? ''))) renderer.block?.(original.href);
     if (/^merchant_http_(401|402|403|405|406)$/.test(recovery.outcome)) renderer.block?.(original.href);
     return { ...observation, browser_recovery: recovery };
   }

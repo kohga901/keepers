@@ -247,6 +247,74 @@ Moving a denied request to Cloudflare does not guarantee access. Deleted
 listings, unpublished prices and inaccessible exact variants cannot reliably
 be filled in by scraping a similar item or inventing a price.
 
+## Local catalog and replacement review
+
+The November 24 review is in `reports/website-audit-2026-11-24/`. Reports and
+cached merchant pages are gitignored local files. `REVIEW.md` is the entry point;
+`catalog-results.json` contains every catalog row, `proposed-prices.json` contains
+only verified price changes, and `website-coverage.md` covers every original
+hostname. `replacement-links.md` separates verified exact links from candidates
+requiring identity, size/color, availability, or access review.
+
+The audit reads Clothing once into `catalog-snapshot.json` using GET requests.
+Extraction then runs against that snapshot with fake database credentials and
+a GET-only merchant boundary. Local Chrome uses fresh contexts without personal
+cookies. It pauses hosts that show access challenges. Cached HTTP responses and
+rendered DOM retain timestamps and URLs; replays do not imply a new live fetch.
+No audit/replacement command deploys the Worker or writes to Supabase.
+
+Current extractor additions include scoped Schema.org microdata, active sale
+PriceSpecifications, exact SKU fragments, merchant aliases and stable product
+routes, and tested Walmart, Vuori, Talbots, Gap Factory, and Buckle selection
+handling. Large HTML streams through the parser up to 16 MiB. Individual retained
+product payloads remain bounded. Future/expired offers, conditional prices,
+foreign currency and unresolved variant selections stay excluded.
+
+For Shopify-style variant URLs, the reader can GET public `products/<handle>.js`
+and `cart.js` endpoints. These return JSON, sometimes with a JavaScript content
+type; the reader parses JSON without evaluating JavaScript. It requires the
+exact handle/variant, integer cents, explicit availability and independently
+confirmed USD. Anonymous `cart.js` GET only reads currency; no cart is modified.
+A missing variant is conclusive only for a nonempty published list below the
+250-variant endpoint cap. Truncated or inaccessible lists stay inconclusive.
+These endpoints require no paid search API or merchant API key.
+
+To replay this review from its saved snapshot and evidence:
+
+```powershell
+npm run audit -- --pass final-review
+npm run audit:variants
+npm run audit:finalize
+npm run replacements:discover
+npm run replacements:check
+npm run replacements:summarize
+npm run audit:report
+```
+
+Use a new `--pass` for an extractor change: an existing pass rejects mismatched
+source hashes. `finalize-audit.mjs` defaults to the reviewed `final-review`
+pass and checks its hash against current source. Pass a directory and pass name
+as positional arguments to consolidate another iteration. An existing snapshot is reused; start a new
+directory to read a fresh catalog. Only the initial snapshot read requires
+`.dev.vars`. For example:
+
+```powershell
+npm run audit -- --directory reports/new-catalog-review --env-file .dev.vars --stage prepare
+```
+
+Replacement discovery consumes the historical broken-link report and saved
+native web-search batches under `search/`. It does not infer current prices from
+search snippets. `replacements:check` verifies each unique candidate and reparses
+any cached browser evidence with current selection guards. Only strong product
+identity plus every saved selection can produce `replacement_url`. Different
+prices from verified evidence are quarantined for review. A public JSON price
+does not by itself prove that the original shopping-page URL works.
+
+These local checks can make more requests than one Worker batch, including two
+public JSON GETs per eligible Shopify listing and ordinary browser resources.
+The optional cloud browser remains disabled. Access-denied pages, discontinued
+variants and unpublished prices still require merchant access or human review.
+
 ## Enable writes only after reviewing real dry-run results
 
 This has **not** been enabled. After the reports are accepted, change only

@@ -16,17 +16,20 @@ export function recoveryFor(result) {
   const reason = result.reason ?? 'unknown_failure';
   let action;
   const browser = result.browser_recovery;
-  if (/^merchant_http_(401|402|403|405|406)$|merchant_challenge|browser_host_paused/.test(browser?.outcome ?? '')) action = 'merchant_access';
+  const destination=browser?.destination??result.redirects?.at(-1)?.to??result.redirect_destination??'';
+  if (/^merchant_http_(401|402|403|405|406)$|merchant_challenge|browser_host_paused/.test(browser?.outcome ?? '') ||
+      /\/(?:blocked|verify|px)(?:[/?]|$)|siteclosed\.|\/captcha(?:[/?]|$)|\/PX-Show(?:[/?]|$)/i.test(destination)) action = 'merchant_access';
   else if (browser?.outcome === 'redirect_changed_product' && reason !== 'merchant_challenge') action = 'repair_listing';
   else if (browser?.attempted && ['no_supported_product_data', 'product_or_offer_not_verified', 'requires_browser_rendering'].includes(browser.outcome)) action = 'adapter';
-  else if (/^merchant_http_(429|5\d\d)$|merchant_request_failed/.test(reason)) action = 'retry';
+  else if (/^merchant_http_(429|5\d\d)$|merchant_request_failed|merchant_maintenance/.test(reason)) action = 'retry';
   else if (/^merchant_http_(401|402|403|405|406)$|merchant_challenge/.test(reason)) action = 'merchant_access';
   else if (/^merchant_http_(404|410)$|redirect_changed_product|invalid_redirect|too_many_redirects/.test(reason)) action = 'repair_listing';
   else if (/unsafe_product_url|invalid_product_url|missing_product_url/.test(reason)) action = 'fix_url';
+  else if (reason === 'variant_not_listed') action = 'repair_listing';
   else if (reason === 'variant_not_verified') action = 'verify_variant';
   else if (/ambiguous_offers|price_range/.test(reason)) action = 'select_offer';
   else if (reason === 'currency_not_usd') action = 'usd_listing';
-  else if (/expired_offer|conditional_offer/.test(reason)) action = 'refresh_offer';
+  else if (/expired_offer|conditional_offer|offer_not_started|invalid_offer_dates/.test(reason)) action = 'refresh_offer';
   else if (/no_supported_product_data|product_or_offer_not_verified|requires_browser_rendering|page_too_large|product_data_too_large|unsupported_content_type/.test(reason)) action = 'browser';
   else action = 'review_price';
   return { action, next_step: actions[action], ...(result.retry_at ? { retry_at: result.retry_at } : {}) };
