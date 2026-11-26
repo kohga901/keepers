@@ -24,6 +24,7 @@ import numpy as np
 
 from db import supabase, supabase_execute as _supabase_execute
 from services import Startup, user_state
+from services.explanation_service import explain_batch
 from services.recommendation_service import compute_pref_vec, estimate_coordinates, filtered_like_share, get_recommendations
 
 log = logging.getLogger(__name__)
@@ -48,6 +49,19 @@ class RecommendationRequest(BaseModel):
     categories: list[str] = Field(default_factory=list)
 
 
+class Reason(BaseModel):
+    """Why an item is in the user's feed. See services/explanation_service.py."""
+    # similar_to_like, liked_tags, close_to_taste, filter, adjacent, explore or cold_start.
+    kind: str
+    # Ready-to-show sentence, e.g. "Because you liked Black Denim Jacket".
+    text: str
+    # The liked item a similar_to_like reason points at.
+    liked_item_id: int | None = None
+    liked_item_name: str | None = None
+    liked_item_img: str | None = None
+    # Tags a liked_tags or filter reason names.
+    tags: list[str] = Field(default_factory=list)
+
 class ClothingItem(BaseModel):
     item_id: int
     item_name: str
@@ -58,6 +72,8 @@ class ClothingItem(BaseModel):
     item_tags: list[str] | None = None
     # True for an item the user asked for (see routers/requests.py) that was approved since they last saw it.
     requested_by_you: bool = False
+    # Set on a share of the feed only (see explanation_service.REASON_SHARE), for the "Why am I seeing this?" button.
+    reason: Reason | None = None
 
 class RecommendationResponse(BaseModel):
     recommendations: list[ClothingItem]
@@ -339,6 +355,9 @@ def recommendations(req: RecommendationRequest, background_tasks: BackgroundTask
         # Build the pref_vec of the user from their swipe history.
         pref_vec = compute_pref_vec(liked_ids, disliked_ids)
 
+        # item_id → the pool each personalised item came from, used to explain it.
+        sources: dict[int, str] = {}
+
         # If the pref_vec of a user is 0, get random unseen items.
         if not np.any(pref_vec):
             with Startup._index_lock:
@@ -353,7 +372,7 @@ def recommendations(req: RecommendationRequest, background_tasks: BackgroundTask
             # With no filter, explore more if the user's recent likes were made under one.
             boost = 0.0 if allowed_ids is not None else filtered_like_share(liked_ids, user_state.filtered_ids(req.user_id))
             results = get_recommendations(pref_vec, excluded_ids, n=n*5, batch_size=n,
-                                          allowed_ids=allowed_ids, explore_boost=boost)
+                                          allowed_ids=allowed_ids, explore_boost=boost, sources=sources)
 
         # Fetch the recommended items from the db.
         items = _fetch_clothing_items(results) if results else []
@@ -379,6 +398,16 @@ def recommendations(req: RecommendationRequest, background_tasks: BackgroundTask
         # The requested items are on their way, so they won't be put first again.
         if requested_request_ids:
             background_tasks.add_task(_mark_requests_seen, requested_request_ids)
+
+    # Explain a share of the batch. Requested items already have their own badge.
+    # A failure here only means no reasons this time, so it never breaks the feed.
+    try:
+        reasons = explain_batch(req.user_id, [i["item_id"] for i in items if not i.get("requested_by_you")],
+                                sources, liked_ids, req.categories, _fetch_clothing_items)
+        for item in items:
+            item["reason"] = reasons.get(item["item_id"])
+    except Exception as e:
+        log.warning("Could not explain recommendations for user=%s: %r", req.user_id, e)
 
     # Log the request and how long it took.
     log.info("recommendations user=%s sent=%d/%d personalised=%s (likes=%d dislikes=%d) took=%dms",
