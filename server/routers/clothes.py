@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 import numpy as np
 
 from db import supabase, supabase_execute as _supabase_execute
-from services import Startup, user_state
+from services import Startup, trending_service, user_state
 from services.explanation_service import explain_batch
 from services.recommendation_service import compute_pref_vec, estimate_coordinates, filtered_like_share, get_recommendations
 
@@ -74,6 +74,10 @@ class ClothingItem(BaseModel):
     requested_by_you: bool = False
     # Set on a share of the feed only (see explanation_service.REASON_SHARE), for the "Why am I seeing this?" button.
     reason: Reason | None = None
+    # True for the batch's one trending item (see services/trending_service.py).
+    is_trending: bool = False
+    # Trending item only: distinct users who liked it recently. Not meant to be shown in the app.
+    like_count: int | None = None
 
 class RecommendationResponse(BaseModel):
     recommendations: list[ClothingItem]
@@ -255,6 +259,54 @@ def _user_from_token(authorization: str | None, detail: str = "Sign in again to 
         raise HTTPException(status_code=401, detail=detail)
     return response.user.id
 
+def _pick_trending(user_id: str, pref_vec: np.ndarray, seen_ids: set[int], requested_items: list[dict],
+                   allowed_ids: set[int] | None) -> trending_service.TrendingPick | None:
+    """
+    The batch's trending item (see services/trending_service.py), or None. Any failure just
+    means no trending item this time, so it never breaks the feed.
+    """
+    try:
+        # Requested items have their own badge, so their products can't also be trending.
+        blocked = {c for item in requested_items for c in Startup.duplicates_of(item["item_id"])}
+        return trending_service.pick(pref_vec, seen_ids, blocked, allowed_ids)
+    except Exception as e:
+        log.warning("Could not pick a trending item for user=%s: %r", user_id, e)
+        return None
+
+def _place_trending(items: list[dict], n: int, requested_count: int,
+                    choice: trending_service.TrendingPick | None, row: dict | None) -> int | None:
+    """
+    Makes the batch's trending item part of `items`, in place.
+
+    If the picked product is already in the batch, that item is just marked. Otherwise `row`
+    (the picked item's Clothing row) takes the place of the batch's last personalised item, at
+    a random spot after the requested items, so the batch stays at most n items. The replaced
+    item wasn't sent, so it can still be recommended later. Requested items (the first
+    requested_count) are never replaced.
+
+    Returns the trending item's id, or None if the batch got none.
+    """
+    if choice is None:
+        return None
+
+    # The pick is already in the batch, in this or another copy: mark that item.
+    copies = set(Startup.duplicates_of(choice.item_id))
+    for item in items[requested_count:]:
+        if item["item_id"] in copies:
+            item["is_trending"], item["like_count"] = True, choice.like_count
+            return item["item_id"]
+
+    # The item's Clothing row is gone, or a full batch has no personalised item to give up.
+    if row is None or (len(items) >= n and len(items) == requested_count):
+        return None
+
+    row["item_tags"] = sorted(Startup.item_tags.get(row["item_id"], ()))
+    row["is_trending"], row["like_count"] = True, choice.like_count
+    if len(items) >= n:
+        items.pop()
+    items.insert(random.randint(requested_count, len(items)), row)
+    return row["item_id"]
+
 def _clear_taste(user_id: str) -> None:
     """
     DB function. Deletes a user's stored pref_vec and map coordinates. With no likes
@@ -374,15 +426,23 @@ def recommendations(req: RecommendationRequest, background_tasks: BackgroundTask
             results = get_recommendations(pref_vec, excluded_ids, n=n*5, batch_size=n,
                                           allowed_ids=allowed_ids, explore_boost=boost, sources=sources)
 
-        # Fetch the recommended items from the db.
-        items = _fetch_clothing_items(results) if results else []
-
         # Items the user asked for that were approved go first, so they can see the request worked.
         # A tag filter is the user choosing what to see, so they wait until it is cleared.
         requested_items, requested_request_ids = ([], []) if req.categories else _take_approved_requests(req.user_id, n)
         for item in requested_items:
             item["requested_by_you"] = True
         requested_ids = {item["item_id"] for item in requested_items}
+
+        # The batch's trending item. Picked before the fetch below so its row comes in the same db call.
+        trending_choice = _pick_trending(req.user_id, pref_vec, excluded_ids, requested_items, allowed_ids) if n > 0 else None
+
+        # Fetch the recommended items, and the trending item, from the db.
+        fetch_ids = results + ([trending_choice.item_id]
+                               if trending_choice and trending_choice.item_id not in results else [])
+        fetched = _fetch_clothing_items(fetch_ids) if fetch_ids else []
+        trending_row = next((r for r in fetched if trending_choice and r["item_id"] == trending_choice.item_id), None)
+        result_ids = set(results)
+        items = [r for r in fetched if r["item_id"] in result_ids]
 
         # Keep the first n items. They all passed the tag filter already.
         items = requested_items + [i for i in items if i["item_id"] not in requested_ids]
@@ -391,6 +451,12 @@ def recommendations(req: RecommendationRequest, background_tasks: BackgroundTask
         # Attach each item's tags.
         for item in items:
             item["item_tags"] = sorted(Startup.item_tags.get(item["item_id"], ()))
+
+        # Make one item of the batch the trending item.
+        trending_id = _place_trending(items, n, len(requested_items), trending_choice, trending_row)
+        if trending_id is not None:
+            log.info("trending user=%s item=%s likes=%d days=%d", req.user_id, trending_id,
+                     trending_choice.like_count, trending_choice.days)
 
         # Remember what was sent so it is never sent to this user again.
         user_state.mark_served(req.user_id, [i["item_id"] for i in items], filtered=allowed_ids is not None)
@@ -402,7 +468,9 @@ def recommendations(req: RecommendationRequest, background_tasks: BackgroundTask
     # Explain a share of the batch. Requested items already have their own badge.
     # A failure here only means no reasons this time, so it never breaks the feed.
     try:
-        reasons = explain_batch(req.user_id, [i["item_id"] for i in items if not i.get("requested_by_you")],
+        # The trending item is explained by its badge, so it gets no reason.
+        reasons = explain_batch(req.user_id, [i["item_id"] for i in items
+                                              if not i.get("requested_by_you") and i["item_id"] != trending_id],
                                 sources, liked_ids, req.categories, _fetch_clothing_items)
         for item in items:
             item["reason"] = reasons.get(item["item_id"])

@@ -19,6 +19,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { ImageLookupModal } from '../../components/ai/ImageLookupModal';
 import { ReasonSheet } from '../../components/ReasonSheet';
 import { TagFilter } from '../../components/TagFilter';
+import { TrendingBadge } from '../../components/TrendingBadge';
 import { emptyDeckMessage, sameSelection, type Tag } from '../../utils/tagFilter';
 import { usePriceDisplay } from '../../contexts/PriceDisplayContext';
 import { useStackHeaderHeight } from '../../contexts/StackHeaderHeightContext';
@@ -56,6 +57,7 @@ const toItem = (row: ClothingRow): Item => ({
   gender: row.item_gender,
   requested: row.requested_by_you,
   reason: toReason(row.reason),
+  trending: row.is_trending === true,
 });
 
 const App: React.FC = () => {
@@ -463,6 +465,7 @@ const App: React.FC = () => {
                   <Text style={styles.reasonButtonText}>Why this?</Text>
                 </Pressable>
               )}
+              {card.trending && <TrendingBadge style={styles.trendingBadge} />}
             </View>
             );
           }}
@@ -653,6 +656,12 @@ const styles = StyleSheet.create({
   },
   reasonButtonPressed: {
     opacity: 0.6,
+  },
+  // Mirrors the "Why this?" button on the other side, so the two line up.
+  trendingBadge: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
   },
   reasonButtonText: {
     fontSize: 13,

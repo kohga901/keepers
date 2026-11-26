@@ -17,6 +17,8 @@ export interface Item {
   requested?: boolean;
   // Why the item is in the feed. Only a share of the feed has one (see utils/reason.ts).
   reason?: Reason;
+  // True for the one trending ("Most liked") item the server puts in a batch.
+  trending?: boolean;
 }
 
 // A checked, ready-to-show "Why am I seeing this?" reason.
@@ -48,4 +50,8 @@ export type ClothingRow = {
   item_gender: string;
   requested_by_you?: boolean;
   reason?: ReasonRow | null;
+  // The batch's trending item (see server/services/trending_service.py).
+  is_trending?: boolean;
+  // Trending item only: how many users liked it recently. Not shown in the app.
+  like_count?: number | null;
 };
