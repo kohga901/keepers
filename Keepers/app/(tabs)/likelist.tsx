@@ -1,6 +1,7 @@
 /**
  * File: likelist.tsx
- * Description: Displays a list of items the user has liked, with tabs for liked and disliked items.
+ * Description: Shows the items the user has liked or disliked as a two-column photo grid, with a toggle
+ *              (with counts) to switch lists and a corner button on each card to remove it.
  * Author: Kai Markley
  * Date: 2026-04-18
  */
@@ -14,7 +15,6 @@ import { PriceAlertsBell } from '../../components/PriceAlertsBell';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import { useSafeAreaFrame, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { HistorySwipeable } from '../../components/HistorySwipeable';
 import { Ionicons } from '@expo/vector-icons';
 import { usePriceDisplay } from '../../contexts/PriceDisplayContext';
 import { useTutorial } from '../../contexts/TutorialContext';
@@ -26,13 +26,22 @@ import { deleteLikedItem, getLikedItems, deleteDislikedItem as deleteDislikedIte
 import { getDefaultHeaderHeight, useFocusEffect } from "expo-router/react-navigation";
 import * as WebBrowser from 'expo-web-browser';
 
+const LIST_PADDING = 16;
+const GRID_GAP = 12;
+
+// Counts above 99 would crowd the toggle.
+const formatCount = (count: number) => (count > 99 ? '99+' : String(count));
+
 const App: React.FC = () => {
   const router = useRouter();
   const { itemId } = useLocalSearchParams<{ itemId?: string | string[] }>();
   const requestedItemId = Array.isArray(itemId) ? itemId[0] : itemId;
   const frame = useSafeAreaFrame();
-  // Leave space for the bell, filter and header padding on narrow phones.
-  const toggleOptionWidth = Math.min(130, Math.max(80, (frame.width - 120) / 2));
+  // Leave space for the bell (and the matching spacer on the left) on narrow phones.
+  const toggleOptionWidth = Math.min(150, Math.max(104, (frame.width - 120) / 2));
+  // Two cards per row inside the same max width the web layout uses.
+  const contentWidth = Math.min(frame.width, TAB_CONTENT_MAX_WIDTH) - LIST_PADDING * 2;
+  const cardWidth = Math.floor((contentWidth - GRID_GAP) / 2);
   const [allLikedItems, setAllLikedItems] = useState<Item[]>([]);
   const [allDislikedItems, setAllDislikedItems] = useState<Item[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
@@ -42,7 +51,7 @@ const App: React.FC = () => {
   const [itemError, setItemError] = useState<string | null>(null);
   const { showTutorialOnce } = useTutorial();
 
-  // First visit to History walks through the toggle, item details, and swipe-to-remove.
+  // First visit to History walks through the grid, the toggle, item details, and the remove button.
   useFocusEffect(
     useCallback(() => {
       showTutorialOnce('history');
@@ -120,7 +129,6 @@ const App: React.FC = () => {
   const { showPriceAsTier } = usePriceDisplay();
 
   const [activeTab, setActiveTab] = React.useState('liked');
-  const [filterOpen, setFilterOpen] = useState(false);
   const [toggleAnim] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
@@ -165,7 +173,6 @@ const App: React.FC = () => {
 
   const switchTab = (tab: string) => {
     setActiveTab(tab);
-    setFilterOpen(false);
     listRef.current?.scrollToOffset({ offset: 0, animated: false });
   };
 
@@ -189,7 +196,6 @@ const App: React.FC = () => {
       } finally {
         if (active) {
           setActiveTab('liked');
-          setFilterOpen(false);
           setImageExpanded(false);
           listRef.current?.scrollToOffset({ offset: 0, animated: false });
           router.setParams({ itemId: undefined });
@@ -208,6 +214,8 @@ const App: React.FC = () => {
         ]}
       >
         <View style={[styles.headerRow, Platform.OS === 'web' && styles.webContent, { height: headerBarHeight }]}>
+          {/* Same width as the bell so the toggle stays centred. */}
+          <View style={styles.headerSpacer} />
           <View style={styles.toggleWrapper}>
             <View style={[styles.toggleContainer, { backgroundColor: theme.tabBg, borderColor: theme.border }]}>
               <Animated.View
@@ -216,45 +224,34 @@ const App: React.FC = () => {
                   { width: toggleOptionWidth, backgroundColor: theme.primary, transform: [{ translateX: indicatorTranslate }] },
                 ]}
               />
-              <Pressable style={[styles.toggleOption, { width: toggleOptionWidth }]} onPress={() => switchTab('liked')}>
-                <Text
-                  style={[
-                    styles.toggleText,
-                    { color: activeTab === 'liked' ? '#fff' : theme.tabInactive },
-                  ]}
-                >
-                  Liked
-                </Text>
-              </Pressable>
-
-              <Pressable style={[styles.toggleOption, { width: toggleOptionWidth }]} onPress={() => switchTab('disliked')}>
-                <Text
-                  style={[
-                    styles.toggleText,
-                    { color: activeTab === 'disliked' ? '#fff' : theme.tabInactive },
-                  ]}
-                >
-                  Disliked
-                </Text>
-              </Pressable>
+              {([
+                { tab: 'liked', label: 'Liked', icon: 'heart', count: allLikedItems.length },
+                { tab: 'disliked', label: 'Disliked', icon: 'close', count: allDislikedItems.length },
+              ] as const).map(({ tab, label, icon, count }) => {
+                const isOn = activeTab === tab;
+                return (
+                  <Pressable
+                    key={tab}
+                    style={[styles.toggleOption, { width: toggleOptionWidth }]}
+                    onPress={() => switchTab(tab)}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: isOn }}
+                    accessibilityLabel={isLoadingHistory ? label : `${label}, ${count} ${count === 1 ? 'item' : 'items'}`}
+                  >
+                    <Ionicons name={icon} size={15} color={isOn ? theme.headerText : theme.tabInactive} />
+                    <Text style={[styles.toggleText, { color: isOn ? theme.headerText : theme.tabInactive }]}>{label}</Text>
+                    {!isLoadingHistory && (
+                      <View style={[styles.countPill, { backgroundColor: isOn ? theme.accentGold : theme.border }]}>
+                        <Text style={[styles.countText, { color: isOn ? theme.text : theme.tabInactive }]}>{formatCount(count)}</Text>
+                      </View>
+                    )}
+                  </Pressable>
+                );
+              })}
             </View>
           </View>
 
           <PriceAlertsBell color={theme.tabActive} />
-          <View style={styles.filterWrapper}>
-            <Pressable
-              style={[styles.filterButton, { backgroundColor: theme.tabBg, borderColor: theme.border }]}
-              onPress={() => setFilterOpen((prev) => !prev)}
-            >
-              <Ionicons name="filter" size={20} color={theme.tabActive} />
-            </Pressable>
-
-            {filterOpen && (
-              <View style={[styles.filterDropdown, { backgroundColor: theme.tabBg, borderColor: theme.border }]}>
-                <Text style={[styles.filterDropdownText, { color: theme.mutedText }]}>Coming soon!</Text>
-              </View>
-            )}
-          </View>
         </View>
       </Animated.View>
 
@@ -270,6 +267,8 @@ const App: React.FC = () => {
           ref={listRef}
           data={activeTab === 'liked' ? allLikedItems : allDislikedItems}
           keyExtractor={(item) => item.id}
+          numColumns={2}
+          columnWrapperStyle={styles.gridRow}
           contentContainerStyle={[styles.list, { paddingTop: headerHeight + 16 }]}
           scrollIndicatorInsets={{ top: headerHeight }}
           onScroll={onListScroll}
@@ -277,61 +276,78 @@ const App: React.FC = () => {
           ListHeaderComponent={itemError ? <Text accessibilityRole="alert" style={{ color: theme.text, paddingBottom: 16 }}>{itemError}</Text> : undefined}
           ListEmptyComponent={
             <View style={styles.emptyState}>
-              <Ionicons
-                name={activeTab === 'liked' ? 'heart-outline' : 'heart-dislike-outline'}
-                size={48}
-                color={theme.mutedText}
-              />
+              <View style={[styles.emptyIcon, { backgroundColor: theme.primary }]}>
+                <Ionicons name={activeTab === 'liked' ? 'heart' : 'close'} size={40} color={theme.headerText} />
+              </View>
               <Text style={[styles.emptyTitle, { color: theme.text }]}>
                 {activeTab === 'liked' ? 'No liked items yet' : 'No disliked items yet'}
               </Text>
               <Text style={[styles.emptyText, { color: theme.mutedText }]}>
                 {activeTab === 'liked'
-                  ? 'Swipe right on items in the swiper to see your liked list here.'
-                  : 'Swipe left on items in the swiper to see your disliked list here.'}
+                  ? 'Swipe right on pieces you love and they’ll show up here.'
+                  : 'Swipe left on pieces that aren’t for you and they’ll show up here.'}
               </Text>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => router.navigate('/swiper')}
+                style={[styles.emptyButton, { backgroundColor: theme.primary }]}
+              >
+                <Text style={[styles.emptyButtonText, { color: theme.headerText }]}>Start swiping</Text>
+                <Ionicons name="arrow-forward" size={18} color={theme.headerText} />
+              </Pressable>
             </View>
           }
-          renderItem={({ item }) => (
-            <HistorySwipeable
-              renderRightActions={() => (
-                <View style={styles.deleteAction}>
-                  <Ionicons name="trash" size={24} color="white" />
-                </View>
-              )}
-              onSwipeableOpen={() => (activeTab === 'liked' ? deleteItem(item.id) : deleteDislikedItem(item.id))}
-            >
+          renderItem={({ item }) => {
+            const liked = activeTab === 'liked';
+            return (
               <Pressable
-                style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}
+                style={[styles.card, { width: cardWidth, backgroundColor: theme.surface }]}
+                accessibilityRole="button"
+                accessibilityLabel={`View ${item.name} details`}
                 onPress={() => {
                   setSelectedItem(item);
                   setModalVisible(true);
                 }}
               >
-                <View style={styles.imageContainer}>
+                <View style={[styles.cardImageWrap, { backgroundColor: theme.border }]}>
                   <Image
-                    style={[styles.image, { borderColor: theme.primary }]}
+                    style={styles.cardImage}
                     source={{ uri: item.imageUrl }}
                     contentFit="cover"
-                    transition={1000}
+                    transition={250}
                   />
-                  <View style={styles.itemInfo}>
-                    <Text style={[styles.itemName, { color: theme.text }, { fontFamily: 'PublicSans_600SemiBold', fontSize: 18 }]}>
-                      {item.name}
+                  <Pressable
+                    style={[styles.removeButton, { backgroundColor: theme.surface }]}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove ${item.name} from ${liked ? 'liked' : 'disliked'} items`}
+                    onPress={() => (liked ? deleteItem(item.id) : deleteDislikedItem(item.id))}
+                  >
+                    <Ionicons
+                      name={liked ? 'heart' : 'close'}
+                      size={liked ? 18 : 20}
+                      color={liked ? theme.accentBrown : theme.text}
+                    />
+                  </Pressable>
+                </View>
+                <View style={styles.cardInfo}>
+                  <Text numberOfLines={2} style={[styles.itemName, { color: theme.text }]}>
+                    {item.name}
+                  </Text>
+                  <View style={styles.priceGenderRow}>
+                    <Text style={[styles.itemPrice, { color: theme.accentBrown }]}>
+                      {showPriceAsTier ? getPriceTierSymbol(item.price) : item.price}
                     </Text>
-                    <View style={styles.priceGenderRow}>
-                      <Text style={[styles.itemPrice, { color: theme.accentBrown }, { fontFamily: 'PublicSans_600SemiBold' }]}>
-                        {showPriceAsTier ? getPriceTierSymbol(item.price) : item.price}
-                      </Text>
-                      <Text style={[styles.itemGender, { color: theme.mutedText }, { fontFamily: 'PublicSans_600SemiBold' }]}>
+                    {!!item.gender && (
+                      <Text style={[styles.itemGender, { color: theme.mutedText }]}>
                         {item.gender.toUpperCase()}
                       </Text>
-                    </View>
+                    )}
                   </View>
                 </View>
               </Pressable>
-            </HistorySwipeable>
-          )}
+            );
+          }}
         />}
 
         <Modal
@@ -352,7 +368,7 @@ const App: React.FC = () => {
           ) : (
           <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <Pressable style={styles.modalBackground} onPress={() => setModalVisible(false)}>
-            <Pressable style={[styles.modalContainer, { maxHeight: '90%' }]} onPress={event => event.stopPropagation()}>
+            <Pressable style={[styles.modalContainer, { maxHeight: '90%', backgroundColor: theme.surface }]} onPress={event => event.stopPropagation()}>
               <ScrollView style={{ width: '100%' }} keyboardShouldPersistTaps="handled">
               {selectedItem && (
                 <>
@@ -440,43 +456,31 @@ const styles = StyleSheet.create({
     bottom: 3,
     borderRadius: 20,
   },
+  headerSpacer: {
+    width: 44,
+  },
   toggleOption: {
-    paddingVertical: 6,
+    flexDirection: 'row',
+    gap: 5,
+    paddingVertical: 7,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 20,
   },
   toggleText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
-    fontFamily: 'PublicSans_700Bold',
-    textTransform: 'uppercase',
   },
-  filterWrapper: {
-    position: 'relative',
-  },
-  filterButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    borderWidth: 1,
+  countPill: {
+    minWidth: 22,
+    paddingHorizontal: 6,
+    borderRadius: 10,
     alignItems: 'center',
-    justifyContent: 'center',
   },
-  filterDropdown: {
-    position: 'absolute',
-    top: 42,
-    right: 0,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    zIndex: 10,
-  },
-  filterDropdownText: {
-    fontSize: 14,
-    fontWeight: '600',
-    fontFamily: 'PublicSans_600SemiBold',
+  countText: {
+    fontSize: 12,
+    fontWeight: '700',
+    lineHeight: 18,
   },
   content: {
     flex: 1,
@@ -492,13 +496,38 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   list: {
-    paddingHorizontal: 16,
+    paddingHorizontal: LIST_PADDING,
+    paddingBottom: 24,
+  },
+  gridRow: {
+    gap: GRID_GAP,
   },
   emptyState: {
     alignItems: 'center',
-    paddingTop: 80,
+    paddingTop: 72,
     paddingHorizontal: 24,
     gap: 10,
+  },
+  emptyIcon: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  emptyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 22,
+    borderRadius: 24,
+  },
+  emptyButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
   },
   emptyTitle: {
     fontSize: 20,
@@ -514,57 +543,65 @@ const styles = StyleSheet.create({
     lineHeight: 21,
   },
   card: {
-    borderRadius: 12,
-    marginBottom: 16,
+    borderRadius: 16,
+    marginBottom: GRID_GAP,
+    elevation: 2,
+    shadowColor: '#0c3b2e',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+  },
+  cardImageWrap: {
+    aspectRatio: 3 / 4,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
     overflow: 'hidden',
-    minHeight: 140,
+  },
+  cardImage: {
     width: '100%',
-    borderWidth: 2,
+    height: '100%',
   },
-  image: {
-    width: 120,
-    height: 120,
-    borderRadius: 8,
-    borderWidth: 2,
+  removeButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 2,
+    shadowColor: '#0c3b2e',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
   },
-  itemInfo: {
-    flex: 1,
-    padding: 12,
-    justifyContent: 'flex-start',
-    marginLeft: 10,
-    
+  cardInfo: {
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 12,
+    flexGrow: 1,
+    justifyContent: 'space-between',
   },
   itemName: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
-    marginBottom: 3,
-    fontFamily: 'PublicSans_600SemiBold',
+    lineHeight: 19,
   },
   itemPrice: {
-    fontSize: 14,
-    fontWeight: '500',
-    fontFamily: 'PublicSans_400Regular',
+    fontSize: 15,
+    fontWeight: '700',
   },
   itemGender: {
-    fontSize: 12,
-    fontWeight: '400',
-    fontFamily: 'PublicSans_400Regular',
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.6,
   },
   priceGenderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 4,
-  },
-  text: {
-    fontSize: 18,
-    fontWeight: '600',
-    fontFamily: 'PublicSans_400Regular',
-  },
-  imageContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 10,
+    marginTop: 8,
   },
   modalBackground: {
     flex: 1,
@@ -577,7 +614,6 @@ const styles = StyleSheet.create({
     width: '94%',
     maxWidth: 600,
     padding: 20,
-    backgroundColor: 'white',
     borderRadius: 20,
     alignItems: 'center',
   },
@@ -625,16 +661,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     fontFamily: 'PublicSans_600SemiBold',
-  },
-  deleteAction: {
-    backgroundColor: 'red',
-    justifyContent: 'center',
-    alignItems: 'flex-end',
-    width: '100%',
-    height: '85%',
-    borderRadius: 12,
-    marginVertical: 5,
-    paddingRight: 30,
   },
 });
 export default App;
