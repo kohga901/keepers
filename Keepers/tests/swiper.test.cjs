@@ -39,6 +39,7 @@ function screen({ recommend = async () => [row(1), row(2)], session = { user: { 
     'expo-web-browser': { openBrowserAsync: async (url) => calls.opened.push(url) },
     '../../components/Text': { Text: 'Text' }, '../../components/TagFilter': { TagFilter: 'TagFilter' },
     '../../components/ai/ImageLookupModal': { ImageLookupModal: 'LookupModal' },
+    '../../components/ReasonSheet': { ReasonSheet: 'ReasonSheet' },
     '../../contexts/PriceDisplayContext': { usePriceDisplay: () => ({ showPriceAsTier: false }) },
     '../../contexts/StackHeaderHeightContext': { useStackHeaderHeight: () => 80 },
     '../../hooks/useAppTheme': { useAppTheme: () => ({ theme: {} }) },
@@ -187,4 +188,30 @@ test('opening a listing keeps the final card and blocks insecure or malformed sh
     else { assert.equal(app.calls.opened.length, 0); assert.equal(app.calls.alerts.length, 1); }
     assert.equal(app.calls.swipes.length, 0);
   }
+});
+
+test('only cards with a reason show the Why button, which opens and closes the reason sheet', async () => {
+  const reason = { kind: 'similar_to_like', text: 'Because you liked Piece 9', liked_item_id: 9,
+    liked_item_name: 'Piece 9', liked_item_img: 'https://images.test/9', tags: [] };
+  const app = screen({ recommend: async () => [row(1), { ...row(2), reason }, { ...row(3), reason: { kind: 'explore', text: '  ' } }] });
+  await app.flush();
+  const whyButton = (index) => app.nodes(app.deck().renderCard(app.deck().cards[index], index))
+    .find((node) => node.props.accessibilityLabel === 'Why am I seeing this?');
+  const sheet = () => app.nodes().find((node) => node.type === 'ReasonSheet').props;
+
+  assert.equal(whyButton(0), undefined);
+  // A reason with no text to show gets no button.
+  assert.equal(whyButton(2), undefined);
+  assert.equal(sheet().item, null);
+
+  whyButton(1).props.onPress(); await app.flush();
+  assert.equal(sheet().item.id, '2');
+  assert.deepEqual(plain(sheet().item.reason), { kind: 'similar_to_like', text: 'Because you liked Piece 9',
+    likedItemName: 'Piece 9', likedItemImageUrl: 'https://images.test/9', tags: [] });
+
+  // Closing puts the deck back on the explained card, and opening it never sent a swipe.
+  sheet().onClose(); await app.flush();
+  assert.equal(sheet().item, null);
+  assert.deepEqual(app.calls.jumps, [1]);
+  assert.equal(app.calls.swipes.length, 0);
 });

@@ -17,6 +17,7 @@ import {getRecommendationsFromServer, getTagsFromServer, sendSwipeToServer} from
 import { Image } from 'expo-image';
 import * as WebBrowser from 'expo-web-browser';
 import { ImageLookupModal } from '../../components/ai/ImageLookupModal';
+import { ReasonSheet } from '../../components/ReasonSheet';
 import { TagFilter } from '../../components/TagFilter';
 import { emptyDeckMessage, sameSelection, type Tag } from '../../utils/tagFilter';
 import { usePriceDisplay } from '../../contexts/PriceDisplayContext';
@@ -25,6 +26,7 @@ import { useAppTheme } from '../../hooks/useAppTheme';
 import { supabase } from '../../utils/supabase';
 import { getPriceTierSymbol } from '../../utils/price';
 import { Item, ClothingRow } from '../../models/Items';
+import { toReason } from '../../utils/reason';
 import {
   lookupPurchasableItem,
   toAiLookupError,
@@ -53,6 +55,7 @@ const toItem = (row: ClothingRow): Item => ({
   itemUrl: row.item_web_listing,
   gender: row.item_gender,
   requested: row.requested_by_you,
+  reason: toReason(row.reason),
 });
 
 const App: React.FC = () => {
@@ -82,6 +85,9 @@ const App: React.FC = () => {
     message: string;
   } | null>(null);
   const [lookupLoading, setLookupLoading] = useState(false);
+  // The card whose "Why this?" sheet is open, and where it sits in the deck.
+  const [reasonItem, setReasonItem] = useState<Item | null>(null);
+  const reasonCardIndex = useRef<number | null>(null);
   const { showPriceAsTier } = usePriceDisplay();
   const { theme } = useAppTheme();
 
@@ -341,6 +347,24 @@ const App: React.FC = () => {
     }
   };
 
+  const openReason = (item: Item, cardIndex: number) => {
+    reasonCardIndex.current = cardIndex;
+    setReasonItem(item);
+  };
+
+  const closeReason = () => {
+    const cardIndexToRestore = reasonCardIndex.current;
+    reasonCardIndex.current = null;
+    setReasonItem(null);
+
+    // Same as closeLookup: reset the deck after the modal starts dismissing so its top card stays visible.
+    if (cardIndexToRestore !== null) {
+      setTimeout(() => {
+        swiper.current?.jumpToCardIndex(cardIndexToRestore);
+      }, 0);
+    }
+  };
+
   if (!isAuthReady || (isAuthenticated && isFeedLoading)) {
     return (
       <View style={[styles.messageContainer, { backgroundColor: theme.background }]} accessibilityRole="progressbar" accessibilityLabel="Loading your feed">
@@ -426,6 +450,19 @@ const App: React.FC = () => {
                   <Text style={styles.requestedBadgeText}>You requested this</Text>
                 </View>
               )}
+              {card.reason && (
+                <Pressable
+                  accessibilityHint="Explains why this item is in your feed"
+                  accessibilityLabel="Why am I seeing this?"
+                  accessibilityRole="button"
+                  hitSlop={8}
+                  onPress={() => openReason(card, cardIndex)}
+                  style={({ pressed }) => [styles.reasonButton, pressed && styles.reasonButtonPressed]}
+                >
+                  <Ionicons name="help-circle" color="#FFFFFF" size={16} />
+                  <Text style={styles.reasonButtonText}>Why this?</Text>
+                </Pressable>
+              )}
             </View>
             );
           }}
@@ -507,6 +544,8 @@ const App: React.FC = () => {
         }}
         result={lookupResult}
       />
+
+      <ReasonSheet item={reasonItem} onClose={closeReason} />
     </View>
   );
 };
@@ -596,6 +635,26 @@ const styles = StyleSheet.create({
     backgroundColor: '#2E8B57',
   },
   requestedBadgeText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  reasonButton: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(26, 26, 26, 0.72)',
+  },
+  reasonButtonPressed: {
+    opacity: 0.6,
+  },
+  reasonButtonText: {
     fontSize: 13,
     fontWeight: '700',
     color: '#FFFFFF',
