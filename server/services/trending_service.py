@@ -61,6 +61,10 @@ MAX_ITEMS = 200
 # never checked, since they have no taste yet.
 TASTE_KEEP_SHARE = 0.5
 
+# The index and numpy round similarities slightly differently, so the item sitting exactly on the
+# taste line can score a hair under its own line. This much slack keeps it in.
+TASTE_TOLERANCE = 1e-5
+
 # Seconds the rankings are used before they are refreshed from Likes.
 CACHE_TTL = 300
 
@@ -305,7 +309,7 @@ def pick(
             if has_taste:
                 if not floor_known:
                     floor, floor_known = _taste_floor(pref), True
-                if floor is not None and float(embedding @ pref) < floor:
+                if floor is not None and float(embedding @ pref) < floor - TASTE_TOLERANCE:
                     continue
 
             return TrendingPick(item_id, like_count, days)

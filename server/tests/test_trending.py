@@ -131,6 +131,14 @@ class TrendingTests(BackendTest):
             trending = self.trending_of(self.recommend(user="alice", n=2))
         self.assertEqual(trending["item_id"], 3)
 
+    def test_an_item_exactly_on_the_taste_line_is_allowed(self):
+        # Alice likes item 1. Item 3 is the 3rd nearest of 6, exactly on the line at 0.5.
+        self.react("Likes", "alice", 1)
+        self.like(5, "bob", "carol", "dave")
+        self.like(3, "bob", "carol")
+        with patch.object(trending_service, "TASTE_KEEP_SHARE", 0.5):
+            self.assertEqual(self.trending_of(self.recommend(user="alice", n=2))["item_id"], 3)
+
     def test_taste_check_can_be_turned_off(self):
         self.react("Likes", "alice", 1)
         self.like(5, "bob", "carol")
@@ -176,6 +184,19 @@ class TrendingTests(BackendTest):
         self.assertFalse(items[0]["is_trending"])
         self.assertEqual(self.trending_of(items)["item_id"], 4)
         self.assertEqual(len(items), 2)
+
+    def test_the_trending_item_never_gets_a_reason(self):
+        # The trending item is explained by its "Most liked" badge, so it gets no "Why this?" reason.
+        from services import explanation_service
+        self.react("Likes", "alice", 1)
+        self.like(3, "bob", "carol")
+        with patch.object(explanation_service, "REASON_SHARE", 1.0), \
+                patch.object(trending_service, "TASTE_KEEP_SHARE", 1.0):
+            items = self.recommend(user="alice", n=4)
+        trending = self.trending_of(items)
+        self.assertEqual(trending["item_id"], 3)
+        self.assertIsNone(trending["reason"])
+        self.assertTrue(any(i["reason"] for i in items if not i["is_trending"]))
 
     def test_n_zero_returns_nothing_and_reads_no_likes(self):
         with patch.object(trending_service, "_fetch_recent_likes") as fetch:
