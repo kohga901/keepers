@@ -76,22 +76,22 @@ export const TUTORIALS: Record<TutorialId, TutorialConfig> = {
     steps: [
       {
         title: 'Your history',
-        body: 'Every item you swipe on is saved here, so you can come back to the pieces you loved.',
+        body: 'Every item you swipe on is saved here in a photo grid, so you can come back to the pieces you loved.',
         Demo: HistoryListDemo,
       },
       {
         title: 'Liked and Disliked',
-        body: 'Use the toggle at the top to switch between items you kept and items you passed on.',
+        body: 'Use the toggle at the top to switch between pieces you kept and pieces you passed on. The numbers show how many are in each list.',
         Demo: HistoryToggleDemo,
       },
       {
         title: 'Tap for details',
-        body: 'Tap any item to see it up close, then tap Go to Store Page to shop it.',
+        body: 'Tap any piece to see it up close, then tap Go to Store Page to shop it. Liked pieces also let you set a price alert.',
         Demo: HistoryDetailDemo,
       },
       {
-        title: 'Swipe left to remove',
-        body: 'Changed your mind? Swipe an item all the way left to take it off your list.',
+        title: 'Tap to remove',
+        body: 'Changed your mind? Tap the heart on a liked piece, or the ✕ on a disliked one, to take it off your list.',
         Demo: HistoryRemoveDemo,
       },
       {
