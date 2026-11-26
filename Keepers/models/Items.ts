@@ -15,7 +15,29 @@ export interface Item {
   liked: boolean;
   // True when the user asked for this item and it was approved since they last saw it.
   requested?: boolean;
+  // Why the item is in the feed. Only a share of the feed has one (see utils/reason.ts).
+  reason?: Reason;
 }
+
+// A checked, ready-to-show "Why am I seeing this?" reason.
+export interface Reason {
+  kind: string;
+  text: string;
+  // The liked item a "Because you liked ..." reason points at, if any.
+  likedItemName?: string;
+  likedItemImageUrl?: string;
+  tags: string[];
+}
+
+// The reason as the server sends it (see server/routers/clothes.py Reason).
+export type ReasonRow = {
+  kind: string;
+  text: string;
+  liked_item_id?: number | null;
+  liked_item_name?: string | null;
+  liked_item_img?: string | null;
+  tags?: string[] | null;
+};
 
 export type ClothingRow = {
   item_id: string;
@@ -25,4 +47,5 @@ export type ClothingRow = {
   item_web_listing: string;
   item_gender: string;
   requested_by_you?: boolean;
+  reason?: ReasonRow | null;
 };
