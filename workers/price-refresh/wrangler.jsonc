@@ -6,10 +6,11 @@
   "workers_dev": true,
   "vars": {
     "DRY_RUN": "true",
-    "BATCH_SIZE": "50",
+    "FREE_TIER": "true",
+    "BATCH_SIZE": "1",
     "BROWSER_FALLBACK_LIMIT": "0"
   },
-  "triggers": { "crons": ["*/15 * * * *"] },
+  "triggers": { "crons": ["*/5 * * * *"] },
   // Wrangler provisions this namespace on first deployment. Local dev uses local KV.
   "kv_namespaces": [{ "binding": "PRICE_REFRESH" }],
   "observability": { "enabled": true }

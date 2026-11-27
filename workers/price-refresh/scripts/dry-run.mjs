@@ -18,10 +18,11 @@ try {
   const report = await runBatch({
     SUPABASE_URL: process.env.SUPABASE_URL ?? process.env.EXPO_PUBLIC_SUPABASE_URL,
     SUPABASE_KEY: process.env.SUPABASE_KEY ?? process.env.EXPO_PUBLIC_SUPABASE_KEY,
+    FREE_TIER: process.env.FREE_TIER,
     BROWSER_FALLBACK_LIMIT: process.env.BROWSER_FALLBACK_LIMIT ?? '0',
     CLOUDFLARE_ACCOUNT_ID: process.env.CLOUDFLARE_ACCOUNT_ID,
     CLOUDFLARE_BROWSER_TOKEN: process.env.CLOUDFLARE_BROWSER_TOKEN,
-  }, { dryRun: true, afterId: cursorId(options['--after-id'] ?? '0'), limit: Number(options['--limit'] ?? 10) });
+  }, { dryRun: true, afterId: cursorId(options['--after-id'] ?? '0'), limit: Number(options['--limit'] ?? (process.env.FREE_TIER === 'true' ? 1 : 10)) });
   const output = resolve(options['--output'] ?? `reports/dry-run-${report.started_at.replaceAll(':', '-')}.json`);
   await mkdir(dirname(output), { recursive: true });
   await writeFile(output, JSON.stringify(report, null, 2) + '\n');

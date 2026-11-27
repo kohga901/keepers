@@ -1,4 +1,5 @@
 const actions = {
+  resource_limit: 'This listing exceeded the Free plan page/request budget. Keep the stored price and review the exact listing manually.',
   retry: 'Retry after the cooldown; keep the last checked price until a fresh price is verified.',
   browser: 'Render the saved URL in a browser, then verify the same product, variant and USD offer.',
   merchant_access: 'Try a bounded browser probe. If blocked, use a merchant-approved API/feed or review the listing manually.',
@@ -21,6 +22,7 @@ export function recoveryFor(result) {
       /\/(?:blocked|verify|px)(?:[/?]|$)|siteclosed\.|\/captcha(?:[/?]|$)|\/PX-Show(?:[/?]|$)/i.test(destination)) action = 'merchant_access';
   else if (browser?.outcome === 'redirect_changed_product' && reason !== 'merchant_challenge') action = 'repair_listing';
   else if (browser?.attempted && ['no_supported_product_data', 'product_or_offer_not_verified', 'requires_browser_rendering'].includes(browser.outcome)) action = 'adapter';
+  else if (/^free_tier_(page|request)_limit$/.test(reason)) action = 'resource_limit';
   else if (/^merchant_http_(429|5\d\d)$|merchant_request_failed|merchant_maintenance/.test(reason)) action = 'retry';
   else if (/^merchant_http_(401|402|403|405|406)$|merchant_challenge/.test(reason)) action = 'merchant_access';
   else if (/^merchant_http_(404|410)$|redirect_changed_product|invalid_redirect|too_many_redirects/.test(reason)) action = 'repair_listing';
@@ -38,7 +40,7 @@ export function recoveryFor(result) {
 export const browserCandidate = reason => ['browser', 'merchant_access', 'verify_variant', 'select_offer', 'review_price', 'refresh_offer'].includes(recoveryFor({ reason }).action);
 
 export function failureObservation(error) {
-  const reason = /^(unsafe_|invalid_|merchant_http_|page_too_large|product_data_too_large|unsupported_content_type|redirect_changed_product|too_many_redirects)/.test(error.message)
+  const reason = /^(unsafe_|invalid_|merchant_http_|free_tier_(?:page|request)_limit$|page_too_large|product_data_too_large|unsupported_content_type|redirect_changed_product|too_many_redirects)/.test(error.message)
     ? error.message : 'merchant_request_failed';
   return { verified: false, request_failed: true, reason,
     ...(error.redirects ? { redirects: error.redirects } : {}), ...(error.retry_at ? { retry_at: error.retry_at } : {}) };

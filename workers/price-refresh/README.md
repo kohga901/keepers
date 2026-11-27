@@ -2,6 +2,9 @@
 
 A standalone Cloudflare Worker reads the existing `Clothing.item_web_listing`
 URLs and proposes updates to `Clothing.item_price`. **It ships in dry-run mode.**
+The deployed configuration targets **Cloudflare Workers Free**, processing one
+catalog row every five minutes. It reads real URLs and retains the explicit
+opt-in for live writes. Some listings exceed the Free profile's resource bounds.
 Dry runs make only GET requests to Supabase: they do not change clothing rows,
 schema, alerts, or emails. Reports and the scheduled scan cursor live in Cloudflare
 KV, so no Supabase migration is required.
@@ -37,7 +40,8 @@ For subsequent pages, pass the preceding report's `next_after_id`:
 npm run dry-run -- --env-file .dev.vars --after-id 123 --limit 50 --output reports/next.json
 ```
 
-Stop when `cycle_complete` is true. The maximum batch is 50 rows. IDs are ordered
+Stop when `cycle_complete` is true. The analysis CLI supports up to 50 rows; the
+deployed Free profile enforces one row. IDs are ordered
 by `item_id`, not assumed to be consecutive; failed or missing links still advance
 the scan. They are checked again on the next catalog sweep.
 
@@ -76,15 +80,31 @@ Wrangler uploads `.dev.vars` as encrypted Worker secrets and provisions the
 resource IDs are committed. `wrangler.jsonc` is the configuration source of truth:
 
 - `DRY_RUN="true"` leaves Supabase untouched on every scheduled run.
-- Cron runs every 15 minutes (UTC), checking up to `BATCH_SIZE="50"` rows.
+- Cron runs every five minutes (UTC), checking one row with `FREE_TIER="true"`.
 - Three merchant requests run concurrently; identical URLs share a fetch within
   each batch. Meaningful query parameters, including variants, are retained.
-- A separate cursor for each mode advances after the report is saved and wraps
-  to zero at the end. At 50 rows every 15 minutes this processes up to 4,800 rows
-  per day, subject to runtime and failures; this is a sweep, not a freshness SLA.
+- A separate cursor for each mode wraps to zero at the end. Free scheduled runs
+  reserve the next cursor immediately after the database read, before parsing.
+  If Cloudflare terminates that invocation or saving its report fails, the item
+  can be missed until the next sweep. This avoids repeatedly getting stuck on
+  one expensive page. KV remains a cursor, not a distributed lock.
+- At one row every five minutes, a 4,295-item sweep takes approximately 15 days,
+  subject to scheduling and failures. This is not a daily catalog refresh.
 - Reports expire after seven days. The latest scheduled summary is also logged.
-- Prefer Workers Paid for catalog scans. Free CPU/subrequest limits are too
-  restrictive for the default batch; the build does not subscribe to a plan.
+- Normal scheduled operation writes three KV keys per run: 864 writes/day,
+  below Free's 1,000/day allowance. Manual previews also consume two writes each;
+  other services sharing the account can consume the remaining allowance.
+- Free mode enforces one row even if `BATCH_SIZE` or a request asks for more,
+  disables browser recovery, and caps fetch attempts at 16 per invocation.
+- Responses are bounded at 256 KiB for HTML and 64 KiB for JSON/JavaScript data,
+  using decompressed streamed bytes as well as advertised size. An overflow
+  yields `free_tier_page_limit`; partial data never becomes a verified price.
+  Small exact Shopify product JSON can still recover a price from an oversized
+  page. Other oversized listings keep their stored price and need review.
+- These bounds reduce CPU risk, but cannot guarantee execution within Free's
+  10 ms CPU limit. Check production logs for `exceededCpu` / error 1102 after
+  deployment; local tests and a successful build do not prove cloud CPU usage.
+  Workers' in-request timers do not measure CPU, so no timer-based guarantee is made.
 
 To call a deployed Worker from PowerShell, set `PRICE_REFRESH_ADMIN_TOKEN` in
 your shell to the same admin token, then use the URL printed by deployment:
@@ -92,7 +112,7 @@ your shell to the same admin token, then use the URL printed by deployment:
 ```powershell
 $workerUrl = 'https://keepers-price-refresh.YOUR_SUBDOMAIN.workers.dev'
 $headers = @{ Authorization = "Bearer $env:PRICE_REFRESH_ADMIN_TOKEN" }
-Invoke-RestMethod "$workerUrl/dry-run" -Method Post -Headers $headers -ContentType 'application/json' -Body '{"limit":10}' |
+Invoke-RestMethod "$workerUrl/dry-run" -Method Post -Headers $headers -ContentType 'application/json' -Body '{"limit":1}' |
     ConvertTo-Json -Depth 12
 Invoke-RestMethod "$workerUrl/reports/latest" -Headers $headers | ConvertTo-Json -Depth 12
 ```
@@ -102,6 +122,23 @@ including when the scheduled worker is live. Manual runs do not move the cron
 cursor. `GET /reports/REPORT_ID` retrieves an older report by its UUID. There is
 no public run endpoint, CORS allowance, or HTTP switch to turn on writes. Run
 `npm run dev` to exercise these endpoints locally with local KV and `.dev.vars`.
+
+To test the same Free bounds with the local CLI:
+
+```powershell
+$env:FREE_TIER = 'true'
+npm run dry-run -- --env-file .dev.vars --limit 1 --output reports/free-check.json
+Remove-Item Env:\FREE_TIER
+```
+
+Without `FREE_TIER=true`, the standalone CLI/audit tools retain the full
+extraction limits below. Previous full-catalog audit coverage therefore does
+not predict Free-profile coverage. No new server, schema or replacement-link
+update is required for this Worker.
+
+References: [Workers Free limits](https://developers.cloudflare.com/workers/platform/limits/),
+[KV allowance](https://developers.cloudflare.com/kv/platform/limits/),
+[timer limitations](https://developers.cloudflare.com/workers/runtime-apis/performance/).
 
 ## Extraction limits
 
@@ -151,7 +188,8 @@ There is no guess based on another product's name or photo. Current catalog
 prices remain strings such as `$24.99` for compatibility with the app and its
 existing price-alert trigger.
 
-Merchant requests have a 15-second timeout, a 16 MiB decompressed body limit and
+In full analysis mode (`FREE_TIER` unset or `false`), merchant requests have a
+15-second timeout, a 16 MiB decompressed body limit and
 at most three redirects. HTML is parsed as it streams instead of collecting the
 entire page in memory, so product data near the end of a large page is supported.
 Retained scripts are limited to 2 Mi characters each and 4 Mi characters combined;

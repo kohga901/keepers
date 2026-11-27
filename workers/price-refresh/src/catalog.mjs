@@ -2,6 +2,7 @@ import { createPriceExtractor, priceCents, formatPrice, sameProduct, sameMerchan
 import { createCloudflareRenderer } from './browser.mjs';
 import { recoveryFor, browserCandidate, failureObservation } from './recovery.mjs';
 import { fetchShopifyVariant } from './shopify.mjs';
+import { freeTierFetcher, FREE_TIER_LIMITS } from './free-tier.mjs';
 
 const MAX_BYTES = 16 * 1024 * 1024;
 const MAX_REPORT_ROWS = 50;
@@ -148,7 +149,7 @@ export async function observeProduct(value, fetcher = fetch, renderer = null) {
   try { observation = await fetchProduct(original.href, fetcher); }
   catch (error) { observation = failureObservation(error); }
   if (!observation.verified && ['variant_not_verified', 'no_supported_product_data', 'product_or_offer_not_verified', 'missing_or_invalid_price', 'availability_unknown',
-    'merchant_http_403','merchant_http_405','merchant_http_406','merchant_challenge','page_too_large','product_data_too_large','requires_browser_rendering'].includes(observation.reason)) {
+    'merchant_http_403','merchant_http_405','merchant_http_406','merchant_challenge','page_too_large','product_data_too_large','requires_browser_rendering','free_tier_page_limit'].includes(observation.reason)) {
     const product = await fetchShopifyVariant(original.href, fetcher);
     if (product) observation = { ...product, recovered_from: observation.reason };
   }
@@ -213,16 +214,21 @@ function storedCents(value) {
   return priceCents(text.replace(/^(\$|USD\s+)/, '').replaceAll(',', ''));
 }
 
-export async function runBatch(env, { afterId = '0', limit = 50, dryRun = true } = {}, fetcher = fetch, renderer = undefined) {
+export async function runBatch(env, { afterId = '0', limit = 50, dryRun = true, beforeProcess } = {}, fetcher = fetch, renderer = undefined) {
   const config = catalogConfig(env);
+  const freeTier = env.FREE_TIER === 'true';
   afterId = cursorId(afterId);
-  if (!Number.isInteger(limit) || limit < 1 || limit > MAX_REPORT_ROWS) throw new Error('invalid_batch_size');
+  if (!Number.isInteger(limit) || limit < 1 || limit > (freeTier ? 1 : MAX_REPORT_ROWS)) throw new Error('invalid_batch_size');
   // Neither an HTTP body nor a missing/misspelled environment variable can enable writes.
   if (!dryRun && env.DRY_RUN !== 'false') throw new Error('writes_disabled');
-  renderer ??= createCloudflareRenderer(env, fetcher);
+  if (freeTier) { fetcher = freeTierFetcher(fetcher); renderer = null; }
+  else renderer ??= createCloudflareRenderer(env, fetcher);
   const startedAt = new Date().toISOString();
   const rows = await database(config, { select: 'item_id,item_name,item_price,item_web_listing',
     item_id: `gt.${afterId}`, order: 'item_id.asc', limit: String(limit) }, fetcher);
+  if (freeTier && rows.length > 1) throw new Error('invalid_supabase_response');
+  // The Free cron reserves its single row before parsing; a CPU termination cannot pin that cursor.
+  if (beforeProcess) await beforeProcess(rows.length < limit ? '0' : rowId(rows.at(-1).item_id));
   const results = [];
   // Bound concurrency and share identical URLs within a batch without removing variant parameters.
   const fetched = new Map();
@@ -277,5 +283,6 @@ export async function runBatch(env, { afterId = '0', limit = 50, dryRun = true }
     summary: results.reduce((counts, result) => { counts[result.status] = (counts[result.status] ?? 0) + 1; return counts; },
       { checked: rows.length, would_update: 0, updated: 0, unchanged: 0, skipped: 0, error: 0, conflict: 0 }),
     warning: rows.length === 0 && afterId === '0' ? 'No visible Clothing rows. Verify the key has SELECT access; RLS can hide rows without an error.' : null,
-    ...(renderer?.stats ? { browser: { ...renderer.stats } } : {}), results };
+    ...(renderer?.stats ? { browser: { ...renderer.stats } } : {}),
+    ...(freeTier ? { free_tier: { ...FREE_TIER_LIMITS, fetches_used: fetcher.stats.requests } } : {}), results };
 }
