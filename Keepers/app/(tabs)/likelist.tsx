@@ -373,39 +373,38 @@ const App: React.FC = () => {
             </View>
           ) : (
           <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <Pressable style={styles.modalBackground} onPress={() => setModalVisible(false)}>
-            <Pressable style={[styles.modalContainer, { maxHeight: '90%', backgroundColor: theme.surface }]} onPress={event => event.stopPropagation()}>
+          <View style={[styles.modalBackground, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 }]}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setModalVisible(false)} accessible={false} focusable={false} />
+            <View style={[styles.modalContainer, { backgroundColor: theme.surface, borderColor: theme.border }]} accessibilityViewIsModal>
               <ScrollView style={{ width: '100%' }} keyboardShouldPersistTaps="handled">
               {selectedItem && (
                 <>
-                  <Pressable onPress={() => setImageExpanded(true)} accessibilityRole="button" accessibilityLabel="View full-size image">
-                  <Image
-                    style={styles.modalImage}
-                    source={{ uri: selectedItem.imageUrl }}
-                  />
+                  <Pressable onPress={() => setImageExpanded(true)} accessibilityRole="button" accessibilityLabel="View full-size image"
+                    accessibilityHint="Opens the full photo without cropping"
+                    style={[styles.modalPhoto, { height: Math.min(420, viewport.height * 0.45), backgroundColor: theme.background }]}>
+                    <Image style={styles.modalImage} source={{ uri: selectedItem.imageUrl }} contentFit="contain" contentPosition="center"
+                      accessibilityLabel={selectedItem.name} transition={200} />
+                    <View style={[styles.expandPhoto, { backgroundColor: theme.surface, borderColor: theme.border }]} pointerEvents="none">
+                      <Ionicons name="expand-outline" size={18} color={theme.text} />
+                    </View>
                   </Pressable>
-                  <View style={[styles.textAndButtonContainer, { backgroundColor: theme.primary }]}>
-                    <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '600', fontFamily: 'PublicSans_600SemiBold' }}>
+                  <View style={styles.modalDetails}>
+                    <Text style={[styles.modalTitle, { color: theme.text }]}>
                       {selectedItem.name}
                     </Text>
-                    <View style={{ height: 1, backgroundColor: '#FFFFFF', opacity: 0.4, width: '100%', marginVertical: 10 }} />
-
                     <View style={styles.modalPriceGenderRow}>
-                    <Text style={{ color: theme.accentGold, fontFamily: 'PublicSans_600SemiBold' }}>
-                      {showPriceAsTier ? getPriceTierSymbol(selectedItem.price) : selectedItem.price}
-                    </Text>
-                    <Text style={{ color: '#FFFFFF', fontFamily: 'PublicSans_600SemiBold' }}>
-                      {selectedItem.gender.toUpperCase()}
-                    </Text>
+                      <Text style={[styles.modalPrice, { color: theme.accentBrown }]}>
+                        {showPriceAsTier ? getPriceTierSymbol(selectedItem.price) : selectedItem.price}
+                      </Text>
+                      {!!selectedItem.gender && <View style={[styles.genderChip, { backgroundColor: theme.background }]}>
+                        <Text style={[styles.itemGender, { color: theme.text }]}>{selectedItem.gender.toUpperCase()}</Text>
+                      </View>}
                     </View>
-
-                    <Pressable style={[styles.closeButton, { backgroundColor: theme.surface }]} onPress={() => {
-                      if (selectedItem.itemUrl) {
-                        WebBrowser.openBrowserAsync(selectedItem.itemUrl);
-                      }
-
-                    }}>
-                      <Text style={[styles.closeButtonText, { color: theme.text }]}>Go to Store Page</Text>
+                    <Pressable style={({ pressed }) => [styles.storeButton, { backgroundColor: theme.text, opacity: !selectedItem.itemUrl ? 0.5 : pressed ? 0.8 : 1 }]}
+                      accessibilityRole="link" accessibilityLabel={`View ${selectedItem.name} in store`} disabled={!selectedItem.itemUrl}
+                      onPress={() => { if (selectedItem.itemUrl) void WebBrowser.openBrowserAsync(selectedItem.itemUrl); }}>
+                      <Text style={[styles.storeButtonText, { color: theme.headerText }]}>View in store</Text>
+                      <Ionicons name="open-outline" size={18} color={theme.headerText} />
                     </Pressable>
                     {selectedItem.liked && <PriceAlertEditor key={selectedItem.id} itemId={selectedItem.id} price={selectedItem.price} />}
                   </View>
@@ -413,11 +412,11 @@ const App: React.FC = () => {
               )}
               </ScrollView>
               <Pressable onPress={() => setModalVisible(false)} accessibilityRole="button" accessibilityLabel="Close item details"
-                style={[styles.modalClose, { backgroundColor: theme.surface }]}>
+                style={[styles.modalClose, { backgroundColor: theme.surface, borderColor: theme.border, borderWidth: 1 }]}>
                 <Ionicons name="close" size={24} color={theme.text} />
               </Pressable>
-            </Pressable>
-          </Pressable>
+            </View>
+          </View>
           </KeyboardAvoidingView>
           )}
         </Modal>
@@ -621,22 +620,42 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(12,59,46,0.5)',
   },
 
   modalContainer: {
-    width: '94%',
-    maxWidth: 600,
-    padding: 20,
-    borderRadius: 20,
-    alignItems: 'center',
+    width: '100%',
+    maxWidth: 560,
+    maxHeight: '100%',
+    flexShrink: 1,
+    borderRadius: 24,
+    borderWidth: 1,
+    overflow: 'hidden',
+    elevation: 8,
+    shadowColor: '#0c3b2e',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 24,
   },
-
+  modalPhoto: {
+    width: '100%',
+    padding: 24,
+  },
   modalImage: {
     width: '100%',
-    height: 300,
-    marginBottom: 10,
-    borderRadius: 15,
+    flex: 1,
+  },
+  expandPhoto: {
+    position: 'absolute',
+    right: 12,
+    bottom: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalClose: {
     position: 'absolute',
@@ -650,11 +669,25 @@ const styles = StyleSheet.create({
     elevation: 3,
     zIndex: 1,
   },
-  textAndButtonContainer: {
-    padding: 10,
-    borderRadius: 10,
-    width: '100%',
-    alignItems: 'center',
+  modalDetails: {
+    padding: 24,
+    gap: 16,
+  },
+  modalTitle: {
+    fontSize: 22,
+    lineHeight: 29,
+    fontWeight: '700',
+  },
+  modalPrice: {
+    fontSize: 26,
+    lineHeight: 32,
+    fontWeight: '700',
+    flexShrink: 1,
+  },
+  genderChip: {
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   modalPriceGenderRow: {
     width: '100%',
@@ -663,18 +696,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  closeButton: {
+  storeButton: {
     width: '100%',
+    minHeight: 48,
+    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 10,
+    gap: 8,
+    paddingVertical: 14,
     paddingHorizontal: 20,
-    borderRadius: 10,
-    marginTop: 20,
+    borderRadius: 14,
   },
-  closeButtonText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    fontFamily: 'PublicSans_600SemiBold',
+  storeButtonText: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '700',
   },
 });
 export default App;

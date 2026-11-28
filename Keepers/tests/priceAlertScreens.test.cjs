@@ -159,8 +159,8 @@ test('notification opens Like List and clearing one/all refreshes; failed cleari
   assert.deepEqual(calls.at(-1), ['alice', 'notice']);
 });
 
-function historyScreen(getItem = async id => ({ item_id: id, item_name: `Piece ${id}`, item_price: '$50', item_gender: null }), services = {}, { width = 390, platform = 'ios' } = {}) {
-  const h = harness(), calls = [], navigations = [];
+function historyScreen(getItem = async id => ({ item_id: id, item_name: `Piece ${id}`, item_price: '$50', item_gender: null }), services = {}, { width = 390, height = 900, platform = 'ios' } = {}) {
+  const h = harness(), calls = [], navigations = [], listings = [];
   const params = { itemId: '7' };
   const router = { setParams(next) { Object.assign(params, next); h.invalidate(); }, navigate: path => navigations.push(path) };
   const animation = { interpolate() { return animation; } };
@@ -168,14 +168,14 @@ function historyScreen(getItem = async id => ({ item_id: id, item_name: `Piece $
   const Screen = createLoader({
     react: h.hooks, 'react/jsx-runtime': { jsx: h.jsx, jsxs: h.jsx },
     'react-native': { ...native, FlatList: 'FlatList', Modal: 'Modal', KeyboardAvoidingView: 'KeyboardAvoidingView',
-      useWindowDimensions: () => ({ width, height: 900 }),
+      useWindowDimensions: () => ({ width, height }),
       Platform: { OS: platform }, Animated: { View: 'AnimatedView', FlatList: 'FlatList', Value: function () { return animation; },
         timing: () => ({ start() {} }), event: () => () => {}, diffClamp: () => animation }, Easing: { cubic() {}, out() {} } },
     'expo-router': { useRouter: () => router, useLocalSearchParams: () => params },
     'expo-router/react-navigation': { useFocusEffect: focusEffect, getDefaultHeaderHeight: () => 80 },
-    'expo-image': { Image: 'Image' }, 'expo-web-browser': {}, '@expo/vector-icons': { Ionicons: 'Icon' },
+    'expo-image': { Image: 'Image' }, 'expo-web-browser': { openBrowserAsync: async url => listings.push(url) }, '@expo/vector-icons': { Ionicons: 'Icon' },
     // Expo Router 58 deliberately supplies a zero safe-area frame on web.
-    'react-native-safe-area-context': { useSafeAreaFrame: () => ({ width: platform === 'web' ? 0 : width, height: platform === 'web' ? 0 : 900 }), useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },
+    'react-native-safe-area-context': { useSafeAreaFrame: () => ({ width: platform === 'web' ? 0 : width, height: platform === 'web' ? 0 : height }), useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },
     '../../components/Text': { Text: 'Text' }, '../../components/PriceAlertEditor': { PriceAlertEditor: 'PriceAlertEditor' },
     '../../components/PriceAlertsBell': { PriceAlertsBell: 'Bell' },
     '../../contexts/PriceDisplayContext': { usePriceDisplay: () => ({ showPriceAsTier: false }) },
@@ -186,7 +186,7 @@ function historyScreen(getItem = async id => ({ item_id: id, item_name: `Piece $
       getDislikedItems: async () => [], getClothingById: id => { calls.push(id); return getItem(id); }, ...services },
   })('app/(tabs)/likelist.tsx').default;
   function tutorial() {}
-  return { ...h, calls, params, navigations, flush: () => h.flush(Screen),
+  return { ...h, calls, params, navigations, listings, flush: () => h.flush(Screen),
     route(id) { params.itemId = id; h.invalidate(); } };
 }
 
@@ -202,6 +202,32 @@ test('notification route opens the existing popup with fresh item details and co
   assert.deepEqual(app.calls, ['7']);
   app.route('7'); await app.flush();
   assert.equal(app.nodes().find(n => n.type === 'Modal').props.visible, true);
+});
+
+test('history detail photo stays uncropped on phone and desktop, with working expand, store and dismiss actions', async () => {
+  for (const viewport of [{ width: 320, height: 568, platform: 'web' }, { width: 1440, height: 900, platform: 'web' }, { width: 390, height: 844, platform: 'ios' }]) {
+    const app = historyScreen(async id => ({ item_id: id, item_name: 'Linen shirt', item_price: '$50', item_gender: 'women',
+      item_img: 'https://images.test/portrait.jpg', item_web_listing: 'https://store.test/shirt' }), {}, viewport);
+    await app.flush();
+    const find = label => app.nodes().find(node => node.props.accessibilityLabel === label);
+    const photo = find('View full-size image');
+    const image = app.nodes(photo).find(node => node.type === 'Image');
+    assert.equal(image.props.contentFit, 'contain');
+    assert.equal(image.props.contentPosition, 'center');
+    assert.ok(photo.props.style[1].height > 0 && photo.props.style[1].height <= viewport.height / 2);
+    assert.ok(!app.nodes(photo.props.children).some(node => node.type === 'Pressable'));
+    find('View Linen shirt in store').props.onPress();
+    assert.deepEqual(app.listings, ['https://store.test/shirt']);
+    photo.props.onPress(); await app.flush();
+    assert.ok(find('Close full-size image'));
+    assert.equal(app.nodes().find(node => node.type === 'Image').props.contentFit, 'contain');
+    app.nodes().find(node => node.type === 'Modal').props.onRequestClose(); await app.flush();
+    assert.ok(find('View full-size image'));
+    assert.equal(app.nodes().find(node => node.type === 'Modal').props.visible, true);
+    app.nodes().find(node => node.type === 'Pressable' && node.props.accessible === false && node.props.focusable === false).props.onPress();
+    await app.flush();
+    assert.equal(app.nodes().find(node => node.type === 'Modal').props.visible, false);
+  }
 });
 
 test('removed likes still open details without an alert editor; unavailable items show a recoverable message', async () => {

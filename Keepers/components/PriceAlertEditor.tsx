@@ -32,7 +32,7 @@ export function PriceAlertEditor({ itemId, price }: { itemId: string; price: str
     } finally { setBusy(false); }
   };
 
-  return <View style={[styles.panel, { backgroundColor: theme.surface }]}>
+  return <View style={[styles.panel, { borderColor: theme.border }]}>
     <Text style={[styles.title, { color: theme.text }]}>Price alert</Text>
     {current === null && <Text style={{ color: theme.text }}>This item needs a supported USD price before you can set an alert.</Text>}
     {existing && <Text style={{ color: theme.text }}>Watching for {formatAlertPrice(existing.target_price)} or {existing.direction === 'increase' ? 'more' : 'less'}.</Text>}
@@ -41,7 +41,7 @@ export function PriceAlertEditor({ itemId, price }: { itemId: string; price: str
     <TextInput value={target} onChangeText={setDraft} placeholder="e.g. 25.00"
       placeholderTextColor={theme.mutedText} keyboardType="decimal-pad" maxLength={16}
       editable={!busy && current !== null} accessibilityLabel="Target price in US dollars"
-      style={[styles.input, { color: theme.text, borderColor: theme.border }]} />
+      style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.background }]} />
     <Pressable onPress={() => void submit(false)} disabled={busy || loading || !!loadError || current === null}
       accessibilityRole="button" style={[styles.button, { backgroundColor: theme.text, opacity: busy || loading || !!loadError || current === null ? 0.5 : 1 }]}>
       {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.buttonText}>{existing ? 'Update alert' : 'Set price alert'}</Text>}
@@ -54,10 +54,10 @@ export function PriceAlertEditor({ itemId, price }: { itemId: string; price: str
   </View>;
 }
 const styles = StyleSheet.create({
-  panel: { padding: 16, gap: 10, borderRadius: 12, width: '100%', marginTop: 12 },
-  title: { fontSize: 18, fontWeight: '700' },
-  input: { borderWidth: 1, borderRadius: 8, padding: 12, minHeight: 44 },
-  button: { padding: 12, minHeight: 44, borderRadius: 8, alignItems: 'center' },
-  buttonText: { color: '#FFFFFF', fontWeight: '600' },
+  panel: { paddingTop: 20, gap: 10, borderTopWidth: 1, width: '100%', marginTop: 4 },
+  title: { fontSize: 18, lineHeight: 24, fontWeight: '700' },
+  input: { borderWidth: 1, borderRadius: 12, padding: 12, minHeight: 48, fontSize: 16 },
+  button: { padding: 14, minHeight: 48, borderRadius: 12, alignItems: 'center' },
+  buttonText: { color: '#FFFFFF', fontSize: 15, lineHeight: 20, fontWeight: '600' },
   remove: { padding: 10, minHeight: 44, alignItems: 'center' },
 });
