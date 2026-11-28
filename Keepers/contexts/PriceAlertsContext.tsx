@@ -25,7 +25,6 @@ export function PriceAlertsProvider({ userId, children }: { userId: string; chil
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
-    setLoading(true);
     try {
       const next = await getPriceAlertState(userId, controller.signal);
       if (controller.signal.aborted) return;

@@ -240,28 +240,6 @@ export function ImageLookupModal({
                 </View>
               ))}
 
-              {result.sources.length > 0 && (
-                <View style={styles.sourcesSection}>
-                  <Text style={[styles.sectionTitle, { color: theme.text }]}>Search sources</Text>
-                  <Text style={[styles.sourceHelp, { color: theme.mutedText }]}>
-                    Sources for these results. Links and listing details can change.
-                  </Text>
-                  {result.sources.map((source, index) => (
-                    <Pressable
-                      accessibilityRole="link"
-                      key={source.url}
-                      onPress={() => void openExternalUrl(source.url)}
-                      style={({ pressed }) => [styles.sourceLink, { opacity: pressed ? 0.55 : 1 }]}
-                    >
-                      <Text numberOfLines={2} style={[styles.sourceText, { color: theme.primary }]}>
-                        {index + 1}. {source.title}
-                      </Text>
-                      <Ionicons name="open-outline" size={15} color={theme.primary} />
-                    </Pressable>
-                  ))}
-                </View>
-              )}
-
               <Text style={[styles.disclaimer, { color: theme.mutedText }]}>
                 {result.searchLinks.length > 0
                   ? 'Gemini identified the item, and the Keepers server generated these marketplace searches. They are not verified listings. Check the product, seller, price, condition, and return policy before purchasing.'
@@ -450,25 +428,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 3,
     paddingVertical: 11,
-  },
-  sourcesSection: {
-    gap: 8,
-    marginTop: 6,
-  },
-  sourceHelp: {
-    fontSize: 12,
-    lineHeight: 17,
-  },
-  sourceLink: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 6,
-  },
-  sourceText: {
-    flex: 1,
-    fontSize: 13,
-    lineHeight: 18,
-    textDecorationLine: 'underline',
   },
   disclaimer: {
     fontSize: 11,

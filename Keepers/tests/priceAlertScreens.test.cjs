@@ -185,3 +185,114 @@ test('empty history offers a Start swiping button that opens the swiper', async 
   start.props.onPress();
   assert.deepEqual(app.navigations, ['/swiper']);
 });
+
+test('notification timestamps stay concise and handle future, invalid and older dates', () => {
+  const { notificationTime } = createLoader()('utils/priceAlerts.ts');
+  const now = Date.parse('2026-11-27T18:00:00Z');
+  const ago = minutes => new Date(now - minutes * 60000).toISOString();
+  assert.equal(notificationTime(ago(0), now), 'Just now');
+  assert.equal(notificationTime(ago(-10), now), 'Just now');
+  assert.equal(notificationTime(ago(59), now), '59m ago');
+  assert.equal(notificationTime(ago(60), now), '1h ago');
+  assert.equal(notificationTime(ago(1440), now), '1d ago');
+  assert.equal(notificationTime('invalid', now), '');
+  assert.match(notificationTime('2025-06-10T12:00:00Z', now), /2025/);
+  assert.doesNotMatch(notificationTime(ago(8 * 1440), now), /ago/);
+});
+
+test('only pull-to-refresh activates the refresh indicator and it resets after completion', async () => {
+  const h = harness(), pending = deferred();
+  let refreshes = 0;
+  const state = { userId: 'alice', alerts: [], notifications: [], unreadCount: 0,
+    loading: false, error: null, refresh: async () => { refreshes++; await pending.promise; } };
+  const Screen = createLoader({
+    react: h.hooks, 'react/jsx-runtime': { jsx: h.jsx, jsxs: h.jsx }, 'react-native': native,
+    'expo-router': { useRouter: () => ({}) }, '@expo/vector-icons': { Ionicons: 'Icon' },
+    '../components/Text': { Text: 'Text' },
+    '../hooks/useAppTheme': { useAppTheme: () => ({ theme: {} }) },
+    '../contexts/PriceAlertsContext': { usePriceAlerts: () => state },
+    '../services/priceAlertsService': {},
+  })('app/price-alerts.tsx').default;
+  const control = () => h.nodes().find(n => n.type === 'ScrollView').props.refreshControl.props;
+  await h.flush(Screen);
+  assert.equal(control().refreshing, false);
+  assert.ok(!h.nodes().some(n => n.type === 'Spinner'));
+  control().onRefresh(); await h.flush(Screen);
+  assert.equal(refreshes, 1);
+  assert.equal(control().refreshing, true);
+  h.nodes().find(n => n.props.accessibilityRole === 'tab' && h.nodes(n).some(c => c.props.children === 'Watching')).props.onPress();
+  await h.flush(Screen);
+  assert.equal(control().refreshing, true);
+  pending.resolve(); await h.flush(Screen);
+  assert.equal(control().refreshing, false);
+  assert.ok(!h.nodes().some(n => n.type === 'Spinner'));
+});
+
+test('unread filter, read controls and watching removal preserve their behavior in the activity feed', async () => {
+  const h = harness(), calls = [];
+  const state = { userId: 'alice', alerts: [{ clothes_id: 8, target_price: 40, direction: 'decrease', Clothing: null }],
+    notifications: [notice, { ...notice, id: 'read', item_name: 'Read item', read_at: notice.created_at }],
+    unreadCount: 1, loading: false, error: null, refresh: async () => calls.push('refresh') };
+  const Screen = createLoader({
+    react: h.hooks, 'react/jsx-runtime': { jsx: h.jsx, jsxs: h.jsx }, 'react-native': native,
+    'expo-router': { useRouter: () => ({ navigate: path => calls.push(plain(path)) }) },
+    '@expo/vector-icons': { Ionicons: 'Icon' }, '../components/Text': { Text: 'Text' },
+    '../hooks/useAppTheme': { useAppTheme: () => ({ theme: {} }) },
+    '../contexts/PriceAlertsContext': { usePriceAlerts: () => state },
+    '../services/priceAlertsService': {
+      markPriceNotificationsRead: async (...args) => {
+        calls.push(args);
+        state.notifications = state.notifications.map(n => !args[1] || n.id === args[1] ? { ...n, read_at: notice.created_at } : n);
+        state.unreadCount = state.notifications.filter(n => !n.read_at).length;
+      },
+      deletePriceAlert: async (...args) => { calls.push(args); state.alerts = []; },
+    },
+  })('app/price-alerts.tsx').default;
+  const button = label => h.nodes().find(n => n.props.accessibilityLabel === label);
+  const tab = label => h.nodes().find(n => n.props.accessibilityRole === 'tab' && h.nodes(n).some(c => c.props.children === label));
+  const hasText = text => h.nodes().some(n => n.type === 'Text' && n.props.children === text);
+  await h.flush(Screen);
+  assert.equal(tab('Notifications').props.accessibilityState.selected, true);
+  assert.ok(!button('Remove alert for Clothing item'));
+  assert.ok(button('View Read item in Like List'));
+  tab('Unread').props.onPress(); await h.flush(Screen);
+  assert.equal(tab('Unread').props.accessibilityState.selected, true);
+  assert.ok(button('View Linen shirt in Like List'));
+  assert.ok(!button('View Read item in Like List'));
+  button('Mark notification for Linen shirt as read').props.onPress(); await h.flush(Screen);
+  assert.deepEqual(calls.slice(-2), [['alice', 'notice'], 'refresh']);
+  assert.ok(hasText('You’re all caught up'));
+  assert.ok(!button('Mark all notifications read'));
+  state.unreadCount = 2; h.invalidate(); await h.flush(Screen);
+  assert.ok(hasText('No unread updates in this view'));
+  assert.ok(!hasText('You’re all caught up'));
+  button('Mark all notifications read').props.onPress(); await h.flush(Screen);
+  assert.deepEqual(calls.slice(-2), [['alice'], 'refresh']);
+  tab('Watching').props.onPress(); await h.flush(Screen);
+  assert.equal(tab('Watching').props.accessibilityState.selected, true);
+  assert.ok(!button('View Read item in Like List'));
+  assert.ok(!button('Clear all notifications'));
+  assert.ok(!tab('Unread'));
+  button('Remove alert for Clothing item').props.onPress(); await h.flush(Screen);
+  assert.deepEqual(calls.slice(-2), [['alice', '8'], 'refresh']);
+  assert.ok(hasText('Your active price alerts will live here.'));
+  state.loading = true; h.invalidate(); await h.flush(Screen);
+  assert.ok(button('Loading watched items'));
+  assert.ok(!hasText('Your active price alerts will live here.'));
+  state.loading = false;
+  tab('Notifications').props.onPress(); await h.flush(Screen);
+  assert.equal(tab('Unread').props.accessibilityState.selected, true);
+  tab('All').props.onPress(); await h.flush(Screen);
+  assert.ok(button('View Read item in Like List'));
+  state.notifications = []; h.invalidate(); await h.flush(Screen);
+  assert.ok(hasText('Your next find starts here'));
+  const explore = h.nodes().find(n => n.type === 'Pressable' && h.nodes(n).some(c => c.props.children === 'Explore your likes'));
+  explore.props.onPress();
+  assert.equal(calls.at(-1), '/(tabs)/likelist');
+  state.loading = true; h.invalidate(); await h.flush(Screen);
+  assert.ok(button('Loading notifications'));
+  assert.ok(!hasText('Your next find starts here'));
+  state.loading = false; state.error = 'Offline'; h.invalidate(); await h.flush(Screen);
+  assert.ok(h.nodes().some(n => n.props.accessibilityRole === 'alert' && n.props.children === 'Offline'));
+  assert.ok(!hasText('Your next find starts here'));
+});

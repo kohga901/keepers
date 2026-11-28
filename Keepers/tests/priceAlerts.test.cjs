@@ -138,11 +138,12 @@ test('alert provider refreshes in foreground, ignores stale requests and stops a
   const render = () => { cursor = 0; const tree = PriceAlertsProvider({ userId: 'alice', children: null });
     effects.splice(0).forEach(effect => effect()); return tree.props.value; };
   const snapshot = unreadCount => ({ alerts: [], notifications: [], unreadCount });
-  render();
+  assert.equal(render().loading, true);
   assert.equal(requests[0].userId, 'alice');
   requests[0].resolve(snapshot(1)); await new Promise(setImmediate);
   assert.equal(render().unreadCount, 1);
   const first = render().refresh(), second = render().refresh();
+  assert.equal(render().loading, false);
   assert.equal(requests[1].signal.aborted, true);
   requests[2].resolve(snapshot(3)); await second;
   requests[1].resolve(snapshot(2)); await first;
@@ -150,8 +151,10 @@ test('alert provider refreshes in foreground, ignores stale requests and stops a
   appChanged('background'); interval();
   assert.equal(requests.length, 3);
   appChanged('active');
+  assert.equal(render().loading, false);
   assert.equal(requests.length, 4);
   interval();
+  assert.equal(render().loading, false);
   assert.equal(requests.length, 5);
   assert.equal(requests[3].signal.aborted, true);
   const state = render();
