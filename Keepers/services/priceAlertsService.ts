@@ -11,6 +11,7 @@ export type PriceNotification = {
   id: string;
   clothes_id: number;
   item_name: string;
+  item_img: string | null;
   price: number;
   target_price: number;
   direction: 'increase' | 'decrease' | null;
@@ -40,7 +41,7 @@ export async function getPriceAlertState(userId: string, signal: AbortSignal) {
   }
   const [notifications, unread] = await Promise.all([
     supabase.from('Price_Notifications')
-      .select('id, clothes_id, item_name, price, target_price, direction, created_at, read_at')
+      .select('id, clothes_id, item_name, item_img, price, target_price, direction, created_at, read_at')
       .eq('user_id', userId).is('dismissed_at', null).order('created_at', { ascending: false }).order('id')
       .limit(50).abortSignal(signal),
     supabase.from('Price_Notifications').select('id', { count: 'exact', head: true })

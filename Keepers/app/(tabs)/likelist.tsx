@@ -244,7 +244,7 @@ const App: React.FC = () => {
                     accessibilityState={{ selected: isOn }}
                     accessibilityLabel={isLoadingHistory ? label : `${label}, ${count} ${count === 1 ? 'item' : 'items'}`}
                   >
-                    <Ionicons name={icon} size={15} color={isOn ? theme.headerText : theme.tabInactive} />
+                    <Ionicons name={icon} size={15} color={isOn ? theme.headerText : theme.tabInactive} style={Platform.OS === 'web' && styles.toggleIcon} />
                     <Text style={[styles.toggleText, { color: isOn ? theme.headerText : theme.tabInactive }]}>{label}</Text>
                     {!isLoadingHistory && (
                       <View style={[styles.countPill, { backgroundColor: isOn ? theme.accentGold : theme.border }]}>
@@ -471,6 +471,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 20,
+  },
+  // Center the icon glyph with Public Sans rather than the browser's default font line box.
+  toggleIcon: {
+    lineHeight: 18,
+    transform: [{ translateY: 1 }],
   },
   toggleText: {
     fontSize: 15,

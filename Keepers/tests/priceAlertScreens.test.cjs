@@ -30,7 +30,7 @@ function harness() {
     if (Array.isArray(node)) return node.flatMap(n => nodes(n));
     return [node, ...nodes(node.props?.children ?? null)];
   }
-  return { hooks, jsx, nodes, invalidate() { dirty = true; },
+  return { hooks, jsx, nodes, invalidate() { dirty = true; }, cleanup() { slots.forEach(slot => slot?.cleanup?.()); },
     async flush(Component) {
       for (let i = 0; i < 30; i++) {
         if (dirty) { dirty = false; cursor = 0; tree = Component(); }
@@ -47,6 +47,73 @@ const native = { View: 'View', Pressable: 'Pressable', ScrollView: 'ScrollView',
   ActivityIndicator: 'Spinner', StyleSheet: { create: s => s } };
 const notice = { id: 'notice', clothes_id: 7, item_name: 'Linen shirt', price: 50, target_price: 45,
   direction: 'increase', read_at: null, created_at: '2026-11-12T12:00:00Z' };
+
+function bannerHarness({ reduce = false, screenReader = false, platform = 'web' } = {}) {
+  const h = harness(), timers = new Map(), animations = [], navigations = [];
+  const state = { banner: { ...notice, item_img: 'https://images.test/shirt.jpg' },
+    dismissBanner(id) { if (state.banner?.id === id) { state.banner = null; h.invalidate(); } } };
+  let gestures;
+  const animate = (value, config) => ({ start(callback) {
+    animations.push(config); value.setValue(config.toValue); callback?.({ finished: true });
+  } });
+  const Host = createLoader({
+    react: h.hooks, 'react/jsx-runtime': { jsx: h.jsx, jsxs: h.jsx },
+    'react-native': { ...native, Platform: { OS: platform },
+      AccessibilityInfo: { isReduceMotionEnabled: async () => reduce, isScreenReaderEnabled: async () => screenReader },
+      Animated: { View: 'AnimatedView', Value: function (value) { return { value, setValue(next) { this.value = next; },
+        stopAnimation() {}, interpolate() { return 'opacity'; } }; }, timing: animate, spring: animate },
+      Easing: { out: value => value, cubic() {} }, PanResponder: { create(config) { gestures = config; return { panHandlers: {} }; } } },
+    '@expo/vector-icons/Ionicons': 'Icon', 'expo-image': { Image: 'Image' },
+    'expo-router': { useRouter: () => ({ navigate: path => navigations.push(plain(path)) }) },
+    'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 24 }) },
+    './Text': { Text: 'Text' }, '../contexts/PriceAlertsContext': { usePriceAlerts: () => state },
+    '../hooks/useAppTheme': { useAppTheme: () => ({ theme: {} }) },
+  }, { setTimeout(fn, delay) { timers.set(fn, delay); return fn; }, clearTimeout(fn) { timers.delete(fn); } })('components/PriceAlertBanner.tsx').PriceAlertBanner;
+  const Component = () => { const banner = Host(); return banner ? banner.type(banner.props) : null; };
+  return { ...h, state, timers, animations, navigations, gestures: () => gestures, flush: () => h.flush(Component),
+    button: label => h.nodes().find(node => node.props.accessibilityLabel === label) };
+}
+
+test('price banner shows the photo and price change and opens the existing item route', async () => {
+  const app = bannerHarness(); await app.flush();
+  assert.equal(app.nodes().find(node => node.type === 'Image').props.source.uri, 'https://images.test/shirt.jpg');
+  assert.ok(app.animations.every(animation => animation.useNativeDriver === false));
+  const open = app.button('Price went up to $50.00. Linen shirt');
+  assert.ok(open);
+  assert.ok(!app.nodes(open.props.children).some(node => node.type === 'Pressable'));
+  open.props.onPress(); await app.flush();
+  assert.deepEqual(app.navigations, [{ pathname: '/(tabs)/likelist', params: { itemId: '7' } }]);
+  assert.equal(app.state.banner, null);
+  app.cleanup();
+});
+
+test('price banner dismisses automatically, from its close button, or with an upward swipe', async () => {
+  for (const action of ['timer', 'close', 'swipe']) {
+    const app = bannerHarness(); await app.flush();
+    if (action === 'timer') {
+      assert.deepEqual([...app.timers.values()], [7000]);
+      [...app.timers.keys()][0]();
+    } else if (action === 'close') app.button('Dismiss price alert banner').props.onPress();
+    else {
+      const pan = app.gestures();
+      assert.equal(pan.onMoveShouldSetPanResponder(null, { dx: 50, dy: -10 }), false);
+      assert.equal(pan.onMoveShouldSetPanResponder(null, { dx: 0, dy: -30 }), true);
+      pan.onPanResponderRelease(null, { dy: -30, vy: -1 });
+    }
+    await app.flush(); assert.equal(app.state.banner, null); assert.equal(app.navigations.length, 0);
+    app.cleanup(); assert.equal(app.timers.size, 0);
+  }
+});
+
+test('price banner handles failed photos, reduced motion and screen readers', async () => {
+  const app = bannerHarness({ reduce: true, screenReader: true }); await app.flush();
+  assert.equal(app.animations.length, 0); assert.equal(app.timers.size, 0);
+  app.nodes().find(node => node.type === 'Image').props.onError(); await app.flush();
+  assert.ok(!app.nodes().some(node => node.type === 'Image'));
+  assert.ok(app.nodes().some(node => node.type === 'Icon' && node.props.name === 'shirt-outline'));
+  app.button('Dismiss price alert banner').props.onPress(); await app.flush();
+  assert.equal(app.state.banner, null); app.cleanup();
+});
 
 test('notification opens Like List and clearing one/all refreshes; failed clearing keeps the inbox', async () => {
   const h = harness(), calls = [], pending = deferred();

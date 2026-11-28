@@ -362,6 +362,25 @@ test('Whole graph refits the catalog even when already in overview mode', () => 
   app.command({ type: 'mode', mode: 'whole' }); close(app.frame().taste.x, original.x); close(app.frame().taste.y, original.y);
 });
 
+test('Focus area recenters on the user dot from either mode on web and native', () => {
+  for (const platform of ['native', 'web']) {
+    const app = renderer({ x: 1.25, y: -2.5 }, catalog, buildPlotHtml, platform);
+    const center = g.origin(layout, 'focus');
+    for (const mode of ['focus', 'whole']) {
+      app.command({ type: 'mode', mode });
+      app.event('pointerdown', { pointerId: 1, clientX: 100, clientY: 300 });
+      app.event('pointermove', { pointerId: 1, clientX: 180, clientY: 350 });
+      app.event('pointerup', { pointerId: 1, clientX: 180, clientY: 350 });
+      app.command({ type: 'select', id: 1 });
+      app.command({ type: 'mode', mode: 'focus' });
+      assert.equal(app.frame().mode, 'focus');
+      assert.equal(app.frame().nearTaste, true);
+      close(app.frame().taste.x, center.x);
+      close(app.frame().taste.y, center.y);
+    }
+  }
+});
+
 function deferred() {
   let resolve, reject;
   const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
@@ -393,13 +412,17 @@ function nativeScreen(overrides = {}) {
     return { type, props: props || {} };
   };
   const theme = load('constants/theme.ts').lightTheme;
+  const animation = { interpolate: (config) => config };
   const stubs = {
     react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'Fragment' },
-    'react-native': { Platform: { OS: 'ios' }, View: 'View', Pressable: 'Pressable', Switch: 'Switch', ActivityIndicator: 'Spinner', Alert: { alert() {} }, StyleSheet: { create: (x) => x, absoluteFill: {} } },
+    'react-native': { Platform: { OS: overrides.platform ?? 'ios' }, View: 'View', Pressable: 'Pressable', ActivityIndicator: 'Spinner', Alert: { alert() {} }, StyleSheet: { create: (x) => x, absoluteFill: {} },
+      useWindowDimensions: () => ({ width: overrides.width ?? 390, height: 844 }),
+      Animated: { View: 'AnimatedView', Value: function () { return animation; }, timing: () => ({ start() {} }) },
+      Easing: { out: value => value, cubic() {} } },
     '@expo/vector-icons/Ionicons': 'Icon', 'expo-image': { Image: 'Image' },
     'expo-router': { router: { push() {} } }, 'expo-web-browser': { openBrowserAsync: async () => {} },
     '../../components/graph/GraphCanvas': { default: 'GraphCanvas', __esModule: true },
-    'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 24 }), useSafeAreaFrame: () => ({ width: 390, height: 844 }) },
+    'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 24 }), useSafeAreaFrame: () => ({ width: overrides.platform === 'web' ? 0 : overrides.width ?? 390, height: 844 }) },
     'expo-router/react-navigation': { getDefaultHeaderHeight: () => 80, useIsFocused: () => focused,
       useFocusEffect: (fn) => hooks.useEffect(() => focused ? fn() : undefined, [focused, fn]) },
     '../../components/Text': { Text: 'Text' }, '../../components/ai/ImageLookupModal': { ImageLookupModal: 'LookupModal' },
@@ -409,7 +432,7 @@ function nativeScreen(overrides = {}) {
     '../../contexts/TutorialContext': { useTutorial: () => ({ showTutorialOnce() {} }) },
     '../../utils/supabase': { supabase: { auth: { getUser: async () => ({ data: { user: { id: 'test-user' } }, error: null }) } } },
     '../../services/dataServices': {
-      getUserCoordinates: async () => null,
+      getUserCoordinates: async () => overrides.coordinates ?? null,
       getGraphHistory: (...args) => overrides.history ? overrides.history(...args) : Promise.resolve({ liked: new Set(), passed: new Set() }),
       getGraphItems: (...args) => { calls.metadata.push(args); return overrides.metadata ? overrides.metadata(...args) : Promise.resolve(args[0].map((id) => ({ item_id: id, item_name: `Piece ${id}`, item_img: `https://example.com/${id}.jpg`, item_price: '$35', item_gender: '', item_web_listing: 'https://example.com/shop' }))); },
     },
@@ -448,19 +471,33 @@ test('screen puts working graph mode controls in its safe-area header', async ()
   const screen = app.nodes()[0], header = screen.props.children[0];
   assert.equal(Object.assign({}, ...screen.props.style).paddingTop, undefined);
   assert.equal(Object.assign({}, ...header.props.style).height, 80);
-  const headerChildren = header.props.children.props.children;
-  const modes = headerChildren[0].props.children.props.children;
-  assert.equal(headerChildren[1].props.children.type, 'Switch');
-  assert.equal(headerChildren[1].props.children.props.accessibilityLabel, 'Image previews');
-  assert.equal(headerChildren[1].props.children.props.style.alignSelf, 'center');
-  assert.deepEqual(Array.from(modes, (button) => button.props.children.props.children), ['Focus area', 'Whole graph']);
+  const modes = app.nodes().filter(n => n.props.accessibilityRole === 'tab');
+  assert.ok(!app.nodes().some(n => n.type === 'Switch'));
+  assert.deepEqual(Array.from(modes, (button) => button.props.children[1].props.children), ['Focus area', 'Whole graph']);
   app.find((n) => n.type === 'GraphCanvas').props.onMessage('{"type":"ready"}');
   for (const [i, mode] of ['focus', 'whole'].entries()) {
-    assert.equal(modes[i].props.style[0].width, 130);
-    assert.equal(modes[i].props.style[0].paddingVertical, 6);
-    assert.equal(modes[i].props.children.props.style[0].fontSize, 16);
+    assert.equal(modes[i].props.style[1].width, 150);
+    assert.equal(modes[i].props.style[0].paddingVertical, 7);
+    assert.equal(modes[i].props.children[1].props.style[0].fontSize, 15);
     modes[i].props.onPress();
     assert.ok(app.calls.scripts.at(-1).includes(JSON.stringify({ type: 'mode', mode })));
+  }
+});
+
+test('graph selector fits narrow and desktop headers even with a zero web safe-area frame', async () => {
+  for (const platform of ['ios', 'android', 'web']) {
+    for (const width of [320, 390, 1440]) {
+      const app = nativeScreen({ platform, width }); await app.flush();
+      const header = app.nodes()[0].props.children[0].props.children;
+      const children = header.props.children;
+      const pill = children.props.children;
+      const pillWidth = pill.props.style[1].width;
+      const buttons = app.nodes().filter(n => n.props.accessibilityRole === 'tab');
+      assert.ok(buttons[0].props.style[1].width >= 116);
+      assert.equal(pillWidth, buttons[0].props.style[1].width * 2 + 8);
+      assert.ok(pillWidth + 32 <= Math.min(width, platform === 'web' ? 760 : width));
+      assert.deepEqual(Array.from(buttons, n => n.props.accessibilityState.selected), [false, true]);
+    }
   }
 });
 
@@ -478,8 +515,8 @@ test('details dock appears only after selection and disappears when closed', asy
   assert.ok(!app.nodes().some((n) => n.props.accessibilityLabel === 'Show a piece'));
 });
 
-test('preview toggle hides and restores thumbnails without resetting the map or selected dock', async () => {
-  const app = nativeScreen(); await app.flush();
+test('preview button beside My taste hides and restores thumbnails without resetting the map or selected dock', async () => {
+  const app = nativeScreen({ coordinates: { x: 0, y: 0 } }); await app.flush();
   app.find((n) => n.type === 'View' && n.props.onLayout).props.onLayout({ nativeEvent: { layout: { width: 390, height: 660 } } });
   await app.flush();
   const message = (payload) => app.find((n) => n.type === 'GraphCanvas').props.onMessage(JSON.stringify(payload));
@@ -493,15 +530,17 @@ test('preview toggle hides and restores thumbnails without resetting the map or 
   await app.press('Open Piece 1');
   assert.ok(app.text().includes('Piece 1'));
   const scripts = app.calls.scripts.length, requests = app.calls.metadata.length;
-  const toggle = () => app.find((n) => n.type === 'Switch' && n.props.accessibilityLabel === 'Image previews');
-  toggle().props.onValueChange(false); await app.flush();
-  assert.equal(toggle().props.value, false);
+  const controls = app.find(n => n.type === 'View' && n.props.children?.[1]?.props?.accessibilityLabel === 'Hide images');
+  assert.equal(controls.props.children[0].props.accessibilityLabel, 'My taste');
+  assert.equal(controls.props.children[1].props.accessibilityState.selected, true);
+  await app.press('Hide images');
+  assert.equal(app.find(n => n.props.accessibilityLabel === 'Show images').props.accessibilityState.selected, false);
   assert.ok(!app.nodes().some((n) => n.props.accessibilityLabel === 'Open Piece 1'));
   assert.ok(app.text().includes('Piece 1'));
   assert.equal(app.nodes().filter((n) => n.type?.name === 'ClothingPhoto').length, 1);
   message(frame(2)); await app.flush();
   assert.equal(app.calls.metadata.length, requests);
-  toggle().props.onValueChange(true); await app.flush();
+  await app.press('Show images');
   assert.ok(app.nodes().some((n) => n.props.accessibilityLabel === 'Open Piece 2'));
   assert.ok(app.text().includes('Piece 1'));
   assert.equal(app.calls.scripts.length, scripts + 2);

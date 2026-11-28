@@ -131,7 +131,7 @@ export const TUTORIALS: Record<TutorialId, TutorialConfig> = {
       },
       {
         title: 'Previews and My taste',
-        body: 'Use the switch at the top right to show or hide pictures on the map. Tap My taste to jump back to your blue dot.',
+        body: 'Tap Hide images or Show images beside My taste to hide or show pictures on the map. Tap My taste to jump back to your blue dot.',
         Demo: GraphPreviewsDemo,
       },
     ],
