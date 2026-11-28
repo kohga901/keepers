@@ -18,14 +18,21 @@ function kv() {
     async put(key, value) { values.set(key, value); } };
 }
 
-function network(rows = [row], merchant = () => page(), updateRows = [{ item_id: 1 }]) {
+function network(rows = [row], merchant = () => page(), updateRows = [{ item_id: 1 }],
+  alerts = rows.map(item => ({ clothes_id: item.item_id, active: true }))) {
   const calls = [];
   return { calls, async fetch(url, options = {}) {
     const parsed = new URL(url);
     calls.push({ url: String(url), options });
     if (parsed.hostname === 'project.supabase.co') {
       if (options.method === 'PATCH') return Response.json(updateRows);
-      return Response.json(rows);
+      const query = parsed.searchParams;
+      const afterId = query.get('item_id')?.replace('gt.', '') ?? '0';
+      const visible = rows.filter(item => BigInt(item.item_id) > BigInt(afterId) &&
+        (query.get('Price_Alerts') !== 'not.is.null' || alerts.some(alert =>
+          String(alert.clothes_id) === String(item.item_id) &&
+          (query.get('Price_Alerts.active') !== 'eq.true' || alert.active))));
+      return Response.json(visible.slice(0, Number(query.get('limit') ?? rows.length)));
     }
     // Never expose a database key or admin token to a merchant.
     assert.equal(options.headers?.apikey, undefined);
@@ -52,6 +59,9 @@ test('database reads are stable keyset pages, and unchanged formatted prices nev
   assert.equal(query.get('item_id'), 'gt.10');
   assert.equal(query.get('order'), 'item_id.asc');
   assert.equal(query.get('limit'), '1');
+  assert.equal(query.get('select'), 'item_id,item_name,item_price,item_web_listing,Price_Alerts()');
+  assert.equal(query.get('Price_Alerts.active'), 'eq.true');
+  assert.equal(query.get('Price_Alerts'), 'not.is.null');
   assert.equal(report.next_after_id, '12');
   assert.equal(report.cycle_complete, false);
   assert.equal(report.summary.unchanged, 1);
@@ -104,12 +114,58 @@ test('a merchant failure does not stop later rows; missing URLs and duplicate ex
   assert.deepEqual(report.results.map(result => result.item_id), ['1', '2', '3', '4']);
 });
 
-test('empty initial page warns about permissions instead of claiming a successful catalog refresh', async () => {
-  const n = network([]);
+test('no active alerts is an idle run without merchant requests or writes', async () => {
+  const n = network([row], () => assert.fail('must not fetch a merchant'), [], [
+    { clothes_id: 1, active: false, triggered_at: '2026-11-24T00:00:00Z' },
+  ]);
   const report = await runBatch(env, {}, n.fetch);
-  assert.match(report.warning, /SELECT access/);
+  assert.equal(report.warning, null);
+  assert.equal(report.summary.checked, 0);
+  assert.deepEqual(report.results, []);
+  assert.equal(n.calls.length, 1);
   assert.equal(report.next_after_id, '0');
   assert.equal(report.cycle_complete, true);
+});
+
+test('dry and live batches check each actively watched item once, excluding inactive and missing alerts', async () => {
+  const rows = [1, 2, 3, 4].map(item_id => ({ ...row, item_id,
+    item_web_listing: productUrl.replace('shirt', `shirt-${item_id}`) }));
+  const alerts = [{ clothes_id: 2, active: false },
+    { clothes_id: 3, active: true, user_id: 'alice', direction: 'decrease' },
+    { clothes_id: 3, active: true, user_id: 'bob', direction: 'increase' },
+    { clothes_id: 4, active: false }, { clothes_id: 4, active: true }];
+  for (const dryRun of [true, false]) {
+    const n = network(rows, url => new Response(`<script type="application/ld+json">${JSON.stringify({
+      '@type': 'Product', url, offers: { price: '25', priceCurrency: 'USD', availability: 'InStock' },
+    })}</script>`, { headers: { 'Content-Type': 'text/html' } }), [{ item_id: 3 }], alerts);
+    const report = await runBatch({ ...env, DRY_RUN: 'false' }, { limit: 5, dryRun }, n.fetch);
+    assert.deepEqual(report.results.map(item => item.item_id), ['3', '4']);
+    const merchantCalls = n.calls.filter(call => new URL(call.url).hostname !== 'project.supabase.co');
+    assert.deepEqual(merchantCalls.map(call => call.url), rows.slice(2).map(item => item.item_web_listing));
+    assert.equal(n.calls.filter(call => call.options.method === 'PATCH').length, dryRun ? 0 : 2);
+    assert.ok(!JSON.stringify(report).includes('alice'));
+    assert.ok(!JSON.stringify(report).includes('bob'));
+  }
+});
+
+test('scheduled scans page only watched items and discover newly active alerts after wrapping', async () => {
+  const alerts = [{ clothes_id: 3, active: true }];
+  const n = network([row, { ...row, item_id: 3 }], () => page(), [], alerts);
+  const worker = createWorker(n.fetch), config = { ...env, FREE_TIER: 'true', PRICE_REFRESH: kv() };
+  const run = async () => {
+    await worker.scheduled({}, config);
+    return config.PRICE_REFRESH.get(`report:${await config.PRICE_REFRESH.get('latest')}`, 'json');
+  };
+  assert.deepEqual((await run()).results.map(item => item.item_id), ['3']);
+  assert.equal(await config.PRICE_REFRESH.get('cursor:dry-run'), '3');
+  assert.equal((await run()).summary.checked, 0);
+  assert.equal(await config.PRICE_REFRESH.get('cursor:dry-run'), '0');
+  alerts[0].active = false;
+  alerts.push({ clothes_id: 1, active: true });
+  assert.deepEqual((await run()).results.map(item => item.item_id), ['1']);
+  alerts.length = 0;
+  assert.equal((await run()).summary.checked, 0);
+  assert.equal((await run()).summary.checked, 0);
 });
 
 test('a write failure remains in the report and other rows can finish', async () => {

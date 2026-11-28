@@ -1,13 +1,19 @@
 # Catalog price refresh
 
 A standalone Cloudflare Worker reads the existing `Clothing.item_web_listing`
-URLs and proposes updates to `Clothing.item_price`. **It ships in dry-run mode.**
+URLs only for items with at least one `Price_Alerts.active = true` saved alert,
+and proposes updates to `Clothing.item_price`. **It ships in dry-run mode.**
 The deployed configuration targets **Cloudflare Workers Free**, processing one
-catalog row every five minutes. It reads real URLs and retains the explicit
+actively watched item every five minutes. It reads real URLs and retains the explicit
 opt-in for live writes. Some listings exceed the Free profile's resource bounds.
 Dry runs make only GET requests to Supabase: they do not change clothing rows,
 schema, alerts, or emails. Reports and the scheduled scan cursor live in Cloudflare
-KV, so no Supabase migration is required.
+KV, so no new Supabase migration is required. The existing `Price_Alerts` table
+and its foreign key to `Clothing` must already be installed (`supabase/price_alerts.sql`).
+Filtering happens in Supabase before ordering and limiting: multiple users watching
+one item still consume one batch slot. Items without alerts, or with only inactive
+alerts, are excluded. After the last active alert is deleted or triggered, the item
+is excluded from subsequent batch reads. No active alerts means no merchant requests.
 
 ## Run a local dry run first
 
@@ -21,8 +27,9 @@ Copy-Item .dev.vars.example .dev.vars
 
 Fill in `SUPABASE_URL` and `SUPABASE_KEY` in `.dev.vars`. Use the intended
 project's **server-side** secret/service-role key, or a key/JWT with SELECT access
-to `Clothing`. An anonymous frontend key can return an empty array when row-level
-security hides the catalog. Do not weaken RLS to make the worker work. Do not put
+to `Clothing` and all users' `Price_Alerts`. An anonymous/frontend or user-scoped
+key can hide watched items through row-level security. Do not weaken RLS to make
+the worker work. The query returns no user IDs or alert details. Do not put
 server credentials in Expo variables or commit `.dev.vars`.
 
 ```powershell
@@ -31,8 +38,8 @@ npm run dry-run -- --env-file .dev.vars --limit 10 --output reports/sample.json
 
 The CLI always runs read-only, even if `DRY_RUN=false` is set elsewhere. It saves
 a JSON report locally and prints its path, counts, and the next cursor. An empty
-first page prints a permissions warning and exits with a nonzero status; it is
-not treated as proof that the catalog is empty.
+page is a normal idle/end-of-cycle result; it does not prove the catalog is empty
+or that the key can see all alerts. Verify the server key's access before deployment.
 
 For subsequent pages, pass the preceding report's `next_after_id`:
 
@@ -43,7 +50,9 @@ npm run dry-run -- --env-file .dev.vars --after-id 123 --limit 50 --output repor
 Stop when `cycle_complete` is true. The analysis CLI supports up to 50 rows; the
 deployed Free profile enforces one row. IDs are ordered
 by `item_id`, not assumed to be consecutive; failed or missing links still advance
-the scan. They are checked again on the next catalog sweep.
+the scan. They are checked again on the next sweep if still actively watched.
+The CLI and manual `/dry-run` endpoint use the same active-alert filter. Offline
+audit/recovery tools still process their saved snapshot/report rows.
 
 ## Review the report
 
@@ -80,7 +89,7 @@ Wrangler uploads `.dev.vars` as encrypted Worker secrets and provisions the
 resource IDs are committed. `wrangler.jsonc` is the configuration source of truth:
 
 - `DRY_RUN="true"` leaves Supabase untouched on every scheduled run.
-- Cron runs every five minutes (UTC), checking one row with `FREE_TIER="true"`.
+- Cron runs every five minutes (UTC), checking one actively watched item with `FREE_TIER="true"`.
 - Three merchant requests run concurrently; identical URLs share a fetch within
   each batch. Meaningful query parameters, including variants, are retained.
 - A separate cursor for each mode wraps to zero at the end. Free scheduled runs
@@ -88,8 +97,9 @@ resource IDs are committed. `wrangler.jsonc` is the configuration source of trut
   If Cloudflare terminates that invocation or saving its report fails, the item
   can be missed until the next sweep. This avoids repeatedly getting stuck on
   one expensive page. KV remains a cursor, not a distributed lock.
-- At one row every five minutes, a 4,295-item sweep takes approximately 15 days,
-  subject to scheduling and failures. This is not a daily catalog refresh.
+- A sweep takes about five minutes per distinct actively watched item, plus a run
+  to wrap the cursor, subject to scheduling and failures. Unwatched catalog items
+  consume no batch slots. Newly activated alerts behind the cursor join the next sweep.
 - Reports expire after seven days. The latest scheduled summary is also logged.
 - Normal scheduled operation writes three KV keys per run: 864 writes/day,
   below Free's 1,000/day allowance. Manual previews also consume two writes each;

@@ -224,7 +224,9 @@ export async function runBatch(env, { afterId = '0', limit = 50, dryRun = true, 
   if (freeTier) { fetcher = freeTierFetcher(fetcher); renderer = null; }
   else renderer ??= createCloudflareRenderer(env, fetcher);
   const startedAt = new Date().toISOString();
-  const rows = await database(config, { select: 'item_id,item_name,item_price,item_web_listing',
+  // Filter before paging; an empty embed checks existence without returning users' alert data.
+  const rows = await database(config, { select: 'item_id,item_name,item_price,item_web_listing,Price_Alerts()',
+    'Price_Alerts.active': 'eq.true', Price_Alerts: 'not.is.null',
     item_id: `gt.${afterId}`, order: 'item_id.asc', limit: String(limit) }, fetcher);
   if (freeTier && rows.length > 1) throw new Error('invalid_supabase_response');
   // The Free cron reserves its single row before parsing; a CPU termination cannot pin that cursor.
@@ -282,7 +284,7 @@ export async function runBatch(env, { afterId = '0', limit = 50, dryRun = true, 
     next_after_id: complete ? '0' : rowId(rows.at(-1).item_id), cycle_complete: complete,
     summary: results.reduce((counts, result) => { counts[result.status] = (counts[result.status] ?? 0) + 1; return counts; },
       { checked: rows.length, would_update: 0, updated: 0, unchanged: 0, skipped: 0, error: 0, conflict: 0 }),
-    warning: rows.length === 0 && afterId === '0' ? 'No visible Clothing rows. Verify the key has SELECT access; RLS can hide rows without an error.' : null,
+    warning: null,
     ...(renderer?.stats ? { browser: { ...renderer.stats } } : {}),
     ...(freeTier ? { free_tier: { ...FREE_TIER_LIMITS, fetches_used: fetcher.stats.requests } } : {}), results };
 }
