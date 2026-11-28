@@ -286,7 +286,7 @@ const createStyles = (theme: AppTheme) => StyleSheet.create({
   darkButton: { minHeight: 48, paddingHorizontal: 20, paddingVertical: 14, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: theme.primary },
   lightButtonText: { fontWeight: '700', fontSize: 14, color: BUTTON_TEXT, flexShrink: 1 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
-  sectionTitle: { fontFamily: 'GeorgiaProSemiBold', fontSize: 21, flexShrink: 1 },
+  sectionTitle: { fontFamily: 'PublicSans_700Bold', fontSize: 21, flexShrink: 1 },
   statRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   statCard: { flex: 1, minWidth: 90, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 20, gap: 8 },
   statValue: { color: theme.text, fontSize: 28, fontWeight: '800' },

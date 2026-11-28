@@ -160,7 +160,6 @@ export default function Settings() {
           {
             backgroundColor: theme.surface,
             borderColor: theme.border,
-            marginTop: 16,
           },
         ]}
       >
@@ -196,16 +195,12 @@ export default function Settings() {
 
       {user && <EmailNotificationSettings key={user.id} />}
 
-      <View style={styles.section}>
-      </View>
-
       <View
         style={[
           styles.card,
           {
             backgroundColor: theme.surface,
             borderColor: theme.border,
-            marginTop: 16,
             gap: 12,
           },
         ]}
@@ -246,13 +241,14 @@ export default function Settings() {
         </Pressable>
       </View>
 
+      <ItemRequests />
+
       <View
         style={[
           styles.card,
           {
             backgroundColor: theme.surface,
             borderColor: theme.border,
-            marginTop: 16,
           },
         ]}
       >
@@ -318,10 +314,6 @@ export default function Settings() {
           </Text>
         )}
       </View>
-
-      <View style={styles.section}>
-        <ItemRequests />
-      </View>
     </ScrollView>
   );
 }
@@ -332,9 +324,7 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 20,
-  },
-  section: {
-    marginTop: 16,
+    gap: 16,
   },
   card: {
     borderWidth: 1,

@@ -66,7 +66,7 @@ export function EmailNotificationSettings() {
   </View>;
 }
 const styles = StyleSheet.create({
-  card: { marginTop: 16, padding: 18, borderRadius: 16, borderWidth: 1, gap: 8 },
+  card: { padding: 18, borderRadius: 16, borderWidth: 1, gap: 8 },
   title: { fontSize: 24, fontWeight: '700', marginBottom: 6 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 48 },
   copy: { flex: 1, gap: 4 },
