@@ -296,6 +296,10 @@ test('unread filter, read controls and watching removal preserve their behavior 
   const tab = label => h.nodes().find(n => n.props.accessibilityRole === 'tab' && h.nodes(n).some(c => c.props.children === label));
   const hasText = text => h.nodes().some(n => n.type === 'Text' && n.props.children === text);
   await h.flush(Screen);
+  assert.equal(tab('All').props.accessibilityLabel, 'All notifications: 2');
+  assert.equal(tab('Unread').props.accessibilityLabel, 'Unread notifications: 1');
+  assert.ok(h.nodes(tab('All')).some(n => n.type === 'Text' && n.props.children === 2));
+  assert.ok(h.nodes(tab('Unread')).some(n => n.type === 'Text' && n.props.children === 1));
   assert.equal(tab('Notifications').props.accessibilityState.selected, true);
   assert.ok(!button('Remove alert for Clothing item'));
   assert.ok(button('View Read item in Like List'));
@@ -306,6 +310,8 @@ test('unread filter, read controls and watching removal preserve their behavior 
   button('Mark notification for Linen shirt as read').props.onPress(); await h.flush(Screen);
   assert.deepEqual(calls.slice(-2), [['alice', 'notice'], 'refresh']);
   assert.ok(hasText('You’re all caught up'));
+  assert.equal(tab('All').props.accessibilityLabel, 'All notifications: 2');
+  assert.equal(tab('Unread').props.accessibilityLabel, 'Unread notifications: 0');
   assert.ok(!button('Mark all notifications read'));
   state.unreadCount = 2; h.invalidate(); await h.flush(Screen);
   assert.ok(hasText('No unread updates in this view'));
@@ -329,6 +335,8 @@ test('unread filter, read controls and watching removal preserve their behavior 
   tab('All').props.onPress(); await h.flush(Screen);
   assert.ok(button('View Read item in Like List'));
   state.notifications = []; h.invalidate(); await h.flush(Screen);
+  assert.equal(tab('All').props.accessibilityLabel, 'All notifications: 0');
+  assert.equal(tab('Unread').props.accessibilityLabel, 'Unread notifications: 0');
   assert.ok(hasText('Your next find starts here'));
   const explore = h.nodes().find(n => n.type === 'Pressable' && h.nodes(n).some(c => c.props.children === 'Explore your likes'));
   explore.props.onPress();

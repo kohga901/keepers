@@ -18,7 +18,8 @@ export default function PriceAlertsScreen() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [section, setSection] = useState<'notifications' | 'watching'>('notifications');
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
-  const visibleNotifications = filter === 'unread' ? notifications.filter(notification => !notification.read_at) : notifications;
+  const unreadNotifications = notifications.filter(notification => !notification.read_at);
+  const visibleNotifications = filter === 'unread' ? unreadNotifications : notifications;
   const ink = { color: theme.text };
   const secondary = { color: '#526B5C' };
 
@@ -54,29 +55,30 @@ export default function PriceAlertsScreen() {
       </Pressable>
     </View>}
     {section === 'notifications' ? <>
-    {unreadCount > 0 && <View style={styles.sectionHeader}>
-      <View style={[styles.count, { backgroundColor: theme.text }]}>
-        <Text accessibilityLabel={`${unreadCount} unread notifications`} style={styles.countText}>{unreadCount}</Text>
-      </View>
-      <Pressable disabled={busy} onPress={() => void act(() => markPriceNotificationsRead(userId))}
-        accessibilityRole="button" accessibilityLabel="Mark all notifications read" style={({ pressed }) => [styles.action, { opacity: busy || pressed ? 0.45 : 1 }]}>
-        <Ionicons name="checkmark-done-outline" size={18} color={theme.text} />
-        <Text style={[styles.actionText, ink]}>Read all</Text>
-      </Pressable>
-    </View>}
     <View style={[styles.feed, { backgroundColor: theme.surface, borderColor: theme.border }]}>
       <View style={[styles.toolbar, { borderBottomColor: theme.border }]}>
         <View accessibilityRole="tablist" style={styles.filters}>
           {(['all', 'unread'] as const).map(value => <Pressable key={value} accessibilityRole="tab"
+            accessibilityLabel={`${value === 'all' ? 'All' : 'Unread'} notifications: ${value === 'all' ? notifications.length : unreadNotifications.length}`}
             accessibilityState={{ selected: filter === value }} onPress={() => setFilter(value)}
             style={({ pressed }) => [styles.filter, filter === value && { backgroundColor: theme.text }, { opacity: pressed ? 0.7 : 1 }]}>
             <Text style={[styles.filterText, { color: filter === value ? '#FFFFFF' : theme.text }]}>{value === 'all' ? 'All' : 'Unread'}</Text>
+            <Text style={[styles.filterCount, { color: filter === value ? '#FFFFFF' : theme.text,
+              backgroundColor: filter === value ? 'rgba(255,255,255,0.18)' : '#DFEBDE' }]}>{value === 'all' ? notifications.length : unreadNotifications.length}</Text>
           </Pressable>)}
         </View>
-        {notifications.length > 0 && <Pressable disabled={busy} onPress={() => void act(() => clearPriceNotifications(userId))}
-          accessibilityRole="button" accessibilityLabel="Clear all notifications" style={({ pressed }) => [styles.action, { opacity: busy || pressed ? 0.45 : 1 }]}>
-          <Text style={[styles.actionText, secondary]}>Clear all</Text>
-        </Pressable>}
+        <View style={styles.bulkActions}>
+          {unreadCount > 0 && <Pressable disabled={busy} onPress={() => void act(() => markPriceNotificationsRead(userId))}
+            accessibilityRole="button" accessibilityLabel="Mark all notifications read" accessibilityHint="Marks every notification as read"
+            style={({ pressed }) => [styles.iconButton, { opacity: busy || pressed ? 0.45 : 1 }]}>
+            <Ionicons name="checkmark-done-outline" size={21} color={theme.text} />
+          </Pressable>}
+          {notifications.length > 0 && <Pressable disabled={busy} onPress={() => void act(() => clearPriceNotifications(userId))}
+            accessibilityRole="button" accessibilityLabel="Clear all notifications" accessibilityHint="Clears every notification from your inbox"
+            style={({ pressed }) => [styles.iconButton, { opacity: busy || pressed ? 0.45 : 1 }]}>
+            <Ionicons name="trash-outline" size={20} color="#526B5C" />
+          </Pressable>}
+        </View>
       </View>
       {loading && !notifications.length && <View style={styles.empty}>
         <ActivityIndicator color={theme.text} accessibilityLabel="Loading notifications" />
@@ -86,9 +88,9 @@ export default function PriceAlertsScreen() {
         <View style={styles.emptyIcon}><Ionicons name={filter === 'unread' ? 'checkmark-done-outline' : 'notifications-outline'} size={30} color={theme.text} /></View>
         <Text style={[styles.emptyTitle, ink]}>{filter === 'unread'
           ? (unreadCount > 0 ? 'No unread updates in this view' : 'You’re all caught up')
-          : 'Your next find starts here'}</Text>
+          : 'You\'re all caught up'}</Text>
         <Text style={[styles.emptyBody, secondary]}>{filter === 'unread'
-          ? (unreadCount > 0 ? 'Older unread updates are outside your latest 50 notifications. Use Read all to mark them as read.' : 'New price updates will appear here.')
+          ? (unreadCount > 0 ? 'Older unread updates are outside your latest 50 notifications. Mark all as read to clear their unread status.' : 'New price updates will appear here.')
           : 'Set a target price on a liked item. We’ll let you know when it’s reached.'}</Text>
         {filter === 'all' && <Pressable accessibilityRole="button" onPress={() => router.navigate('/(tabs)/likelist')}
           style={({ pressed }) => [styles.emptyButton, { backgroundColor: theme.text, opacity: pressed ? 0.7 : 1 }]}>
@@ -143,7 +145,7 @@ export default function PriceAlertsScreen() {
         </SwipeToDeleteNotification>;
       })}
     </View>
-    {notifications.length === 50 && <Text style={[styles.footnote, secondary]}>Showing your latest 50 notifications. “Read all” and “Clear all” include older notifications.</Text>}
+    {notifications.length === 50 && <Text style={[styles.footnote, secondary]}>Showing your latest 50 notifications. The toolbar actions mark or clear all notifications, including older updates.</Text>}
     </> : <>
     <View style={[styles.feed, { backgroundColor: theme.surface, borderColor: theme.border }]}>
       {loading && !alerts.length && <View style={styles.empty}>
@@ -177,14 +179,13 @@ const styles = StyleSheet.create({
   tab: { flex: 1, minHeight: 52, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12, borderBottomWidth: 3 },
   tabText: { fontSize: 14, fontWeight: '700' },
   page: { padding: 16, paddingBottom: 48, maxWidth: 680, width: '100%', alignSelf: 'center' },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10, minHeight: 44 },
-  count: { minWidth: 24, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 12, alignItems: 'center' },
-  countText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
   feed: { borderRadius: 20, borderWidth: 1, overflow: 'hidden' },
   toolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, padding: 12, borderBottomWidth: StyleSheet.hairlineWidth },
   filters: { flexDirection: 'row', gap: 4 },
-  filter: { minHeight: 44, paddingHorizontal: 18, justifyContent: 'center', borderRadius: 24 },
+  filter: { minHeight: 44, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 24 },
   filterText: { fontSize: 13, fontWeight: '700' },
+  filterCount: { minWidth: 20, paddingHorizontal: 5, paddingVertical: 2, borderRadius: 10, textAlign: 'center', fontSize: 11, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  bulkActions: { flexDirection: 'row' },
   action: { minHeight: 44, paddingHorizontal: 4, flexDirection: 'row', gap: 5, alignItems: 'center' },
   actionText: { fontSize: 12, fontWeight: '600' },
   notification: { paddingHorizontal: 16, paddingTop: 18, paddingBottom: 2 },
