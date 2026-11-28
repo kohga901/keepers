@@ -309,6 +309,7 @@ const App: React.FC = () => {
     try {
       const result = await lookupPurchasableItem({
         itemId: item.id,
+        itemName: item.name,
         maxResults: 5,
         signal: controller.signal,
       });
@@ -499,7 +500,18 @@ const App: React.FC = () => {
               try {
                 const parsedUrl = new URL(item.itemUrl);
                 if (parsedUrl.protocol === 'https:') {
-                  void WebBrowser.openBrowserAsync(parsedUrl.toString());
+                  if (Platform.OS === 'web') {
+                    // Opening a blank tab lets us check for blocking before severing its opener.
+                    const tab = window.open('about:blank', '_blank');
+                    if (tab) {
+                      tab.opener = null;
+                      tab.location.replace(parsedUrl.toString());
+                    } else {
+                      window.location.assign(parsedUrl.toString());
+                    }
+                  } else {
+                    void WebBrowser.openBrowserAsync(parsedUrl.toString());
+                  }
                 } else {
                   Alert.alert('Link unavailable', 'Keepers blocked an insecure listing link.');
                 }

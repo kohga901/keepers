@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Image } from 'expo-image';
 import { getDefaultHeaderHeight, useFocusEffect, useIsFocused } from 'expo-router/react-navigation';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Switch, View } from 'react-native';
+import { ActivityIndicator, Animated, Easing, Platform, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { TAB_CONTENT_MAX_WIDTH } from '../../constants/layout';
 import { useSafeAreaFrame, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as WebBrowser from 'expo-web-browser';
@@ -52,8 +52,13 @@ export default function GraphTab() {
   const { showPriceAsTier } = usePriceDisplay();
   const insets = useSafeAreaInsets();
   const safeFrame = useSafeAreaFrame();
+  const viewport = useWindowDimensions();
+  // Expo Router supplies a zero safe-area frame on web.
+  const headerFrame = Platform.OS === 'web' ? { ...safeFrame, width: viewport.width, height: viewport.height } : safeFrame;
+  const headerWidth = Platform.OS === 'web' ? Math.min(headerFrame.width, TAB_CONTENT_MAX_WIDTH) : headerFrame.width;
+  const modeWidth = Math.min(150, (headerWidth - 32 - 8) / 2);
   const stackHeaderHeight = useStackHeaderHeight();
-  const headerHeight = stackHeaderHeight || getDefaultHeaderHeight(safeFrame, false, insets.top);
+  const headerHeight = stackHeaderHeight || getDefaultHeaderHeight(headerFrame, false, insets.top);
   const isFocused = useIsFocused();
   const web = useRef<GraphCanvasHandle>(null);
   const ready = useRef(false);
@@ -73,6 +78,16 @@ export default function GraphTab() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [preference, setPreference] = useState<Position | null>(null);
   const [frame, setFrame] = useState<MapFrame>(EMPTY_FRAME);
+  const [modeAnim] = useState(() => new Animated.Value(1));
+  useEffect(() => {
+    Animated.timing(modeAnim, {
+      toValue: frame.mode === 'focus' ? 0 : 1,
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [frame.mode, modeAnim]);
+  const modeTranslate = modeAnim.interpolate({ inputRange: [0, 1], outputRange: [0, modeWidth] });
   const [showPreviews, setShowPreviews] = useState(true);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -226,7 +241,7 @@ export default function GraphTab() {
     lookupRequest.current = controller;
     setLookupItem(item); setLookupLoading(true); setLookupResult(null); setLookupError(null);
     try {
-      const result = await lookupPurchasableItem({ itemId: item.id, maxResults: 5, signal: controller.signal });
+      const result = await lookupPurchasableItem({ itemId: item.id, itemName: item.name, maxResults: 5, signal: controller.signal });
       if (!controller.signal.aborted && request === lookupId.current) setLookupResult(result);
     } catch (error) {
       const safe = toAiLookupError(error);
@@ -252,15 +267,14 @@ export default function GraphTab() {
     <View style={[styles.header, { backgroundColor: theme.primary, height: headerHeight }]}>
       <View style={[styles.headerRow, Platform.OS === 'web' && styles.webContent, { height: headerHeight - insets.top }]}>
         <View style={styles.modeWrapper}>
-        <View style={[styles.modes, { backgroundColor: theme.tabBg, borderColor: theme.border }]}>{(['focus', 'whole'] as const).map((mode) => <Pressable key={mode} accessibilityRole="button" hitSlop={{ top: 6, bottom: 6 }}
+        <View style={[styles.modes, { width: modeWidth * 2 + 8, backgroundColor: theme.tabBg, borderColor: theme.border }]}>
+          <Animated.View style={[styles.modeIndicator, { width: modeWidth, backgroundColor: theme.primary, transform: [{ translateX: modeTranslate }] }]} />
+          {(['focus', 'whole'] as const).map((mode) => <Pressable key={mode} accessibilityRole="tab" hitSlop={{ top: 6, bottom: 6 }}
           accessibilityState={{ selected: frame.mode === mode }} onPress={() => command({ type: 'mode', mode })}
-          style={[styles.mode, { backgroundColor: frame.mode === mode ? theme.primary : theme.tabBg }]}>
+          style={[styles.mode, { width: modeWidth }]}>
+          <Ionicons name={mode === 'focus' ? 'scan-outline' : 'grid-outline'} size={15} color={frame.mode === mode ? theme.headerText : theme.tabInactive} />
           <Text style={[styles.modeText, { color: frame.mode === mode ? theme.headerText : theme.tabInactive }]}>{mode === 'focus' ? 'Focus area' : 'Whole graph'}</Text>
         </Pressable>)}</View>
-        </View>
-        <View style={styles.previewControl}>
-          <Switch style={styles.previewSwitch} accessibilityLabel="Image previews" value={showPreviews} onValueChange={setShowPreviews}
-            trackColor={{ false: theme.border, true: theme.tabBg }} thumbColor={showPreviews ? theme.tabActive : theme.surface} />
         </View>
       </View>
     </View>
@@ -287,13 +301,20 @@ export default function GraphTab() {
         {selectedId === null && actionError && <Text accessibilityRole="alert" style={[styles.hint, textColor]}>{actionError}</Text>}
         {showPreviews && itemErrors.size > 0 && selectedId === null && <Pressable accessibilityRole="button" onPress={retryItems} style={styles.retry}><Text style={[styles.small, textColor]}>Some previews could not load. Retry</Text></Pressable>}
       </View>
-      <View style={[styles.zoomControls, { top: top + 10, right: side + 12 }]}>{[{ name: 'add' as const, label: 'Zoom in', factor: 1.4 }, { name: 'remove' as const, label: 'Zoom out', factor: 1 / 1.4 }].map((button) => <Pressable key={button.label} accessibilityRole="button" accessibilityLabel={button.label}
+      <View style={[styles.zoomControls, { top, right: side + 12 }]}>{[{ name: 'add' as const, label: 'Zoom in', factor: 1.4 }, { name: 'remove' as const, label: 'Zoom out', factor: 1 / 1.4 }].map((button) => <Pressable key={button.label} accessibilityRole="button" accessibilityLabel={button.label}
         style={[styles.iconButton, surface]} onPress={() => command({ type: 'zoom', factor: button.factor })}><Ionicons name={button.name} size={23} color={theme.text} /></Pressable>)}</View>
       <View pointerEvents="box-none" style={[styles.legendRow, { bottom: visibleDockHeight + 25, left: side + 16, right: side + 16 }]}>
         <View style={styles.legend}><View style={[styles.dot, { backgroundColor: theme.primary }]} /><Text style={[styles.small, textColor]}>Clothing</Text>
           {preference && <><View style={[styles.tasteDot, { backgroundColor: TASTE_BLUE, borderColor: theme.surface }]} /><Text style={[styles.small, textColor]}>Your taste</Text></>}
         </View>
-        {preference && <Pressable accessibilityRole="button" onPress={() => command({ type: 'taste' })} style={[styles.return, surface]}><Ionicons name="locate-outline" size={17} color={theme.text} /><Text style={[styles.small, textColor]}>My taste</Text></Pressable>}
+        <View style={styles.mapActions}>
+          {preference && <Pressable accessibilityRole="button" accessibilityLabel="My taste" onPress={() => command({ type: 'taste' })} style={[styles.return, surface]}><Ionicons name="locate-outline" size={17} color={theme.text} /><Text style={[styles.small, textColor]}>My taste</Text></Pressable>}
+          <Pressable accessibilityRole="button" accessibilityLabel={showPreviews ? 'Hide images' : 'Show images'} accessibilityState={{ selected: showPreviews }}
+            onPress={() => setShowPreviews(value => !value)} style={[styles.return, surface]}>
+            <Ionicons name={showPreviews ? 'eye-off-outline' : 'images-outline'} size={17} color={theme.text} />
+            <Text style={[styles.small, textColor]}>{showPreviews ? 'Hide images' : 'Show images'}</Text>
+          </Pressable>
+        </View>
       </View>
       {selectedId !== null && <View accessibilityLiveRegion="polite" style={[styles.dock, surface, { left: side + 12, right: side + 12 }]} onLayout={(event) => setDockHeight(event.nativeEvent.layout.height)}>
           <View style={styles.itemRow}>
@@ -344,11 +365,10 @@ const styles = StyleSheet.create({
   header: { justifyContent: 'flex-end' },
   headerRow: { paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center' },
   modeWrapper: { flex: 1, minWidth: 0, alignItems: 'center' },
-  previewControl: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  previewSwitch: { alignSelf: 'center', flexShrink: 0 },
-  modes: { width: 268, maxWidth: '100%', padding: 3, borderWidth: 1, borderRadius: 24, flexDirection: 'row' },
-  mode: { width: 130, flexShrink: 1, paddingVertical: 6, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  modeText: { fontSize: 16, fontWeight: '700', fontFamily: 'PublicSans_700Bold', textTransform: 'uppercase', textAlign: 'center' },
+  modes: { padding: 3, borderWidth: 1, borderRadius: 24, flexDirection: 'row', flexShrink: 0, position: 'relative' },
+  modeIndicator: { position: 'absolute', left: 3, top: 3, bottom: 3, borderRadius: 20 },
+  mode: { flexDirection: 'row', gap: 5, flexShrink: 0, paddingVertical: 7, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  modeText: { fontSize: 15, fontWeight: '700' },
   notice: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderWidth: 1, borderRadius: 9 },
   zoomControls: { position: 'absolute', right: 12, gap: 7 },
   iconButton: { width: 44, height: 44, borderWidth: 1, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
@@ -357,6 +377,7 @@ const styles = StyleSheet.create({
   tasteLabel: { position: 'absolute', paddingHorizontal: 7, paddingVertical: 5, borderRadius: 7, borderWidth: 1 },
   legendRow: { position: 'absolute', left: 16, right: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
   legend: { flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'wrap', flex: 1 },
+  mapActions: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
   dot: { width: 7, height: 7, borderRadius: 4 }, tasteDot: { width: 10, height: 10, borderRadius: 5, borderWidth: 2, marginLeft: 5 },
   return: { minHeight: 44, paddingHorizontal: 9, borderWidth: 1, borderRadius: 9, flexDirection: 'row', alignItems: 'center', gap: 5 },
   dock: { position: 'absolute', left: 12, right: 12, bottom: 12, padding: 13, minHeight: 100, borderWidth: 1, borderRadius: 13 },
@@ -415,7 +436,7 @@ export function buildPlotHtml(points: MapPoint[]) {
       else if(!camera)return;
       else if(message.type==='mode'){
         if(message.mode==='whole'){mode='whole';fit();}
-        else if(message.mode==='focus'&&mode!=='focus'){var target=selected!==null?byId.get(selected):camera;focus(target||camera);}seen.clear();
+        else if(message.mode==='focus'){var target=preference||(selected!==null?byId.get(selected):camera);focus(target||camera);}seen.clear();
       }else if(message.type==='taste'&&preference){focus(preference);seen.clear();}
       else if(message.type==='zoom'&&Number.isFinite(message.factor)&&message.factor>0)zoom(message.factor);
       else if(message.type==='select'&&byId.has(message.id)){selected=message.id;seen.add(selected);}

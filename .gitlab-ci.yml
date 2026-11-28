@@ -5,7 +5,7 @@ stages:
 # The private GitLab.com mirror supplies runners; capstone is the source of truth.
 workflow:
   rules:
-    - if: '$CI_SERVER_HOST == "gitlab.com" && $CI_COMMIT_BRANCH'
+    - if: '$CI_SERVER_HOST == "gitlab.com" && $CI_COMMIT_BRANCH == "main"'
     - when: never
 
 default:

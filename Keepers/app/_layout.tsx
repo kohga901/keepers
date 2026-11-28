@@ -20,6 +20,7 @@ import { PriceDisplayProvider } from '../contexts/PriceDisplayContext';
 import { TutorialProvider } from '../contexts/TutorialContext';
 import { PriceAlertsProvider } from '../contexts/PriceAlertsContext';
 import { PriceAlertsBell } from '../components/PriceAlertsBell';
+import { PriceAlertBanner } from '../components/PriceAlertBanner';
 import { useAppTheme } from '../hooks/useAppTheme';
 import { supabase } from '../utils/supabase';
 
@@ -117,6 +118,7 @@ export default function RootLayout() {
                 />
                 <Stack.Screen name="price-alerts" options={{ title: 'Price alerts', headerBackTitle: 'History', headerTintColor: theme.headerText, headerStyle: { backgroundColor: theme.headerBg } }} />
               </Stack>
+              <PriceAlertBanner />
               <StatusBar style="dark" />
             </View>
           </TutorialProvider>

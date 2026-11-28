@@ -50,6 +50,7 @@ test('loading alerts pages past 1000 rows, scopes all reads, and counts unread b
   assert.ok(app.calls[4].operations.some(op => op[0] === 'select' && op[2].head && op[2].count === 'exact'));
   assert.ok(app.calls[0].operations.some(op => op[0] === 'select' && op[1].includes('direction')));
   assert.ok(app.calls[3].operations.some(op => op[0] === 'select' && op[1].includes('direction')));
+  assert.ok(app.calls[3].operations.some(op => op[0] === 'select' && op[1].includes('item_img')));
   for (const call of app.calls.slice(3)) {
     assert.ok(call.operations.some(op => op[0] === 'is' && op[1] === 'dismissed_at' && op[2] === null));
   }
@@ -98,7 +99,7 @@ test('failed reads/writes never become empty inboxes or successful saves', async
   await assert.rejects(failure.api.deletePriceAlert('alice', '7'), /Check your connection/);
 });
 
-test('alert provider refreshes in foreground, ignores stale requests and stops after sign-out', async () => {
+function providerHarness() {
   const slots = [], effects = [], requests = [];
   let cursor = 0, appChanged, interval, removed = false, cleared = false;
   const same = (a, b) => a && b && a.length === b.length && a.every((v, i) => Object.is(v, b[i]));
@@ -106,7 +107,7 @@ test('alert provider refreshes in foreground, ignores stale requests and stops a
     createContext: () => ({ Provider: 'Provider' }),
     useState(value) {
       const i = cursor++;
-      slots[i] ??= { value, set(next) { slots[i].value = next; } };
+      slots[i] ??= { value, set(next) { slots[i].value = typeof next === 'function' ? next(slots[i].value) : next; } };
       return [slots[i].value, slots[i].set];
     },
     useRef(value) { const i = cursor++; return slots[i] ??= { current: value }; },
@@ -137,12 +138,19 @@ test('alert provider refreshes in foreground, ignores stale requests and stops a
   const { PriceAlertsProvider } = load('contexts/PriceAlertsContext.tsx');
   const render = () => { cursor = 0; const tree = PriceAlertsProvider({ userId: 'alice', children: null });
     effects.splice(0).forEach(effect => effect()); return tree.props.value; };
+  return { render, requests, appChanged: state => appChanged(state), interval: () => interval(),
+    cleanup() { slots.forEach(slot => slot?.cleanup?.()); return { removed, cleared }; } };
+}
+
+test('alert provider refreshes in foreground, ignores stale requests and stops after sign-out', async () => {
+  const { render, requests, appChanged, interval, cleanup } = providerHarness();
   const snapshot = unreadCount => ({ alerts: [], notifications: [], unreadCount });
-  render();
+  assert.equal(render().loading, true);
   assert.equal(requests[0].userId, 'alice');
   requests[0].resolve(snapshot(1)); await new Promise(setImmediate);
   assert.equal(render().unreadCount, 1);
   const first = render().refresh(), second = render().refresh();
+  assert.equal(render().loading, false);
   assert.equal(requests[1].signal.aborted, true);
   requests[2].resolve(snapshot(3)); await second;
   requests[1].resolve(snapshot(2)); await first;
@@ -150,12 +158,14 @@ test('alert provider refreshes in foreground, ignores stale requests and stops a
   appChanged('background'); interval();
   assert.equal(requests.length, 3);
   appChanged('active');
+  assert.equal(render().loading, false);
   assert.equal(requests.length, 4);
   interval();
+  assert.equal(render().loading, false);
   assert.equal(requests.length, 5);
   assert.equal(requests[3].signal.aborted, true);
   const state = render();
-  slots.forEach(slot => slot?.cleanup?.());
+  const { removed, cleared } = cleanup();
   assert.equal(removed, true); assert.equal(cleared, true);
   assert.equal(requests[4].signal.aborted, true);
   await state.refresh();
@@ -163,4 +173,32 @@ test('alert provider refreshes in foreground, ignores stale requests and stops a
   requests[3].resolve(snapshot(4)); requests[4].resolve(snapshot(5));
   await new Promise(setImmediate);
   assert.equal(render().unreadCount, 3);
+});
+
+test('banners queue only new unread alerts, never replay on refresh, and ignore older inbox rows', async () => {
+  const { render, requests, appChanged, cleanup } = providerHarness();
+  const notice = (id, time, read_at = null) => ({ id, created_at: `2026-11-28T12:${time}:00Z`, read_at });
+  const old = notice('old', '00'), first = notice('first', '01'), second = notice('second', '02');
+  const snapshot = notifications => ({ alerts: [], notifications, unreadCount: notifications.length });
+  render();
+  requests[0].resolve(snapshot([old])); await new Promise(setImmediate);
+  assert.equal(render().banner, null);
+  async function receive(notifications) {
+    const pending = render().refresh(); requests.at(-1).resolve(snapshot(notifications)); await pending;
+    return render();
+  }
+  assert.equal((await receive([second, first, old])).banner.id, 'first');
+  render().dismissBanner('first'); assert.equal(render().banner.id, 'second');
+  render().dismissBanner('first'); assert.equal(render().banner.id, 'second');
+  assert.equal((await receive([second, first, old])).banner.id, 'second');
+  render().dismissBanner('second'); assert.equal(render().banner, null);
+  assert.equal((await receive([second, first, old])).banner, null);
+  const older = { id: 'revealed', created_at: '2026-11-27T12:00:00Z', read_at: null };
+  assert.equal((await receive([older])).banner, null);
+  assert.equal((await receive([notice('already-read', '03', '2026-11-28T12:03:01Z')])).banner, null);
+  assert.equal((await receive([notice('third', '04')])).banner.id, 'third');
+  assert.equal((await receive([])).banner, null);
+  await receive([notice('fourth', '05')]);
+  appChanged('background'); assert.equal(render().banner, null);
+  cleanup();
 });

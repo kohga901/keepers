@@ -368,12 +368,6 @@ export function GraphPreviewsDemo() {
 
   return (
     <View style={styles.stage}>
-      <View style={styles.previewHeader}>
-        <Text style={[styles.previewLabel, { color: theme.text }]}>Image previews</Text>
-        <View style={[styles.switchTrack, { backgroundColor: on ? theme.primary : theme.border }]}>
-          <View style={[styles.switchThumb, { backgroundColor: theme.surface }, on && styles.switchThumbOn]} />
-        </View>
-      </View>
       <MapFrame>
         <MapDots />
         <TasteMarker x={TASTE.x} y={TASTE.y} />
@@ -388,9 +382,15 @@ export function GraphPreviewsDemo() {
             <Ionicons name="shirt" size={14} color={theme.primary} />
           </Animated.View>
         ))}
-        <View style={[styles.myTaste, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-          <Ionicons name="locate-outline" size={12} color={theme.text} />
-          <Text style={[styles.small, { color: theme.text }]}>My taste</Text>
+        <View style={styles.previewControls}>
+          <View style={[styles.mapButton, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <Ionicons name="locate-outline" size={12} color={theme.text} />
+            <Text style={[styles.small, { color: theme.text }]}>My taste</Text>
+          </View>
+          <View style={[styles.mapButton, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <Ionicons name={on ? 'eye-off-outline' : 'images-outline'} size={12} color={theme.text} />
+            <Text style={[styles.small, { color: theme.text }]}>{on ? 'Hide images' : 'Show images'}</Text>
+          </View>
         </View>
       </MapFrame>
     </View>
@@ -586,28 +586,13 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '500',
   },
-  previewHeader: {
+  previewControls: {
+    position: 'absolute',
+    right: 8,
+    bottom: 8,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-  },
-  previewLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  switchTrack: {
-    width: 38,
-    height: 22,
-    borderRadius: 11,
-    padding: 2,
-  },
-  switchThumb: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-  },
-  switchThumbOn: {
-    marginLeft: 16,
+    gap: 6,
   },
   preview: {
     position: 'absolute',
@@ -623,10 +608,7 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 2,
   },
-  myTaste: {
-    position: 'absolute',
-    right: 8,
-    bottom: 8,
+  mapButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,

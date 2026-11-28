@@ -7,7 +7,7 @@ const row = (id, url = `https://shop.test/${id}`) => ({ item_id: id, item_name: 
 
 // Match the existing graph tests: execute real screen callbacks with deterministic
 // hook scheduling. Native rendering and the third-party gesture engine are boundaries.
-function screen({ recommend = async () => [row(1), row(2)], session = { user: { id: 'alice' } }, platform = 'ios', viewportWidth = 390, viewportHeight = 844 } = {}) {
+function screen({ recommend = async () => [row(1), row(2)], session = { user: { id: 'alice' } }, platform = 'ios', viewportWidth = 390, viewportHeight = 844, browserWindow } = {}) {
   const slots = [], effects = [], timers = [], calls = { feed: [], swipes: [], opened: [], alerts: [], jumps: [] };
   let cursor = 0, dirty = true, tree, header, authChanged;
   const same = (a, b) => a && b && a.length === b.length && a.every((value, i) => Object.is(value, b[i]));
@@ -54,7 +54,7 @@ function screen({ recommend = async () => [row(1), row(2)], session = { user: { 
       getSession: async () => ({ data: { session }, error: null }),
       onAuthStateChange(fn) { authChanged = fn; return { data: { subscription: { unsubscribe() {} } } }; },
     } } },
-  }, { setTimeout(fn) { timers.push(fn); return timers.length; } });
+  }, { window: browserWindow, setTimeout(fn) { timers.push(fn); return timers.length; } });
   const App = load('app/(tabs)/swiper.tsx').default;
   function nodes(node = tree) {
     if (!node || typeof node !== 'object') return [];
@@ -187,6 +187,25 @@ test('opening a listing keeps the final card and blocks insecure or malformed sh
     assert.deepEqual(app.calls.jumps, [0]);
     if (url.startsWith('https:')) assert.deepEqual(app.calls.opened, [url]);
     else { assert.equal(app.calls.opened.length, 0); assert.equal(app.calls.alerts.length, 1); }
+    assert.equal(app.calls.swipes.length, 0);
+  }
+});
+
+test('web swipe-up opens a new tab and only navigates the current tab when blocked', async () => {
+  for (const blocked of [false, true]) {
+    const attempted = [], currentTab = [], newTab = [];
+    const tab = { opener: 'Keepers', location: { replace: url => newTab.push(url) } };
+    const browserWindow = { open(url, target) { attempted.push([url, target]); return blocked ? null : tab; },
+      location: { assign: url => currentTab.push(url) } };
+    const app = screen({ platform: 'web', recommend: async () => [row(1)], browserWindow });
+    await app.flush();
+    app.deck().onSwipedTop(0); app.deck().onSwipedAll(); await app.flush();
+    assert.deepEqual(attempted, [['about:blank', '_blank']]);
+    assert.deepEqual(currentTab, blocked ? ['https://shop.test/1'] : []);
+    assert.deepEqual(newTab, blocked ? [] : ['https://shop.test/1']);
+    if (!blocked) assert.equal(tab.opener, null);
+    assert.equal(app.deck().cards[0].id, '1');
+    assert.deepEqual(app.calls.jumps, [0]);
     assert.equal(app.calls.swipes.length, 0);
   }
 });

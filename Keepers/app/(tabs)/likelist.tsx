@@ -7,7 +7,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Easing, StyleSheet, View, Pressable, FlatList, Modal, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import { ActivityIndicator, Animated, Easing, StyleSheet, View, Pressable, FlatList, Modal, ScrollView, KeyboardAvoidingView, Platform, useWindowDimensions } from 'react-native';
 import { Text } from '../../components/Text';
 import { TAB_CONTENT_MAX_WIDTH } from '../../constants/layout';
 import { PriceAlertEditor } from '../../components/PriceAlertEditor';
@@ -28,6 +28,7 @@ import * as WebBrowser from 'expo-web-browser';
 
 const LIST_PADDING = 16;
 const GRID_GAP = 12;
+const TOGGLE_INSET = 4;
 
 // Counts above 99 would crowd the toggle.
 const formatCount = (count: number) => (count > 99 ? '99+' : String(count));
@@ -36,9 +37,14 @@ const App: React.FC = () => {
   const router = useRouter();
   const { itemId } = useLocalSearchParams<{ itemId?: string | string[] }>();
   const requestedItemId = Array.isArray(itemId) ? itemId[0] : itemId;
-  const frame = useSafeAreaFrame();
-  // Leave space for the bell (and the matching spacer on the left) on narrow phones.
-  const toggleOptionWidth = Math.min(150, Math.max(104, (frame.width - 120) / 2));
+  const safeFrame = useSafeAreaFrame();
+  const viewport = useWindowDimensions();
+  // Expo Router supplies a zero safe-area frame on web; size from the live viewport there.
+  const frame = Platform.OS === 'web' ? { ...safeFrame, width: viewport.width, height: viewport.height } : safeFrame;
+  const layoutWidth = Platform.OS === 'web' ? Math.min(frame.width, TAB_CONTENT_MAX_WIDTH) : frame.width;
+  // Drop the balancing spacer on small phones so both labels and counts fit beside the bell.
+  const headerSpacerWidth = layoutWidth < 360 ? 0 : 44;
+  const toggleOptionWidth = Math.min(150, (layoutWidth - LIST_PADDING * 2 - headerSpacerWidth - 44 - TOGGLE_INSET * 2) / 2);
   // Two cards per row inside the same max width the web layout uses.
   const contentWidth = Math.min(frame.width, TAB_CONTENT_MAX_WIDTH) - LIST_PADDING * 2;
   const cardWidth = Math.floor((contentWidth - GRID_GAP) / 2);
@@ -214,10 +220,10 @@ const App: React.FC = () => {
         ]}
       >
         <View style={[styles.headerRow, Platform.OS === 'web' && styles.webContent, { height: headerBarHeight }]}>
-          {/* Same width as the bell so the toggle stays centred. */}
-          <View style={styles.headerSpacer} />
+          {/* Balance the bell where there is room to keep the toggle centred. */}
+          <View style={{ width: headerSpacerWidth }} />
           <View style={styles.toggleWrapper}>
-            <View style={[styles.toggleContainer, { backgroundColor: theme.tabBg, borderColor: theme.border }]}>
+            <View style={[styles.toggleContainer, { width: toggleOptionWidth * 2 + TOGGLE_INSET * 2, backgroundColor: theme.tabBg, borderColor: theme.border }]}>
               <Animated.View
                 style={[
                   styles.toggleIndicator,
@@ -238,7 +244,7 @@ const App: React.FC = () => {
                     accessibilityState={{ selected: isOn }}
                     accessibilityLabel={isLoadingHistory ? label : `${label}, ${count} ${count === 1 ? 'item' : 'items'}`}
                   >
-                    <Ionicons name={icon} size={15} color={isOn ? theme.headerText : theme.tabInactive} />
+                    <Ionicons name={icon} size={15} color={isOn ? theme.headerText : theme.tabInactive} style={Platform.OS === 'web' && styles.toggleIcon} />
                     <Text style={[styles.toggleText, { color: isOn ? theme.headerText : theme.tabInactive }]}>{label}</Text>
                     {!isLoadingHistory && (
                       <View style={[styles.countPill, { backgroundColor: isOn ? theme.accentGold : theme.border }]}>
@@ -309,7 +315,7 @@ const App: React.FC = () => {
                   setModalVisible(true);
                 }}
               >
-                <View style={[styles.cardImageWrap, { backgroundColor: theme.border }]}>
+                <View style={[styles.cardImageWrap, { height: cardWidth * 4 / 3, backgroundColor: theme.border }]}>
                   <Image
                     style={styles.cardImage}
                     source={{ uri: item.imageUrl }}
@@ -367,39 +373,38 @@ const App: React.FC = () => {
             </View>
           ) : (
           <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <Pressable style={styles.modalBackground} onPress={() => setModalVisible(false)}>
-            <Pressable style={[styles.modalContainer, { maxHeight: '90%', backgroundColor: theme.surface }]} onPress={event => event.stopPropagation()}>
+          <View style={[styles.modalBackground, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 }]}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setModalVisible(false)} accessible={false} focusable={false} />
+            <View style={[styles.modalContainer, { backgroundColor: theme.surface, borderColor: theme.border }]} accessibilityViewIsModal>
               <ScrollView style={{ width: '100%' }} keyboardShouldPersistTaps="handled">
               {selectedItem && (
                 <>
-                  <Pressable onPress={() => setImageExpanded(true)} accessibilityRole="button" accessibilityLabel="View full-size image">
-                  <Image
-                    style={styles.modalImage}
-                    source={{ uri: selectedItem.imageUrl }}
-                  />
+                  <Pressable onPress={() => setImageExpanded(true)} accessibilityRole="button" accessibilityLabel="View full-size image"
+                    accessibilityHint="Opens the full photo without cropping"
+                    style={[styles.modalPhoto, { height: Math.min(420, viewport.height * 0.45), backgroundColor: theme.background }]}>
+                    <Image style={styles.modalImage} source={{ uri: selectedItem.imageUrl }} contentFit="contain" contentPosition="center"
+                      accessibilityLabel={selectedItem.name} transition={200} />
+                    <View style={[styles.expandPhoto, { backgroundColor: theme.surface, borderColor: theme.border }]} pointerEvents="none">
+                      <Ionicons name="expand-outline" size={18} color={theme.text} />
+                    </View>
                   </Pressable>
-                  <View style={[styles.textAndButtonContainer, { backgroundColor: theme.primary }]}>
-                    <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '600', fontFamily: 'PublicSans_600SemiBold' }}>
+                  <View style={styles.modalDetails}>
+                    <Text style={[styles.modalTitle, { color: theme.text }]}>
                       {selectedItem.name}
                     </Text>
-                    <View style={{ height: 1, backgroundColor: '#FFFFFF', opacity: 0.4, width: '100%', marginVertical: 10 }} />
-
                     <View style={styles.modalPriceGenderRow}>
-                    <Text style={{ color: theme.accentGold, fontFamily: 'PublicSans_600SemiBold' }}>
-                      {showPriceAsTier ? getPriceTierSymbol(selectedItem.price) : selectedItem.price}
-                    </Text>
-                    <Text style={{ color: '#FFFFFF', fontFamily: 'PublicSans_600SemiBold' }}>
-                      {selectedItem.gender.toUpperCase()}
-                    </Text>
+                      <Text style={[styles.modalPrice, { color: theme.accentBrown }]}>
+                        {showPriceAsTier ? getPriceTierSymbol(selectedItem.price) : selectedItem.price}
+                      </Text>
+                      {!!selectedItem.gender && <View style={[styles.genderChip, { backgroundColor: theme.background }]}>
+                        <Text style={[styles.itemGender, { color: theme.text }]}>{selectedItem.gender.toUpperCase()}</Text>
+                      </View>}
                     </View>
-
-                    <Pressable style={[styles.closeButton, { backgroundColor: theme.surface }]} onPress={() => {
-                      if (selectedItem.itemUrl) {
-                        WebBrowser.openBrowserAsync(selectedItem.itemUrl);
-                      }
-
-                    }}>
-                      <Text style={[styles.closeButtonText, { color: theme.text }]}>Go to Store Page</Text>
+                    <Pressable style={({ pressed }) => [styles.storeButton, { backgroundColor: theme.text, opacity: !selectedItem.itemUrl ? 0.5 : pressed ? 0.8 : 1 }]}
+                      accessibilityRole="link" accessibilityLabel={`View ${selectedItem.name} in store`} disabled={!selectedItem.itemUrl}
+                      onPress={() => { if (selectedItem.itemUrl) void WebBrowser.openBrowserAsync(selectedItem.itemUrl); }}>
+                      <Text style={[styles.storeButtonText, { color: theme.headerText }]}>View in store</Text>
+                      <Ionicons name="open-outline" size={18} color={theme.headerText} />
                     </Pressable>
                     {selectedItem.liked && <PriceAlertEditor key={selectedItem.id} itemId={selectedItem.id} price={selectedItem.price} />}
                   </View>
@@ -407,11 +412,11 @@ const App: React.FC = () => {
               )}
               </ScrollView>
               <Pressable onPress={() => setModalVisible(false)} accessibilityRole="button" accessibilityLabel="Close item details"
-                style={[styles.modalClose, { backgroundColor: theme.surface }]}>
+                style={[styles.modalClose, { backgroundColor: theme.surface, borderColor: theme.border, borderWidth: 1 }]}>
                 <Ionicons name="close" size={24} color={theme.text} />
               </Pressable>
-            </Pressable>
-          </Pressable>
+            </View>
+          </View>
           </KeyboardAvoidingView>
           )}
         </Modal>
@@ -444,6 +449,7 @@ const styles = StyleSheet.create({
   },
   toggleContainer: {
     flexDirection: 'row',
+    flexShrink: 0,
     borderRadius: 24,
     borderWidth: 1,
     padding: 3,
@@ -456,16 +462,19 @@ const styles = StyleSheet.create({
     bottom: 3,
     borderRadius: 20,
   },
-  headerSpacer: {
-    width: 44,
-  },
   toggleOption: {
     flexDirection: 'row',
+    flexShrink: 0,
     gap: 5,
     paddingVertical: 7,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 20,
+  },
+  // Center the icon glyph with Public Sans rather than the browser's default font line box.
+  toggleIcon: {
+    lineHeight: 18,
+    transform: [{ translateY: 1 }],
   },
   toggleText: {
     fontSize: 15,
@@ -552,14 +561,17 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
   },
   cardImageWrap: {
-    aspectRatio: 3 / 4,
+    width: '100%',
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     overflow: 'hidden',
   },
   cardImage: {
-    width: '100%',
-    height: '100%',
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
   },
   removeButton: {
     position: 'absolute',
@@ -584,6 +596,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   itemName: {
+    minHeight: 38,
     fontSize: 14,
     fontWeight: '600',
     lineHeight: 19,
@@ -607,22 +620,42 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(12,59,46,0.5)',
   },
 
   modalContainer: {
-    width: '94%',
-    maxWidth: 600,
-    padding: 20,
-    borderRadius: 20,
-    alignItems: 'center',
+    width: '100%',
+    maxWidth: 560,
+    maxHeight: '100%',
+    flexShrink: 1,
+    borderRadius: 24,
+    borderWidth: 1,
+    overflow: 'hidden',
+    elevation: 8,
+    shadowColor: '#0c3b2e',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 24,
   },
-
+  modalPhoto: {
+    width: '100%',
+    padding: 24,
+  },
   modalImage: {
     width: '100%',
-    height: 300,
-    marginBottom: 10,
-    borderRadius: 15,
+    flex: 1,
+  },
+  expandPhoto: {
+    position: 'absolute',
+    right: 12,
+    bottom: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalClose: {
     position: 'absolute',
@@ -636,11 +669,25 @@ const styles = StyleSheet.create({
     elevation: 3,
     zIndex: 1,
   },
-  textAndButtonContainer: {
-    padding: 10,
-    borderRadius: 10,
-    width: '100%',
-    alignItems: 'center',
+  modalDetails: {
+    padding: 24,
+    gap: 16,
+  },
+  modalTitle: {
+    fontSize: 22,
+    lineHeight: 29,
+    fontWeight: '700',
+  },
+  modalPrice: {
+    fontSize: 26,
+    lineHeight: 32,
+    fontWeight: '700',
+    flexShrink: 1,
+  },
+  genderChip: {
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   modalPriceGenderRow: {
     width: '100%',
@@ -649,18 +696,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  closeButton: {
+  storeButton: {
     width: '100%',
+    minHeight: 48,
+    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 10,
+    gap: 8,
+    paddingVertical: 14,
     paddingHorizontal: 20,
-    borderRadius: 10,
-    marginTop: 20,
+    borderRadius: 14,
   },
-  closeButtonText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    fontFamily: 'PublicSans_600SemiBold',
+  storeButtonText: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '700',
   },
 });
 export default App;
