@@ -88,7 +88,7 @@ export default function PriceAlertsScreen() {
         <View style={styles.emptyIcon}><Ionicons name={filter === 'unread' ? 'checkmark-done-outline' : 'notifications-outline'} size={30} color={theme.text} /></View>
         <Text style={[styles.emptyTitle, ink]}>{filter === 'unread'
           ? (unreadCount > 0 ? 'No unread updates in this view' : 'You’re all caught up')
-          : 'You\'re all caught up'}</Text>
+          : 'No price updates yet'}</Text>
         <Text style={[styles.emptyBody, secondary]}>{filter === 'unread'
           ? (unreadCount > 0 ? 'Older unread updates are outside your latest 50 notifications. Mark all as read to clear their unread status.' : 'New price updates will appear here.')
           : 'Set a target price on a liked item. We’ll let you know when it’s reached.'}</Text>

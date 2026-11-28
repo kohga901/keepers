@@ -464,14 +464,14 @@ test('unread filter, read controls and watching removal preserve their behavior 
   state.notifications = []; h.invalidate(); await h.flush(Screen);
   assert.equal(tab('All').props.accessibilityLabel, 'All notifications: 0');
   assert.equal(tab('Unread').props.accessibilityLabel, 'Unread notifications: 0');
-  assert.ok(hasText('Your next find starts here'));
+  assert.ok(hasText('No price updates yet'));
   const explore = h.nodes().find(n => n.type === 'Pressable' && h.nodes(n).some(c => c.props.children === 'Explore your likes'));
   explore.props.onPress();
   assert.equal(calls.at(-1), '/(tabs)/likelist');
   state.loading = true; h.invalidate(); await h.flush(Screen);
   assert.ok(button('Loading notifications'));
-  assert.ok(!hasText('Your next find starts here'));
+  assert.ok(!hasText('No price updates yet'));
   state.loading = false; state.error = 'Offline'; h.invalidate(); await h.flush(Screen);
   assert.ok(h.nodes().some(n => n.props.accessibilityRole === 'alert' && n.props.children === 'Offline'));
-  assert.ok(!hasText('Your next find starts here'));
+  assert.ok(!hasText('No price updates yet'));
 });
