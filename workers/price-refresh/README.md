@@ -327,6 +327,45 @@ A missing variant is conclusive only for a nonempty published list below the
 250-variant endpoint cap. Truncated or inaccessible lists stay inconclusive.
 These endpoints require no paid search API or merchant API key.
 
+### Broader extraction methods
+
+The public Shopify JSON fallback also supports product URLs without a variant
+selector. It accepts a parent price only when the nonempty published variant list
+has fewer than 250 entries, distinct valid IDs, explicit availability, and one
+identical price agreeing with `price_min` and `price_max`. Mixed stock states are
+reported as `Mixed`; ranges and unknown selections are excluded. Presentment USD
+is verified independently through `cart.js`, as described in the
+[Shopify Product API documentation](https://shopify.dev/docs/api/ajax/reference/product).
+The same Free HTML/JSON/request bounds still apply.
+
+The page reader now recognizes named Shopify product JSON script IDs such as
+`ProductJson-template--...`, `product-json`, and `cc-product-json-...`. It can
+also read explicit Schema.org `Product` objects from the primary `product`,
+`data.product`, or `pageData.product` slots in Next.js `__NEXT_DATA__` page props.
+This is limited to matching product URLs and the existing offer checks; arbitrary
+application state, recommendation arrays and JavaScript expressions are excluded.
+Malformed or oversized hydration blocks are ignored rather than used partially.
+
+Page metadata supports `og:product:price:*`, `og:price:*`, and `og:availability`
+alongside the existing `product:*` keys. Complete metadata may supply missing stock
+only when it independently agrees on product/variant identity, USD and price.
+Conflicting aliases and sale-price metadata cannot override structured offers.
+
+On November 27, a targeted live pilot checked 12 distinct merchants whose saved
+product URLs had exceeded the Free HTML limit. The same fetched evidence verified
+0 prices using HTML alone and 10 with the expanded public JSON fallback. This is
+a targeted pilot, not a full-catalog coverage estimate. Evidence is in gitignored
+`reports/general-extraction-2026-11-27/pilot.json` (36 public GET requests; no
+Supabase access or writes). Gymshark and Unionbay remained unresolved in the pilot.
+
+A separate offline replay of 4,295 saved URLs verified 1,445 prices before and
+1,446 after under full local limits; the Free replay stayed at 463. No previously
+verified price was lost or changed in either profile. Historical caches lack the
+new parent-product endpoint responses, so this replay cannot measure their live
+coverage gain. It also excludes the local-browser recoveries from the older
+consolidated audit. Access-blocked and JavaScript-only stores still need the
+existing opt-in browser method, a merchant-approved feed/API, or manual review.
+
 To replay this review from its saved snapshot and evidence:
 
 ```powershell

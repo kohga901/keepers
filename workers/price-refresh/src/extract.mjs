@@ -103,8 +103,9 @@ function createPageReader(pageUrl) {
       if (['script','style','noscript'].includes(name)) hidden++;
       if (name === 'script') {
         const type = attributes.type?.toLowerCase().split(';')[0].trim();
-        scriptKind = type === 'application/json' && attributes.id === '__NEXT_DATA__' && /^(www\.)?walmart\.com$/.test(new URL(pageUrl).hostname) ? 'next_data' : type === 'application/ld+json' ? 'json_ld' : type === 'application/json' &&
-          (Object.hasOwn(attributes, 'data-product-json') || Object.hasOwn(attributes, 'data-product')) ? 'product_json' :
+        scriptKind = type === 'application/json' && attributes.id === '__NEXT_DATA__' ? 'next_data' : type === 'application/ld+json' ? 'json_ld' : type === 'application/json' &&
+          (Object.hasOwn(attributes, 'data-product-json') || Object.hasOwn(attributes, 'data-product') ||
+            /^(?:ProductJson(?:-|$)|(?:[a-z]+-)?product-json(?:-|$))/i.test(attributes.id ?? '')) ? 'product_json' :
           !attributes.src && (!type || type === 'text/javascript' || type === 'application/javascript') ? 'inline' : null;
         if (scriptKind) script = '';
       }
@@ -124,7 +125,7 @@ function createPageReader(pageUrl) {
       if (script === null) return;
       if (scriptKind === 'inline' && /istlWasHere|_Incapsula_Resource|window\[['"]_px/.test(text)) challenge = true;
       if (script.length + text.length > 2 * 1024 * 1024) {
-        if (scriptKind === 'inline') { script = null; scriptKind = null; return; }
+        if (scriptKind === 'inline' || scriptKind === 'next_data') { script = null; scriptKind = null; return; }
         throw new Error('product_data_too_large');
       }
       script += text;
@@ -142,8 +143,19 @@ function createPageReader(pageUrl) {
               inline.shopifyViews.push(...data.shopifyViews); inline.asosStock.push(...data.asosStock);
             }
           } else if (scriptKind === 'next_data') {
-            const product = JSON.parse(script)?.props?.pageProps?.initialData?.data?.product;
-            if (product) { retained += script.length; inline.walmartProducts.push(product); }
+            const props = JSON.parse(script)?.props?.pageProps;
+            const product = props?.initialData?.data?.product;
+            if (product && /^(www\.)?walmart\.com$/.test(new URL(pageUrl).hostname)) {
+              retained += script.length; inline.walmartProducts.push(product);
+            } else {
+              // Read only explicit primary-product slots, never recommendation/search arrays.
+              const candidates = [props?.product, props?.data?.product, props?.pageData?.product]
+                .filter(value => value && types(value).includes('Product') && value.url && sameProduct(value.url, pageUrl));
+              if (candidates.length) {
+                retained += script.length;
+                embeddedProducts.push(...candidates.map(value => ({ ...value, _source: 'next_product_json' })));
+              }
+            }
           } else {
             retained += script.length;
             (scriptKind === 'json_ld' ? scripts : embeddedProducts).push(parseProductJson(script));
@@ -302,7 +314,7 @@ function matchesOffer(offer, pageUrl) {
 }
 
 function extractPage({ scripts, embeddedProducts, meta, canonical, inline, title, shell, challenge, visibleText, microdata }, pageUrl) {
-  const { products, resolve } = productsFrom(scripts);
+  const { products, resolve } = productsFrom([...scripts, ...embeddedProducts.filter(product => types(product).includes('Product'))]);
   if (!products.length) for (const product of microdata) {
     if (!product.url && microdata.length === 1 && canonical && sameProduct(canonical, pageUrl)) product.url = canonical;
     products.push(product);
@@ -341,16 +353,15 @@ function extractPage({ scripts, embeddedProducts, meta, canonical, inline, title
     const embedded = embeddedVariantOffers(embeddedProducts, products, meta, pageUrl, resolve);
     if (embedded.length) values.splice(0, values.length, ...embedded);
   }
-  // Use page-level product metadata only if no structured product offers were found.
-  if (!values.length && !products.length && ['product', 'product.item'].includes(meta.get('og:type')?.toLowerCase())) {
-    const identity = meta.get('og:url') || canonical;
-    if (identity && exactVariant(identity, pageUrl)) {
-      values.push({ ...offerValue({ price: meta.get('product:price:amount'),
-        priceCurrency: meta.get('product:price:currency'),
-        availability: meta.get('product:availability') === 'in stock' ? 'InStock' : meta.get('product:availability') }, resolve),
-      source: 'product_meta', product_name: meta.get('og:title') });
-    }
+  if (!selectedVariant && !values.length) values.push(...embeddedVariantOffers(embeddedProducts, products, meta, pageUrl, resolve));
+  const metadata = productMetadata(meta, canonical, pageUrl, resolve);
+  // Metadata can supply missing stock only when it independently agrees on identity, USD and price.
+  if (metadata && !metadata.reason && values.length && values.every(value => value.reason === 'availability_unknown' &&
+      value.cents === metadata.cents && value.currency === metadata.currency)) {
+    for (const value of values) { value.availability = metadata.availability; value.reason = null; value.source += '+product_meta'; }
   }
+  // Never use page metadata to override a rejected structured price or variant.
+  if (!values.length && !products.length && metadata) values.push(metadata);
   if (!values.length) return { verified: false, reason: challenge || /client challenge|access denied|just a moment|verify you are human|robot or human/i.test(title) ||
       /verify (?:that )?you are (?:a )?human|press (?:and|&) hold|unusual traffic|access to this page has been denied/i.test(visibleText)
     ? 'merchant_challenge' : /system maintenance is in progress|temporarily down for maintenance/i.test(visibleText) ? 'merchant_maintenance' :
@@ -374,14 +385,33 @@ function extractPage({ scripts, embeddedProducts, meta, canonical, inline, title
   };
 }
 
+function productMetadata(meta, canonical, pageUrl, resolve) {
+  if (!['product', 'product.item'].includes(meta.get('og:type')?.toLowerCase())) return null;
+  const identities = [meta.get('og:url'), canonical].filter(Boolean);
+  if (!identities.length || !identities.every(identity => exactVariant(identity, pageUrl))) return null;
+  const read = (...keys) => {
+    const values = keys.filter(key => meta.has(key)).map(key => meta.get(key));
+    return new Set(values).size === 1 ? values[0] : undefined;
+  };
+  // Conflicting aliases, sale metadata and timed sale windows require explicit structured offers.
+  if ([...meta.keys()].some(key => /(?:^|:)sale_price(?::|$)/.test(key))) return null;
+  return { ...offerValue({ price: read('product:price:amount', 'og:product:price:amount', 'og:price:amount'),
+    priceCurrency: read('product:price:currency', 'og:product:price:currency', 'og:price:currency'),
+    availability: read('product:availability', 'og:product:availability', 'og:availability'),
+  }, resolve), source: 'product_meta', product_name: meta.get('og:title') };
+}
+
 function embeddedVariantOffers(blocks, products, meta, pageUrl, resolve) {
   const page = new URL(pageUrl), selected = page.searchParams.get('variant');
   // Shopify's marked product JSON supplies integer cents and per-variant availability.
   // Other selector combinations still need an exact offer URL rather than an inferred match.
-  if (!selected || variantParams(page).some(key => key !== 'variant') || page.searchParams.getAll('variant').length !== 1) return [];
+  if (variantParams(page).some(key => key !== 'variant') ||
+      (selected === null && [...page.searchParams.keys()].some(key => !/^(utm_.*|gclid|fbclid|srsltid|currency|country)$/i.test(key))) ||
+      (selected !== null && page.searchParams.getAll('variant').length !== 1)) return [];
   const scopedOffers = products.filter(product => product.url && sameProduct(product.url, pageUrl))
     .flatMap(product => [product.offers].flat().map(resolve)).filter(Boolean);
-  if (scopedOffers.some(offer => ['conditional_offer', 'expired_offer'].includes(offerValue(offer, resolve)?.reason))) return [];
+  if (scopedOffers.some(offer => ['conditional_offer', 'expired_offer', 'offer_not_started', 'invalid_offer_dates']
+    .includes(offerValue(offer, resolve)?.reason))) return [];
   const currencyEvidence = scopedOffers.map(offer => offer.priceCurrency).filter(Boolean);
   if (meta.get('product:price:currency')) currencyEvidence.push(meta.get('product:price:currency'));
   if (!currencyEvidence.length || currencyEvidence.some(currency => String(currency).toUpperCase() !== 'USD')) return [];
@@ -392,12 +422,19 @@ function embeddedVariantOffers(blocks, products, meta, pageUrl, resolve) {
         !Number.isInteger(product.price_min) || !Number.isInteger(product.price_max)) continue;
     const route = page.pathname.match(/^(.*\/products\/)[^/]+\/?$/);
     if (!route || !sameProduct(new URL(`${route[1]}${encodeURIComponent(product.handle)}`, page).href, pageUrl)) continue;
-    for (const variant of product.variants.filter(value => String(value.id) === selected)) {
+    const variants = selected === null ? product.variants : product.variants.filter(value => String(value.id) === selected);
+    if (selected === null && (!variants.length || variants.length >= 250 || product.price_min !== product.price_max ||
+        variants.some(variant => variant.price !== product.price_min || variant.requires_selling_plan === true ||
+          !Number.isSafeInteger(variant.price) || variant.price <= 0 || variant.price >= 10_000_000_000 ||
+          typeof variant.available !== 'boolean'))) continue;
+    if (variants.length === 0 || (selected !== null && variants.length !== 1) ||
+        variants.some(variant => !Number.isSafeInteger(variant.id)) || new Set(variants.map(variant => variant.id)).size !== variants.length) continue;
+    for (const variant of variants) {
       if (variant.requires_selling_plan === true || !Number.isSafeInteger(variant.price) || variant.price <= 0 || variant.price >= 10_000_000_000 ||
           variant.price < product.price_min || variant.price > product.price_max || typeof variant.available !== 'boolean') continue;
       values.push({ ...offerValue({ price: (variant.price / 100).toFixed(2), priceCurrency: 'USD',
         availability: variant.available ? 'InStock' : 'OutOfStock' }, resolve),
-      product_name: product.title, source: 'embedded_product_json', variant_id: selected });
+      product_name: product.title, source: 'embedded_product_json', ...(selected !== null ? { variant_id: selected } : {}) });
     }
   }
   return values;

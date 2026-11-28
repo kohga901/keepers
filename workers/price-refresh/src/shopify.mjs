@@ -17,8 +17,10 @@ async function jsonGet(url, fetcher) {
 
 export async function fetchShopifyVariant(pageUrl, fetcher) {
   const page = new URL(pageUrl), route = page.pathname.match(/^(.*\/)products\/([^/]+)\/?$/), id = page.searchParams.get('variant');
-  if (!route || !/^\d{8,20}$/.test(id ?? '') || page.searchParams.getAll('variant').length !== 1 ||
+  if (!route || (id !== null && (!/^\d{8,20}$/.test(id) || page.searchParams.getAll('variant').length !== 1)) ||
       variantParams(page).some(key => key !== 'variant') ||
+      // Without an exact variant, unknown query parameters could select a different price.
+      (id === null && [...page.searchParams.keys()].some(key => !/^(utm_.*|gclid|fbclid|srsltid|currency|country)$/i.test(key))) ||
       [...page.searchParams.keys()].some(key => /selling_plan|discount|member|customer|subscription/i.test(key)) ||
       (page.searchParams.has('currency') && page.searchParams.get('currency').toUpperCase() !== 'USD')) return null;
   const productUrl = new URL(`${route[1]}products/${route[2]}.js`, page), cartUrl = new URL(`${route[1]}cart.js`, page);
@@ -31,6 +33,19 @@ export async function fetchShopifyVariant(pageUrl, fetcher) {
     if (!product || cart?.currency !== 'USD' || (product.currency && product.currency !== 'USD') ||
         product.handle !== decodeURIComponent(route[2]) || !Number.isSafeInteger(product.id) || product.requires_selling_plan === true ||
         !Number.isSafeInteger(product.price_min) || !Number.isSafeInteger(product.price_max) || !Array.isArray(product.variants)) return null;
+    if (id === null) {
+      const variants = product.variants;
+      // A parent URL has one usable price only when the complete published variant list agrees.
+      if (!variants.length || variants.length >= 250 || product.price_min !== product.price_max ||
+          new Set(variants.map(variant => variant.id)).size !== variants.length ||
+          variants.some(variant => !Number.isSafeInteger(variant.id) || variant.requires_selling_plan === true ||
+            !Number.isSafeInteger(variant.price) || variant.price <= 0 || variant.price >= 10_000_000_000 ||
+            variant.price !== product.price_min || typeof variant.available !== 'boolean')) return null;
+      return { verified: true, reason: null, extracted_price: formatPrice(product.price_min), currency: 'USD',
+        availability: variants.every(variant => variant.available) ? 'InStock' : variants.every(variant => !variant.available) ? 'OutOfStock' : 'Mixed',
+        source: 'shopify_ajax', product_name: product.title ?? null, fetched_url: page.href,
+        evidence_urls: [productUrl.href, cartUrl.href], published_variants: variants.length };
+    }
     const matches = product.variants.filter(variant => Number.isSafeInteger(variant.id) && String(variant.id) === id);
     if (!matches.length && product.variants.length > 0 && product.variants.length < 250 &&
         product.variants.every(variant => Number.isSafeInteger(variant.id))) return { verified: false, reason: 'variant_not_listed',

@@ -44,3 +44,39 @@ test('a blocked storefront can recover an exact public variant price without ret
   assert.equal(observation.verified,true);assert.equal(observation.extracted_price,'$12.00');
   assert.equal(observation.recovered_from,'merchant_http_403');assert.equal(observation.request_failed,undefined);
 });
+
+test('Shopify parent URLs recover one uniform price across a complete list of variants', async () => {
+  const parent = url.replace('variant=39405164298343&', '');
+  const uniform = { ...product, price_max: 1200, variants: [
+    ...product.variants, { id: 39405164298344, price: 1200, available: true },
+  ] };
+  const result = await fetchShopifyVariant(parent, network(uniform));
+  assert.equal(result.verified, true);
+  assert.equal(result.extracted_price, '$12.00');
+  assert.equal(result.availability, 'Mixed');
+  assert.equal(result.variant_id, undefined);
+  assert.equal(result.published_variants, 2);
+  for (const p of [product, { ...uniform, variants: [] },
+    { ...uniform, variants: [...uniform.variants, uniform.variants[0]] },
+    { ...uniform, variants: [...uniform.variants, { id: 3, price: 1300, available: true }] },
+    { ...uniform, variants: [...uniform.variants, { id: 3, price: 1200 }] },
+    { ...uniform, variants: [...uniform.variants, { id: 3, price: 1200, available: true, requires_selling_plan: true }] },
+    { ...uniform, variants: Array.from({ length: 250 }, (_, id) => ({ id, price: 1200, available: true })) },
+  ]) assert.equal(await fetchShopifyVariant(parent, network(p)), null);
+  for (const query of ['&size=M', '&option=red', '&variant=', '&variant=bad', '&currency=USD']) {
+    assert.equal(await fetchShopifyVariant(parent + query, () => assert.fail('unproven selection must not fetch')), null);
+  }
+});
+
+test('a parent listing exceeding the Free HTML budget can recover from small public JSON', async () => {
+  const { freeTierFetcher } = await import('../src/free-tier.mjs');
+  const parent = url.replace('variant=39405164298343&', '');
+  const api = network({ ...product, price_max: 1200 });
+  const result = await observeProduct(parent, freeTierFetcher(async (target, init) =>
+    new URL(target).pathname.endsWith('.js') ? api(target, init) : new Response('large page', {
+      headers: { 'Content-Type': 'text/html', 'Content-Length': '300000' },
+    })));
+  assert.equal(result.verified, true);
+  assert.equal(result.recovered_from, 'free_tier_page_limit');
+  assert.equal(result.extracted_price, '$12.00');
+});
