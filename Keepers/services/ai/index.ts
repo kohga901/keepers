@@ -11,6 +11,11 @@ const SERVER_ERROR_CODES = new Set<AiLookupErrorCode>([
 ]);
 
 export async function lookupPurchasableItem(input: ImageLookupInput): Promise<ImageLookupResult> {
+  if (input.signal?.aborted) throw new AiLookupError('cancelled');
+  const itemId = Number(input.itemId);
+  if (!Number.isSafeInteger(itemId) || itemId <= 0) throw new AiLookupError('invalid_image');
+  const maxResults = input.maxResults ?? 5;
+  if (!Number.isFinite(maxResults)) throw new AiLookupError('invalid_image');
   const controller = new AbortController();
   const abort = () => controller.abort();
   let timedOut = false;
@@ -31,10 +36,6 @@ export async function lookupPurchasableItem(input: ImageLookupInput): Promise<Im
     } catch {
       throw new AiLookupError('unavailable');
     }
-    const itemId = Number(input.itemId);
-    if (!Number.isSafeInteger(itemId) || itemId <= 0) throw new AiLookupError('invalid_image');
-    const maxResults = input.maxResults ?? 5;
-    if (!Number.isFinite(maxResults)) throw new AiLookupError('invalid_image');
     const { data, error } = await supabase.auth.getSession();
     if (controller.signal.aborted) throw new AiLookupError(timedOut ? 'timeout' : 'cancelled');
     if (error || !data.session?.access_token) throw new AiLookupError('unauthorized');
@@ -55,10 +56,36 @@ export async function lookupPurchasableItem(input: ImageLookupInput): Promise<Im
     if (!result.success) throw new AiLookupError('unknown');
     return result.data;
   } catch (error) {
-    if (controller.signal.aborted) throw new AiLookupError(timedOut ? 'timeout' : 'cancelled');
-    throw toAiLookupError(error);
+    if (input.signal?.aborted || (controller.signal.aborted && !timedOut)) throw new AiLookupError('cancelled');
+    const failure = timedOut ? new AiLookupError('timeout') : toAiLookupError(error);
+    if (failure.code !== 'unauthorized' && failure.code !== 'cancelled') {
+      const fallback = catalogNameLookup(input.itemName, maxResults);
+      if (fallback) return fallback;
+    }
+    throw failure;
   } finally {
     clearTimeout(timer);
     input.signal?.removeEventListener('abort', abort);
   }
+}
+
+function catalogNameLookup(itemName: string, maxResults: number): ImageLookupResult | null {
+  const name = itemName?.replace(/\s+/g, ' ').trim().slice(0, 240);
+  if (!name || name.toLowerCase() === 'unknown') return null;
+  const encoded = encodeURIComponent(name);
+  const marketplaces = [
+    ['Google Shopping', `https://www.google.com/search?tbm=shop&q=${encoded}`],
+    ['eBay', `https://www.ebay.com/sch/i.html?_nkw=${encoded}`],
+    ['Poshmark', `https://poshmark.com/search?query=${encoded}&type=listings&src=dir`],
+    ['Depop', `https://www.depop.com/search/?q=${encoded}`],
+    ['Mercari', `https://www.mercari.com/search/?keyword=${encoded}`],
+  ];
+  return {
+    provider: 'catalog', model: 'none',
+    identifiedItem: { name, brand: 'unknown', category: 'unknown', colors: [], identifiers: [] },
+    searchSummary: 'Marketplace searches use only the catalog item name. No image identification or listing verification was performed.',
+    listings: [], sources: [],
+    searchLinks: marketplaces.slice(0, Math.min(8, Math.max(1, Math.floor(maxResults))))
+      .map(([marketplace, url]) => ({ marketplace, title: `Search ${marketplace} for ${name}`, query: name, url })),
+  };
 }

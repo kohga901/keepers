@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const aiProviderSchema = z.enum(['google', 'openai']);
+export const aiProviderSchema = z.enum(['google', 'openai', 'catalog']);
 
 export type AiProvider = z.infer<typeof aiProviderSchema>;
 
@@ -62,6 +62,7 @@ export const imageLookupResultSchema = modelLookupSchema.extend({
 export type ImageLookupResult = z.infer<typeof imageLookupResultSchema>;
 export type ImageLookupInput = {
   itemId: string;
+  itemName: string;
   maxResults?: number;
   signal?: AbortSignal;
 };

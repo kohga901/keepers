@@ -309,6 +309,7 @@ const App: React.FC = () => {
     try {
       const result = await lookupPurchasableItem({
         itemId: item.id,
+        itemName: item.name,
         maxResults: 5,
         signal: controller.signal,
       });

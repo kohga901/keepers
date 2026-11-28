@@ -226,7 +226,7 @@ export default function GraphTab() {
     lookupRequest.current = controller;
     setLookupItem(item); setLookupLoading(true); setLookupResult(null); setLookupError(null);
     try {
-      const result = await lookupPurchasableItem({ itemId: item.id, maxResults: 5, signal: controller.signal });
+      const result = await lookupPurchasableItem({ itemId: item.id, itemName: item.name, maxResults: 5, signal: controller.signal });
       if (!controller.signal.aborted && request === lookupId.current) setLookupResult(result);
     } catch (error) {
       const safe = toAiLookupError(error);

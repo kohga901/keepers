@@ -19,21 +19,31 @@ processing/ML pipelines in this repo.
 
 Find it works on mobile and web through the FastAPI server. Users sign in to
 Keepers and do not supply AI keys or choose a provider. The server first uses
-OpenAI's `gpt-6.1-terra`, then tries Gemini once if that provider lookup fails.
+OpenAI's `gpt-6.1-terra` to identify the item and find purchase listings. The server
+uses that identification to build the static marketplace URLs shown under
+"Search other markets", without another AI call. Gemini is tried once only if
+the OpenAI lookup fails.
 Configure `OPENAI_API_KEY` and `GOOGLE_AI_API_KEY` only on the backend (in
 Render's environment settings for production). `AI_LOOKUP_MODEL` optionally
 overrides the OpenAI model; Gemini uses `gemini-3.5-flash-lite`.
 `AI_LOOKUP_PROVIDER` is no longer used. Missing OpenAI credentials also allow
-Gemini fallback; with no Gemini key, OpenAI errors are returned safely.
+Gemini fallback. If the AI lookup fails or the server cannot be reached, the
+frontend builds marketplace search links using only the item's name already
+loaded in the app. These links are labeled as name-based searches and include no
+verified purchase listings. This final fallback needs only the updated frontend;
+it does not require a Render deployment. Sign-in errors and cancelled requests
+still stop the lookup.
 See [server/.env.example](server/.env.example) for provider and usage-limit
 configuration. Keepers authentication, request validation and usage limits run
-before any provider work and do not trigger fallback. One lookup allowance can
+before any provider work and do not trigger Gemini. One lookup allowance can
 include both provider calls. Successful empty results do not trigger fallback.
 OpenAI results are cached for an hour; Gemini fallback results for one minute,
-after which a new search retries OpenAI. Gemini identifies the item and returns
-marketplace search links, rather than verified product listings. Limits and
-caches remain per process and reset on restart. The recommendation pipeline is
-unchanged.
+after which a new search retries OpenAI. Name-based links are created locally
+without another network request or a cache. On fallback, Gemini identifies the item
+and the server builds the same marketplace search links, without verified product
+listings. Authentication, request validation and lookup limits still protect AI
+provider calls. Server limits and caches remain per process and reset on restart.
+The recommendation pipeline is unchanged.
 
 ## Price alerts
 

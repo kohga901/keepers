@@ -19,6 +19,14 @@ import { TAB_CONTENT_MAX_WIDTH } from '../../constants/layout';
 import type { Item } from '../../models/Items';
 import { isSafeLookupUrl, type AiLookupErrorCode, type ImageLookupResult } from '../../services/ai';
 
+const marketplaceBrands = new Map<string, { logo: number; backgroundColor: string; color: string }>([
+  ['Google Shopping', { logo: require('../../assets/marketplaces/google-shopping.png'), backgroundColor: '#34A853', color: '#0F1418' }],
+  ['eBay', { logo: require('../../assets/marketplaces/ebay.jpg'), backgroundColor: '#0968F6', color: '#FFFFFF' }],
+  ['Poshmark', { logo: require('../../assets/marketplaces/poshmark.png'), backgroundColor: '#80004D', color: '#FFFFFF' }],
+  ['Depop', { logo: require('../../assets/marketplaces/depop.png'), backgroundColor: '#E84458', color: '#0F1418' }],
+  ['Mercari', { logo: require('../../assets/marketplaces/mercari.png'), backgroundColor: '#6C74FF', color: '#0F1418' }],
+]);
+
 type ImageLookupModalProps = {
   errorCode: AiLookupErrorCode | null;
   errorMessage: string | null;
@@ -87,7 +95,7 @@ export function ImageLookupModal({
           {item && (
             <Image
               accessibilityLabel={`Image of ${item.name}`}
-              contentFit="cover"
+              contentFit="contain"
               source={{ uri: item.imageUrl }}
               style={[styles.itemImage, { backgroundColor: theme.surface }]}
               transition={250}
@@ -128,28 +136,16 @@ export function ImageLookupModal({
 
           {!loading && result && (
             <View style={styles.results}>
-              <View style={[styles.summaryCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-                <Text style={[styles.resultName, { color: theme.text }]}>
-                  {result.identifiedItem.name}
-                </Text>
-                <Text style={[styles.metadata, { color: theme.mutedText }]}>
-                  {[result.identifiedItem.brand, result.identifiedItem.category]
-                    .filter((value) => value.toLowerCase() !== 'unknown')
-                    .join(' · ') || 'Item details uncertain'}
-                </Text>
-                <Text style={[styles.summary, { color: theme.mutedText }]}>
-                  {result.searchSummary}
-                </Text>
-              </View>
-
-              <View style={styles.sectionHeader}>
-                <Text style={[styles.sectionTitle, { color: theme.text }]}>
-                  {result.searchLinks.length > 0 ? 'Marketplace searches' : 'Purchase options'}
-                </Text>
-                <Text style={[styles.sectionCount, { color: theme.mutedText }]}>
-                  {result.listings.length + result.searchLinks.length}
-                </Text>
-              </View>
+              {(result.listings.length > 0 || result.searchLinks.length === 0) && (
+                <View style={styles.sectionHeader}>
+                  <Text style={[styles.sectionTitle, { color: theme.text }]}>
+                    Purchase options
+                  </Text>
+                  <Text style={[styles.sectionCount, { color: theme.mutedText }]}>
+                    {result.listings.length}
+                  </Text>
+                </View>
+              )}
 
               {result.listings.length === 0 && result.searchLinks.length === 0 && (
                 <View style={[styles.emptyCard, { borderColor: theme.border }]}>
@@ -179,17 +175,10 @@ export function ImageLookupModal({
                     </Text>
                   </View>
                   <Text style={[styles.listingTitle, { color: theme.text }]}>{listing.title}</Text>
+                  <Text style={[styles.listingPrice, { color: theme.text }]}>{listing.displayedPrice}</Text>
                   <Text style={[styles.listingMeta, { color: theme.mutedText }]}>
-                    {listing.seller} · {listing.displayedPrice} · {listing.condition}
+                    {listing.seller} · {listing.condition}
                   </Text>
-                  <Text style={[styles.evidence, { color: theme.mutedText }]}>
-                    {listing.evidence}
-                  </Text>
-                  {!listing.sourceBacked && (
-                    <Text style={styles.unverifiedText}>
-                      No matching citation was returned for this link. Verify it carefully.
-                    </Text>
-                  )}
                   <Pressable
                     accessibilityHint="Opens this seller link in an in-app browser"
                     accessibilityRole="link"
@@ -205,45 +194,63 @@ export function ImageLookupModal({
                 </View>
               ))}
 
-              {result.searchLinks.map((searchLink) => (
-                <View
-                  key={searchLink.url}
-                  style={[
-                    styles.listingCard,
-                    { backgroundColor: theme.surface, borderColor: theme.border },
-                  ]}
-                >
-                  <View style={styles.badgeRow}>
-                    <View style={[styles.matchBadge, { borderColor: theme.primary }]}>
-                      <Text style={[styles.badgeText, { color: theme.primary }]}>SEARCH LINK</Text>
-                    </View>
-                    <Text style={[styles.confidence, { color: theme.mutedText }]}>
-                      {searchLink.marketplace}
-                    </Text>
-                  </View>
-                  <Text style={[styles.listingTitle, { color: theme.text }]}>{searchLink.title}</Text>
-                  <Text style={[styles.evidence, { color: theme.mutedText }]}>
-                    Search terms: {searchLink.query}
-                  </Text>
-                  <Pressable
-                    accessibilityHint={`Searches ${searchLink.marketplace} in an in-app browser`}
-                    accessibilityRole="link"
-                    onPress={() => void openExternalUrl(searchLink.url)}
-                    style={({ pressed }) => [
-                      styles.openButton,
-                      { backgroundColor: theme.primary, opacity: pressed ? 0.72 : 1 },
+              <View style={styles.sectionHeader}>
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>Search other markets</Text>
+                <Text style={[styles.sectionCount, { color: theme.mutedText }]}>{result.searchLinks.length}</Text>
+              </View>
+
+              {result.searchLinks.map((searchLink) => {
+                const brand = marketplaceBrands.get(searchLink.marketplace);
+                return (
+                  <View
+                    key={searchLink.url}
+                    style={[
+                      styles.listingCard,
+                      { backgroundColor: theme.surface, borderColor: theme.border },
                     ]}
                   >
-                    <Text style={styles.primaryButtonText}>Search {searchLink.marketplace}</Text>
-                    <Ionicons name="search-outline" size={16} color="#0F1418" />
-                  </Pressable>
-                </View>
-              ))}
+                    <View style={styles.badgeRow}>
+                      <View style={styles.marketplaceBrand}>
+                        <View style={styles.marketplaceLogoBox}>
+                          {brand ? (
+                            <Image
+                              accessible={false}
+                              contentFit="contain"
+                              source={brand.logo}
+                              style={styles.marketplaceLogo}
+                            />
+                          ) : (
+                            <Ionicons name="storefront-outline" size={24} color="#0F1418" />
+                          )}
+                        </View>
+                        <Text style={[styles.marketplaceName, { color: theme.text }]}>
+                          {searchLink.marketplace}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={[styles.listingTitle, { color: theme.text }]}>
+                      Search {searchLink.marketplace} for {item?.name || result.identifiedItem.name}
+                    </Text>
+                    <Pressable
+                      accessibilityHint={`Searches ${searchLink.marketplace} in an in-app browser`}
+                      accessibilityRole="link"
+                      onPress={() => void openExternalUrl(searchLink.url)}
+                      style={({ pressed }) => [
+                        styles.openButton,
+                        { backgroundColor: brand?.backgroundColor ?? theme.primary, opacity: pressed ? 0.72 : 1 },
+                      ]}
+                    >
+                      <Text style={[styles.primaryButtonText, { color: brand?.color ?? '#0F1418' }]}>
+                        Search {searchLink.marketplace}
+                      </Text>
+                      <Ionicons name="search-outline" size={16} color={brand?.color ?? '#0F1418'} />
+                    </Pressable>
+                  </View>
+                );
+              })}
 
               <Text style={[styles.disclaimer, { color: theme.mutedText }]}>
-                {result.searchLinks.length > 0
-                  ? 'Gemini identified the item, and the Keepers server generated these marketplace searches. They are not verified listings. Check the product, seller, price, condition, and return policy before purchasing.'
-                  : 'AI can misidentify products and sellers can change prices or availability. Verify the photo, seller, condition, price, and return policy before purchasing.'}
+                AI can misidentify products and sellers can change prices or availability. Verify the photo, seller, condition, price, and return policy before purchasing.
               </Text>
             </View>
           )}
@@ -296,7 +303,7 @@ const styles = StyleSheet.create({
   },
   itemImage: {
     borderRadius: 14,
-    height: 190,
+    height: 360,
     overflow: 'hidden',
     width: '100%',
   },
@@ -333,25 +340,6 @@ const styles = StyleSheet.create({
   results: {
     gap: 14,
     marginTop: 16,
-  },
-  summaryCard: {
-    borderRadius: 14,
-    borderWidth: 1,
-    gap: 5,
-    padding: 16,
-  },
-  resultName: {
-    fontSize: 21,
-    fontWeight: '700',
-  },
-  metadata: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  summary: {
-    fontSize: 13,
-    lineHeight: 19,
-    marginTop: 4,
   },
   sectionHeader: {
     alignItems: 'center',
@@ -391,6 +379,32 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
+  marketplaceBrand: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexShrink: 1,
+    gap: 10,
+  },
+  marketplaceLogoBox: {
+    flexShrink: 0,
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
+  },
+  marketplaceLogo: {
+    borderRadius: 5,
+    height: 32,
+    width: 32,
+  },
+  marketplaceName: {
+    flexShrink: 1,
+    fontSize: 16,
+    fontWeight: '700',
+    lineHeight: 22,
+  },
   badgeText: {
     fontSize: 9,
     fontWeight: '800',
@@ -405,20 +419,15 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     lineHeight: 21,
   },
+  listingPrice: {
+    fontSize: 24,
+    fontWeight: '800',
+    lineHeight: 30,
+  },
   listingMeta: {
     fontSize: 12,
     fontWeight: '600',
     textTransform: 'capitalize',
-  },
-  evidence: {
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  unverifiedText: {
-    color: '#D88955',
-    fontSize: 11,
-    fontWeight: '600',
-    lineHeight: 16,
   },
   openButton: {
     alignItems: 'center',

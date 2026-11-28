@@ -113,6 +113,7 @@ export default function StyleWraps() {
     try {
       const result = await lookupPurchasableItem({
         itemId: target.id,
+        itemName: item.name ?? '',
         maxResults: 5,
         signal: controller.signal,
       });

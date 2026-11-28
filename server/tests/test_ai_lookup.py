@@ -15,15 +15,17 @@ from routers import ai as ai_router
 
 IDENTIFIED = {"name": "Shirt & jacket", "brand": "unknown", "category": "tops",
               "colors": ["blue"], "identifiers": ["A/B"]}
-OUTPUT = {"identifiedItem": IDENTIFIED, "searchSummary": "A blue shirt", "listings": []}
-RESULT = {**OUTPUT, "provider": "openai", "model": "test-model", "sources": [], "searchLinks": []}
+OUTPUT = {"identifiedItem": IDENTIFIED, "searchSummary": "A blue shirt", "listings": [],
+          "isPurchasableFashionItem": True}
+RESULT = {"identifiedItem": IDENTIFIED, "searchSummary": "A blue shirt", "listings": [],
+          "provider": "openai", "model": "test-model", "sources": [], "searchLinks": []}
 
 
 class AiLookupTests(BackendTest):
     def setUp(self):
         super().setUp()
         patch.dict(os.environ, {"AI_LOOKUP_MODEL": "test-model", "OPENAI_API_KEY": "server-secret",
-                                "GOOGLE_AI_API_KEY": "server-secret", "AI_LOOKUP_USER_DAILY_LIMIT": "20",
+                                "GOOGLE_AI_API_KEY": "", "AI_LOOKUP_USER_DAILY_LIMIT": "20",
                                 "AI_LOOKUP_DAILY_LIMIT": "500"}).start()
         with ai._lock:
             ai._cache.clear()
@@ -183,8 +185,57 @@ class AiLookupTests(BackendTest):
         self.assertEqual(result["model"], "gpt-6.1-terra")
         self.assertEqual(result["sources"], [{"url": "https://shop.test/item", "title": "Source"}])
 
-    def test_successful_openai_lookup_including_empty_results_never_calls_google(self):
-        with patch.dict(os.environ, {"GOOGLE_AI_API_KEY": "google-secret", "AI_LOOKUP_PROVIDER": "google"}), \
+    def test_openai_identification_builds_links_without_calling_gemini_even_with_no_listings(self):
+        listing = {"title": "Shirt", "url": "https://shop.test/item", "seller": "Shop",
+                   "displayedPrice": "$35", "condition": "new", "matchType": "similar",
+                   "confidence": .6, "evidence": "Same cut"}
+        original_client = httpx.Client
+        for item_id, listings in enumerate(([], [listing]), start=1):
+            calls = []
+            def handler(request):
+                calls.append(str(request.url))
+                self.assertEqual(str(request.url), "https://api.openai.com/v1/responses")
+                return httpx.Response(200, json={"status": "completed", "output": [
+                    {"type": "message", "content": [{"type": "output_text",
+                        "text": json.dumps({**OUTPUT, "listings": listings})}]}]})
+            transport = httpx.MockTransport(handler)
+            with patch.dict(os.environ, {"GOOGLE_AI_API_KEY": "google-secret"}), \
+                    patch.object(ai.httpx, "Client", side_effect=lambda **kwargs: original_client(transport=transport, **kwargs)):
+                response = self.lookup(item_id)
+                self.assertEqual(response.status_code, 200)
+                result = response.json()
+                self.assertEqual(result["provider"], "openai")
+                self.assertEqual(result["identifiedItem"], IDENTIFIED)
+                self.assertEqual(result["listings"], [{**item, "sourceBacked": False} for item in listings])
+                self.assertEqual(len(result["searchLinks"]), 5)
+                self.assertEqual(result["searchLinks"][1]["url"],
+                                 "https://www.ebay.com/sch/i.html?_nkw=Shirt%20%26%20jacket%20A%2FB%20blue")
+                self.assertNotIn("isPurchasableFashionItem", result)
+                self.assertEqual(self.lookup(item_id, token="bob-token").json(), response.json())
+                self.assertEqual(calls, ["https://api.openai.com/v1/responses"])
+                self.assertEqual(ai._total_usage, item_id)
+
+    def test_generated_links_omit_unknown_details_and_respect_result_limit(self):
+        item = ai.IdentifiedItem.model_validate({**IDENTIFIED, "brand": "  unknown ",
+                                               "name": " Shirt   & jacket ",
+                                               "identifiers": ["A/B", "unknown"], "colors": ["blue", "blue"]})
+        links = ai._marketplace_links(item, 2)
+        self.assertEqual([link["marketplace"] for link in links], ["Google Shopping", "eBay"])
+        self.assertEqual(links[0]["query"], "Shirt & jacket A/B blue")
+        unknown = ai.IdentifiedItem.model_validate({**IDENTIFIED, "name": "unknown",
+                                                  "identifiers": [], "colors": []})
+        self.assertEqual(ai._marketplace_links(unknown, 5), [])
+
+    def test_nonfashion_openai_identification_does_not_generate_marketplace_links(self):
+        def handler(request):
+            return httpx.Response(200, json={"status": "completed", "output": [
+                {"type": "message", "content": [{"type": "output_text",
+                    "text": json.dumps({**OUTPUT, "isPurchasableFashionItem": False})}]}]})
+        result = self.provider_call("openai", handler)
+        self.assertEqual(result["searchLinks"], [])
+
+    def test_missing_google_key_uses_only_openai(self):
+        with patch.dict(os.environ, {"GOOGLE_AI_API_KEY": "", "AI_LOOKUP_PROVIDER": "google"}), \
                 patch.object(ai, "_lookup_provider", return_value=RESULT) as paid:
             self.assertEqual(self.lookup().json(), RESULT)
             self.assertEqual(paid.call_count, 1)
@@ -231,10 +282,10 @@ class AiLookupTests(BackendTest):
 
     def test_provider_errors_and_invalid_output_never_expose_raw_response(self):
         for status, code in [(401, "unavailable"), (404, "unavailable"), (429, "quota"), (500, "unknown")]:
-            with self.assertRaises(ai.LookupError) as raised:
+            with self.assertLogs("services.ai_lookup_service", level="WARNING") as logs, self.assertRaises(ai.LookupError) as raised:
                 self.provider_call("openai", lambda request: httpx.Response(status, text="server-secret"))
             self.assertEqual(raised.exception.code, code)
-            self.assertNotIn("server-secret", str(raised.exception))
+            self.assertNotIn("server-secret", str(raised.exception) + "".join(logs.output))
         for content in ({"status": "incomplete"}, {"status": "completed", "output": []}):
             with self.assertRaises(ai.LookupError):
                 self.provider_call("openai", lambda request: httpx.Response(200, json=content))
