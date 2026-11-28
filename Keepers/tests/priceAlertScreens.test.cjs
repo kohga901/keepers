@@ -58,6 +58,7 @@ test('notification opens Like List and clearing one/all refreshes; failed cleari
     react: h.hooks, 'react/jsx-runtime': { jsx: h.jsx, jsxs: h.jsx }, 'react-native': native,
     'expo-router': { useRouter: () => router }, '@expo/vector-icons': { Ionicons: 'Icon' },
     '../components/Text': { Text: 'Text' },
+    '../components/SwipeToDeleteNotification': { SwipeToDeleteNotification: 'SwipeToDeleteNotification' },
     '../hooks/useAppTheme': { useAppTheme: () => ({ theme: {} }) },
     '../contexts/PriceAlertsContext': { usePriceAlerts: () => state },
     '../services/priceAlertsService': { clearPriceNotifications: async (...args) => {
@@ -68,7 +69,9 @@ test('notification opens Like List and clearing one/all refreshes; failed cleari
   await h.flush(Screen);
   button('View Linen shirt in Like List').props.onPress();
   assert.deepEqual(calls.pop(), { pathname: '/(tabs)/likelist', params: { itemId: '7' } });
-  button('Clear notification for Linen shirt').props.onPress(); await h.flush(Screen);
+  assert.ok(!h.nodes().some(n => n.type === 'Icon' && n.props.name === 'close-outline'));
+  h.nodes().find(n => n.type === 'SwipeToDeleteNotification').props.onDelete(); await h.flush(Screen);
+  assert.equal(h.nodes().find(n => n.type === 'SwipeToDeleteNotification').props.disabled, true);
   assert.equal(button('Clear all notifications').props.disabled, true);
   assert.deepEqual(calls, [['alice', 'notice']]);
   pending.resolve(); await h.flush(Screen);
@@ -81,6 +84,12 @@ test('notification opens Like List and clearing one/all refreshes; failed cleari
   assert.ok(h.nodes().some(n => n.props.accessibilityRole === 'alert' && n.props.children === 'Clear failed'));
   assert.ok(button('View Linen shirt in Like List'));
   assert.deepEqual(calls.at(-1), ['alice']);
+  await h.nodes().find(n => n.type === 'SwipeToDeleteNotification').props.onDelete(); await h.flush(Screen);
+  assert.ok(button('View Linen shirt in Like List'));
+  assert.deepEqual(calls.at(-1), ['alice', 'notice']);
+  button('View Linen shirt in Like List').props.onAccessibilityAction({ nativeEvent: { actionName: 'delete' } });
+  await h.flush(Screen);
+  assert.deepEqual(calls.at(-1), ['alice', 'notice']);
 });
 
 function historyScreen(getItem = async id => ({ item_id: id, item_name: `Piece ${id}`, item_price: '$50', item_gender: null }), services = {}) {
@@ -200,6 +209,39 @@ test('notification timestamps stay concise and handle future, invalid and older 
   assert.doesNotMatch(notificationTime(ago(8 * 1440), now), /ago/);
 });
 
+test('a completed left swipe deletes once and closes the row; disabled swipes do nothing', async () => {
+  const h = harness(), pending = deferred();
+  let deletes = 0, closes = 0;
+  const { SwipeToDeleteNotification } = createLoader({
+    react: h.hooks, 'react/jsx-runtime': { jsx: h.jsx, jsxs: h.jsx }, 'react-native': native,
+    'react-native-gesture-handler/ReanimatedSwipeable': 'Swipeable',
+    '@expo/vector-icons': { Ionicons: 'Icon' }, './Text': { Text: 'Text' },
+  })('components/SwipeToDeleteNotification.tsx');
+  const props = { itemName: 'Linen shirt', children: null, disabled: false,
+    onDelete: async () => { deletes++; await pending.promise; } };
+  const Component = () => SwipeToDeleteNotification(props);
+  const row = () => h.nodes().find(n => n.type === 'Swipeable');
+  await h.flush(Component);
+  row().props.ref.current = { close: () => closes++ };
+  row().props.onSwipeableOpen('right');
+  assert.equal(deletes, 0);
+  row().props.onSwipeableOpen('left');
+  row().props.onSwipeableOpen('left');
+  assert.equal(deletes, 1);
+  assert.equal(closes, 0);
+  pending.resolve(); await h.flush(Component);
+  assert.equal(closes, 1);
+  const action = row().props.renderRightActions();
+  assert.equal(action.props.accessibilityLabel, 'Delete notification for Linen shirt');
+  action.props.onPress(); await h.flush(Component);
+  assert.equal(deletes, 2);
+  assert.equal(closes, 2);
+  props.disabled = true; h.invalidate(); await h.flush(Component);
+  assert.equal(row().props.enabled, false);
+  row().props.onSwipeableOpen('left');
+  assert.equal(deletes, 2);
+});
+
 test('only pull-to-refresh activates the refresh indicator and it resets after completion', async () => {
   const h = harness(), pending = deferred();
   let refreshes = 0;
@@ -209,6 +251,7 @@ test('only pull-to-refresh activates the refresh indicator and it resets after c
     react: h.hooks, 'react/jsx-runtime': { jsx: h.jsx, jsxs: h.jsx }, 'react-native': native,
     'expo-router': { useRouter: () => ({}) }, '@expo/vector-icons': { Ionicons: 'Icon' },
     '../components/Text': { Text: 'Text' },
+    '../components/SwipeToDeleteNotification': { SwipeToDeleteNotification: 'SwipeToDeleteNotification' },
     '../hooks/useAppTheme': { useAppTheme: () => ({ theme: {} }) },
     '../contexts/PriceAlertsContext': { usePriceAlerts: () => state },
     '../services/priceAlertsService': {},
@@ -237,6 +280,7 @@ test('unread filter, read controls and watching removal preserve their behavior 
     react: h.hooks, 'react/jsx-runtime': { jsx: h.jsx, jsxs: h.jsx }, 'react-native': native,
     'expo-router': { useRouter: () => ({ navigate: path => calls.push(plain(path)) }) },
     '@expo/vector-icons': { Ionicons: 'Icon' }, '../components/Text': { Text: 'Text' },
+    '../components/SwipeToDeleteNotification': { SwipeToDeleteNotification: 'SwipeToDeleteNotification' },
     '../hooks/useAppTheme': { useAppTheme: () => ({ theme: {} }) },
     '../contexts/PriceAlertsContext': { usePriceAlerts: () => state },
     '../services/priceAlertsService': {

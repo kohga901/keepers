@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, V
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '../components/Text';
+import { SwipeToDeleteNotification } from '../components/SwipeToDeleteNotification';
 import { usePriceAlerts } from '../contexts/PriceAlertsContext';
 import { useAppTheme } from '../hooks/useAppTheme';
 import { clearPriceNotifications, deletePriceAlert, markPriceNotificationsRead } from '../services/priceAlertsService';
@@ -100,12 +101,18 @@ export default function PriceAlertsScreen() {
         const increase = notification.direction === 'increase';
         const label = increase ? 'Price went up' : notification.direction === 'decrease' ? 'Price dropped' : 'Target reached';
         const accent = increase ? '#925014' : theme.text;
-        return <View key={notification.id} style={[styles.notification, {
+        return <SwipeToDeleteNotification key={notification.id} itemName={notification.item_name} disabled={busy}
+          onDelete={() => act(() => clearPriceNotifications(userId, notification.id))}>
+          <View style={[styles.notification, {
           backgroundColor: unread ? '#F0F6EF' : theme.surface,
           borderTopColor: theme.border, borderTopWidth: index > 0 ? StyleSheet.hairlineWidth : 0,
         }]}>
           <Pressable disabled={busy} accessibilityRole="button" accessibilityLabel={`View ${notification.item_name} in Like List`}
-            accessibilityHint="Opens the item details popup"
+            accessibilityHint="Opens item details. Swipe left to delete this notification."
+            accessibilityActions={[{ name: 'delete', label: 'Delete notification' }]}
+            onAccessibilityAction={({ nativeEvent }) => {
+              if (nativeEvent.actionName === 'delete' && !busy) void act(() => clearPriceNotifications(userId, notification.id));
+            }}
             onPress={() => router.navigate({ pathname: '/(tabs)/likelist', params: { itemId: String(notification.clothes_id) } })}
             style={({ pressed }) => [styles.notificationLink, { opacity: busy || pressed ? 0.55 : 1 }]}>
             <View style={[styles.avatar, { backgroundColor: increase ? '#FAEBD9' : '#DFEBDE' }]}>
@@ -130,14 +137,10 @@ export default function PriceAlertsScreen() {
                 style={({ pressed }) => [styles.iconButton, { opacity: busy || pressed ? 0.4 : 1 }]}>
                 <Ionicons name="checkmark-done-outline" size={19} color={theme.text} />
               </Pressable>}
-              <Pressable disabled={busy} onPress={() => void act(() => clearPriceNotifications(userId, notification.id))}
-                accessibilityRole="button" accessibilityLabel={`Clear notification for ${notification.item_name}`}
-                style={({ pressed }) => [styles.iconButton, { opacity: busy || pressed ? 0.4 : 1 }]}>
-                <Ionicons name="close-outline" size={20} color="#526B5C" />
-              </Pressable>
             </View>
           </View>
-        </View>;
+          </View>
+        </SwipeToDeleteNotification>;
       })}
     </View>
     {notifications.length === 50 && <Text style={[styles.footnote, secondary]}>Showing your latest 50 notifications. “Read all” and “Clear all” include older notifications.</Text>}
