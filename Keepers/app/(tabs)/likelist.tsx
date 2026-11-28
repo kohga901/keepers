@@ -7,7 +7,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Easing, StyleSheet, View, Pressable, FlatList, Modal, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import { ActivityIndicator, Animated, Easing, StyleSheet, View, Pressable, FlatList, Modal, ScrollView, KeyboardAvoidingView, Platform, useWindowDimensions } from 'react-native';
 import { Text } from '../../components/Text';
 import { TAB_CONTENT_MAX_WIDTH } from '../../constants/layout';
 import { PriceAlertEditor } from '../../components/PriceAlertEditor';
@@ -28,6 +28,7 @@ import * as WebBrowser from 'expo-web-browser';
 
 const LIST_PADDING = 16;
 const GRID_GAP = 12;
+const TOGGLE_INSET = 4;
 
 // Counts above 99 would crowd the toggle.
 const formatCount = (count: number) => (count > 99 ? '99+' : String(count));
@@ -36,9 +37,14 @@ const App: React.FC = () => {
   const router = useRouter();
   const { itemId } = useLocalSearchParams<{ itemId?: string | string[] }>();
   const requestedItemId = Array.isArray(itemId) ? itemId[0] : itemId;
-  const frame = useSafeAreaFrame();
-  // Leave space for the bell (and the matching spacer on the left) on narrow phones.
-  const toggleOptionWidth = Math.min(150, Math.max(104, (frame.width - 120) / 2));
+  const safeFrame = useSafeAreaFrame();
+  const viewport = useWindowDimensions();
+  // Expo Router supplies a zero safe-area frame on web; size from the live viewport there.
+  const frame = Platform.OS === 'web' ? { ...safeFrame, width: viewport.width, height: viewport.height } : safeFrame;
+  const layoutWidth = Platform.OS === 'web' ? Math.min(frame.width, TAB_CONTENT_MAX_WIDTH) : frame.width;
+  // Drop the balancing spacer on small phones so both labels and counts fit beside the bell.
+  const headerSpacerWidth = layoutWidth < 360 ? 0 : 44;
+  const toggleOptionWidth = Math.min(150, (layoutWidth - LIST_PADDING * 2 - headerSpacerWidth - 44 - TOGGLE_INSET * 2) / 2);
   // Two cards per row inside the same max width the web layout uses.
   const contentWidth = Math.min(frame.width, TAB_CONTENT_MAX_WIDTH) - LIST_PADDING * 2;
   const cardWidth = Math.floor((contentWidth - GRID_GAP) / 2);
@@ -214,10 +220,10 @@ const App: React.FC = () => {
         ]}
       >
         <View style={[styles.headerRow, Platform.OS === 'web' && styles.webContent, { height: headerBarHeight }]}>
-          {/* Same width as the bell so the toggle stays centred. */}
-          <View style={styles.headerSpacer} />
+          {/* Balance the bell where there is room to keep the toggle centred. */}
+          <View style={{ width: headerSpacerWidth }} />
           <View style={styles.toggleWrapper}>
-            <View style={[styles.toggleContainer, { backgroundColor: theme.tabBg, borderColor: theme.border }]}>
+            <View style={[styles.toggleContainer, { width: toggleOptionWidth * 2 + TOGGLE_INSET * 2, backgroundColor: theme.tabBg, borderColor: theme.border }]}>
               <Animated.View
                 style={[
                   styles.toggleIndicator,
@@ -309,7 +315,7 @@ const App: React.FC = () => {
                   setModalVisible(true);
                 }}
               >
-                <View style={[styles.cardImageWrap, { backgroundColor: theme.border }]}>
+                <View style={[styles.cardImageWrap, { height: cardWidth * 4 / 3, backgroundColor: theme.border }]}>
                   <Image
                     style={styles.cardImage}
                     source={{ uri: item.imageUrl }}
@@ -444,6 +450,7 @@ const styles = StyleSheet.create({
   },
   toggleContainer: {
     flexDirection: 'row',
+    flexShrink: 0,
     borderRadius: 24,
     borderWidth: 1,
     padding: 3,
@@ -456,11 +463,9 @@ const styles = StyleSheet.create({
     bottom: 3,
     borderRadius: 20,
   },
-  headerSpacer: {
-    width: 44,
-  },
   toggleOption: {
     flexDirection: 'row',
+    flexShrink: 0,
     gap: 5,
     paddingVertical: 7,
     alignItems: 'center',
@@ -552,14 +557,17 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
   },
   cardImageWrap: {
-    aspectRatio: 3 / 4,
+    width: '100%',
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     overflow: 'hidden',
   },
   cardImage: {
-    width: '100%',
-    height: '100%',
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
   },
   removeButton: {
     position: 'absolute',
@@ -584,6 +592,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   itemName: {
+    minHeight: 38,
     fontSize: 14,
     fontWeight: '600',
     lineHeight: 19,

@@ -92,7 +92,7 @@ test('notification opens Like List and clearing one/all refreshes; failed cleari
   assert.deepEqual(calls.at(-1), ['alice', 'notice']);
 });
 
-function historyScreen(getItem = async id => ({ item_id: id, item_name: `Piece ${id}`, item_price: '$50', item_gender: null }), services = {}) {
+function historyScreen(getItem = async id => ({ item_id: id, item_name: `Piece ${id}`, item_price: '$50', item_gender: null }), services = {}, { width = 390, platform = 'ios' } = {}) {
   const h = harness(), calls = [], navigations = [];
   const params = { itemId: '7' };
   const router = { setParams(next) { Object.assign(params, next); h.invalidate(); }, navigate: path => navigations.push(path) };
@@ -101,12 +101,14 @@ function historyScreen(getItem = async id => ({ item_id: id, item_name: `Piece $
   const Screen = createLoader({
     react: h.hooks, 'react/jsx-runtime': { jsx: h.jsx, jsxs: h.jsx },
     'react-native': { ...native, FlatList: 'FlatList', Modal: 'Modal', KeyboardAvoidingView: 'KeyboardAvoidingView',
-      Platform: { OS: 'ios' }, Animated: { View: 'AnimatedView', FlatList: 'FlatList', Value: function () { return animation; },
+      useWindowDimensions: () => ({ width, height: 900 }),
+      Platform: { OS: platform }, Animated: { View: 'AnimatedView', FlatList: 'FlatList', Value: function () { return animation; },
         timing: () => ({ start() {} }), event: () => () => {}, diffClamp: () => animation }, Easing: { cubic() {}, out() {} } },
     'expo-router': { useRouter: () => router, useLocalSearchParams: () => params },
     'expo-router/react-navigation': { useFocusEffect: focusEffect, getDefaultHeaderHeight: () => 80 },
     'expo-image': { Image: 'Image' }, 'expo-web-browser': {}, '@expo/vector-icons': { Ionicons: 'Icon' },
-    'react-native-safe-area-context': { useSafeAreaFrame: () => ({ width: 390 }), useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },
+    // Expo Router 58 deliberately supplies a zero safe-area frame on web.
+    'react-native-safe-area-context': { useSafeAreaFrame: () => ({ width: platform === 'web' ? 0 : width, height: platform === 'web' ? 0 : 900 }), useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },
     '../../components/Text': { Text: 'Text' }, '../../components/PriceAlertEditor': { PriceAlertEditor: 'PriceAlertEditor' },
     '../../components/PriceAlertsBell': { PriceAlertsBell: 'Bell' },
     '../../contexts/PriceDisplayContext': { usePriceDisplay: () => ({ showPriceAsTier: false }) },
@@ -154,6 +156,38 @@ test('a slow item response cannot replace a later notification selection', async
 });
 
 const clothing = (id, name) => ({ Clothing: { item_id: id, item_name: name, item_price: '$40', item_img: `${id}.jpg`, item_gender: 'men' } });
+
+test('history cards and counted tabs fit phone and desktop widths on web and native', async () => {
+  const flatten = style => Object.assign({}, ...[style].flat(Infinity).filter(Boolean));
+  for (const platform of ['ios', 'android', 'web']) {
+    for (const width of [320, 360, 390, 768, 1440]) {
+      const app = historyScreen(undefined, {
+        getLikedItems: async () => Array.from({ length: 100 }, (_, i) => clothing(i, i % 2 ? 'Shirt' : 'A long item name that takes two lines')),
+      }, { width, platform });
+      await app.flush();
+      const tabs = app.nodes().filter(n => n.props.accessibilityRole === 'tab');
+      const toggle = app.nodes().find(n => n.props.children?.some?.(child => Array.isArray(child) && child.includes(tabs[0])));
+      const row = app.nodes().find(n => n.props.children?.some?.(child => child?.type === 'Bell'));
+      const rowStyle = flatten(row.props.style);
+      const available = Math.min(width, rowStyle.maxWidth ?? width) - rowStyle.paddingHorizontal * 2;
+      const toggleStyle = flatten(toggle.props.style);
+      const optionWidth = flatten(tabs[0].props.style).width;
+      assert.ok(optionWidth >= 116, `${platform} ${width}: labels and 99+ counts need room`);
+      assert.equal(toggleStyle.width, optionWidth * 2 + 2 * (toggleStyle.padding + toggleStyle.borderWidth));
+      assert.ok(toggleStyle.width + flatten(row.props.children[0].props.style).width + 44 <= available);
+
+      const list = app.nodes().find(n => n.type === 'FlatList');
+      assert.equal(list.props.numColumns, 2);
+      const card = list.props.renderItem({ item: list.props.data[0] });
+      const cardWidth = flatten(card.props.style).width;
+      assert.ok(cardWidth > 0, `${platform} ${width}: cards and photos must have a positive size`);
+      assert.ok(cardWidth * 2 + list.props.columnWrapperStyle.gap <= available);
+      assert.equal(flatten(card.props.children[0].props.style).height, cardWidth * 4 / 3);
+      const name = app.nodes(card).find(n => n.props.numberOfLines === 2);
+      assert.equal(flatten(name.props.style).minHeight, flatten(name.props.style).lineHeight * 2);
+    }
+  }
+});
 
 test('history grid removes liked and disliked items with the corner button and keeps the toggle counts current', async () => {
   const deleted = [];
