@@ -1,0 +1,15 @@
+import fs from 'node:fs/promises';import{resolve,join}from'node:path';import assert from'node:assert/strict';
+import{listingUrl}from'../src/catalog.mjs';import{fetchShopifyVariant}from'../src/shopify.mjs';import{evidenceNetwork}from'./evidence.mjs';
+const directory=resolve(process.argv[2]??'reports/website-audit-2026-11-24');
+const snapshot=JSON.parse(await fs.readFile(join(directory,'catalog-snapshot.json'),'utf8'));
+const rows=snapshot.rows.filter(row=>{const url=new URL(row.item_web_listing);return /\/products\/[^/]+\/?$/.test(url.pathname)&&/^\d{8,20}$/.test(url.searchParams.get('variant')??'')});
+const network=await evidenceNetwork(directory),results=[];let position=0;
+await fs.mkdir(join(directory,'shopify-checks'),{recursive:true});
+await Promise.all(Array.from({length:3},async()=>{while(position<rows.length){const index=position++,row=rows[index];const observation=await fetchShopifyVariant(listingUrl(row.item_web_listing).href,network.fetcher);
+const result={item_id:String(row.item_id),url:row.item_web_listing,observation,checked_at:new Date().toISOString()};results[index]=result;
+await fs.writeFile(join(directory,'shopify-checks',result.item_id+'.json'),JSON.stringify(result,null,2));
+if(results.filter(Boolean).length%25===0)console.log(JSON.stringify({checked:results.filter(Boolean).length,total:rows.length,verified:results.filter(row=>row?.observation?.verified).length,variant_not_listed:results.filter(row=>row?.observation?.reason==='variant_not_listed').length,...network.stats}));
+}}));
+assert.equal(results.length,rows.length);
+await fs.writeFile(join(directory,'shopify-checks.json'),JSON.stringify({database_writes:0,total:rows.length,...network.stats,results},null,2));
+console.log(JSON.stringify({complete:true,checked:rows.length,verified:results.filter(row=>row.observation?.verified).length,variant_not_listed:results.filter(row=>row.observation?.reason==='variant_not_listed').length,...network.stats}));

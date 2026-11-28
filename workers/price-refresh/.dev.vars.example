@@ -1,0 +1,11 @@
+SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+# A server-side key with SELECT access to Clothing and all users' Price_Alerts.
+# Dry runs never write to Supabase.
+SUPABASE_KEY=
+# A separate random token for the Worker's administrative endpoints (at least 32 characters).
+ADMIN_TOKEN=
+# Optional browser recovery. Account-scoped API token with Browser Run - Edit permission.
+# CLOUDFLARE_ACCOUNT_ID=
+# CLOUDFLARE_BROWSER_TOKEN=
+# Set BROWSER_FALLBACK_LIMIT in wrangler.jsonc, not this secrets file.
+# FREE_TIER=true disables browser recovery regardless of that limit.

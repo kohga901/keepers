@@ -67,6 +67,17 @@ backend_syntax:
   script:
     - python -m compileall -q server Image_Process_PL ML_Pipeline Scrapers
 
+price_refresh_checks:
+  image: node:22-bookworm-slim
+  stage: validate
+  variables:
+    WRANGLER_SEND_METRICS: "false"
+  script:
+    - cd workers/price-refresh
+    - npm ci --no-audit --no-fund
+    - npm test
+    - npm run build
+
 deploy_web:
   extends: .frontend_job
   stage: deploy
