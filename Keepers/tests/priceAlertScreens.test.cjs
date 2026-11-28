@@ -83,10 +83,10 @@ test('notification opens Like List and clearing one/all refreshes; failed cleari
   assert.deepEqual(calls.at(-1), ['alice']);
 });
 
-function historyScreen(getItem = async id => ({ item_id: id, item_name: `Piece ${id}`, item_price: '$50', item_gender: null })) {
-  const h = harness(), calls = [];
+function historyScreen(getItem = async id => ({ item_id: id, item_name: `Piece ${id}`, item_price: '$50', item_gender: null }), services = {}) {
+  const h = harness(), calls = [], navigations = [];
   const params = { itemId: '7' };
-  const router = { setParams(next) { Object.assign(params, next); h.invalidate(); } };
+  const router = { setParams(next) { Object.assign(params, next); h.invalidate(); }, navigate: path => navigations.push(path) };
   const animation = { interpolate() { return animation; } };
   const focusEffect = fn => h.hooks.useEffect(fn, [fn]);
   const Screen = createLoader({
@@ -98,7 +98,6 @@ function historyScreen(getItem = async id => ({ item_id: id, item_name: `Piece $
     'expo-router/react-navigation': { useFocusEffect: focusEffect, getDefaultHeaderHeight: () => 80 },
     'expo-image': { Image: 'Image' }, 'expo-web-browser': {}, '@expo/vector-icons': { Ionicons: 'Icon' },
     'react-native-safe-area-context': { useSafeAreaFrame: () => ({ width: 390 }), useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },
-    '../../components/HistorySwipeable': { HistorySwipeable: 'Swipeable' },
     '../../components/Text': { Text: 'Text' }, '../../components/PriceAlertEditor': { PriceAlertEditor: 'PriceAlertEditor' },
     '../../components/PriceAlertsBell': { PriceAlertsBell: 'Bell' },
     '../../contexts/PriceDisplayContext': { usePriceDisplay: () => ({ showPriceAsTier: false }) },
@@ -106,10 +105,10 @@ function historyScreen(getItem = async id => ({ item_id: id, item_name: `Piece $
     '../../contexts/StackHeaderHeightContext': { useStackHeaderHeight: () => 80 },
     '../../hooks/useAppTheme': { useAppTheme: () => ({ theme: {} }) },
     '@/services/dataServices': { getLikedItems: async () => [{ Clothing: { item_id: 7, item_name: 'Old name', item_price: '$40' } }],
-      getDislikedItems: async () => [], getClothingById: id => { calls.push(id); return getItem(id); } },
+      getDislikedItems: async () => [], getClothingById: id => { calls.push(id); return getItem(id); }, ...services },
   })('app/(tabs)/likelist.tsx').default;
   function tutorial() {}
-  return { ...h, calls, params, flush: () => h.flush(Screen),
+  return { ...h, calls, params, navigations, flush: () => h.flush(Screen),
     route(id) { params.itemId = id; h.invalidate(); } };
 }
 
@@ -143,4 +142,46 @@ test('a slow item response cannot replace a later notification selection', async
   old.resolve({ item_id: 7, item_name: 'Stale selection' }); await app.flush();
   assert.ok(app.nodes().some(n => n.type === 'Text' && n.props.children === 'New selection'));
   assert.ok(!app.nodes().some(n => n.type === 'Text' && n.props.children === 'Stale selection'));
+});
+
+const clothing = (id, name) => ({ Clothing: { item_id: id, item_name: name, item_price: '$40', item_img: `${id}.jpg`, item_gender: 'men' } });
+
+test('history grid removes liked and disliked items with the corner button and keeps the toggle counts current', async () => {
+  const deleted = [];
+  const app = historyScreen(undefined, {
+    getLikedItems: async () => [clothing(7, 'Old name'), clothing(9, 'Wool cardigan')],
+    getDislikedItems: async () => [clothing(3, 'Neon windbreaker')],
+    deleteLikedItem: id => deleted.push(['liked', id]),
+    deleteDislikedItem: id => deleted.push(['disliked', id]),
+  });
+  await app.flush();
+  const list = () => app.nodes().find(n => n.type === 'FlatList');
+  const byLabel = (label, tree = app.nodes()) => tree.find(n => n.props.accessibilityLabel === label);
+  const card = item => app.nodes(list().props.renderItem({ item }));
+
+  assert.equal(list().props.numColumns, 2);
+  assert.ok(byLabel('Liked, 2 items'));
+  assert.ok(byLabel('Disliked, 1 item'));
+
+  byLabel('Remove Old name from liked items', card(list().props.data[0])).props.onPress(); await app.flush();
+  assert.deepEqual(deleted, [['liked', '7']]);
+  assert.deepEqual(list().props.data.map(item => item.name), ['Wool cardigan']);
+  assert.ok(byLabel('Liked, 1 item'));
+
+  byLabel('Disliked, 1 item').props.onPress(); await app.flush();
+  const disliked = card(list().props.data[0]);
+  assert.ok(!byLabel('Remove Neon windbreaker from liked items', disliked));
+  byLabel('Remove Neon windbreaker from disliked items', disliked).props.onPress(); await app.flush();
+  assert.deepEqual(deleted, [['liked', '7'], ['disliked', '3']]);
+  assert.ok(byLabel('Disliked, 0 items'));
+});
+
+test('empty history offers a Start swiping button that opens the swiper', async () => {
+  const app = historyScreen(undefined, { getLikedItems: async () => [] });
+  await app.flush();
+  const empty = app.nodes(app.nodes().find(n => n.type === 'FlatList').props.ListEmptyComponent);
+  assert.ok(empty.some(n => n.type === 'Text' && n.props.children === 'No liked items yet'));
+  const start = empty.find(n => n.type === 'Pressable' && app.nodes(n.props.children).some(c => c.props.children === 'Start swiping'));
+  start.props.onPress();
+  assert.deepEqual(app.navigations, ['/swiper']);
 });

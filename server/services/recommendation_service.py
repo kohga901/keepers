@@ -228,6 +228,7 @@ def get_recommendations(
     batch_size: int | None = None,
     allowed_ids: set[int] | None = None,
     explore_boost: float = 0.0,
+    sources: dict[int, str] | None = None,
 ) -> list[int]:
     """
     Returns n unseen item_ids mixing three kinds of items:
@@ -249,6 +250,8 @@ def get_recommendations(
         allowed_ids:    if given, only these item_ids may be returned (a tag filter).
         explore_boost:  0 to 1. How much to raise the adjacent and random shares, for users whose
                         preferences were learned under a filter (see FILTERED_BOOST_*).
+        sources:        if given, filled with item_id → the pool it was drawn from
+                        ("exploit", "adjacent" or "random"), used to explain the pick.
 
     Returns:
         List of item_ids, seen items removed.
@@ -284,7 +287,7 @@ def get_recommendations(
     exploit_pool.reverse()
     pools = {"exploit": exploit_pool, "adjacent": adjacent_pool, "random": random_pool}
 
-    return _fill_results(pools, n, batch_size, explore_boost)
+    return _fill_results(pools, n, batch_size, explore_boost, sources)
 
 
 def _eligible_mask(item_ids: np.ndarray, seen_set: set[int], allowed_ids: set[int] | None) -> np.ndarray:
@@ -376,7 +379,10 @@ def _plan_batch(size: int, explore_boost: float, rng=random) -> list[str]:
     return slots
 
 
-def _fill_results(pools: dict[str, list[int]], n: int, batch_size: int, explore_boost: float) -> list[int]:
+def _fill_results(
+    pools: dict[str, list[int]], n: int, batch_size: int, explore_boost: float,
+    sources: dict[int, str] | None = None,
+) -> list[int]:
     """
     Draws up to n item_ids from the pools one batch at a time, mixing the kinds
     within each batch. Items are popped off the end of each pool, which is
@@ -387,19 +393,23 @@ def _fill_results(pools: dict[str, list[int]], n: int, batch_size: int, explore_
         n:             number of item_ids to return.
         batch_size:    size of one client-facing batch.
         explore_boost: see get_recommendations().
+        sources:       see get_recommendations().
     """
     # Items already added to the results, and the results in order.
     used: set[int] = set()
     results: list[int] = []
 
-    def take(source: list[int]) -> bool:
+    def take(name: str) -> bool:
         # Pop items off the pool until one is found that isn't in the results yet.
+        source = pools[name]
         while source:
             item = source.pop()
             if item not in used:
                 # Mark the item and its copies as used, so the same product isn't added twice.
                 used.update(Startup.duplicates_of(item))
                 results.append(item)
+                if sources is not None:
+                    sources[item] = name
                 return True
 
         # The pool is empty.
@@ -414,7 +424,7 @@ def _fill_results(pools: dict[str, list[int]], n: int, batch_size: int, explore_
         for slot in _plan_batch(size, explore_boost):
             # If a pool runs dry, fall back to the others so the batch is still filled.
             for name in (slot, "exploit", "adjacent", "random"):
-                if take(pools[name]):
+                if take(name):
                     break
         if len(results) == before:
             break   # Nothing left to recommend.

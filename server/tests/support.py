@@ -24,7 +24,7 @@ class MemoryStore:
     def reset(self):
         self.rows = {name: [] for name in (
             "Clothing", "Embeddings", "Likes", "Dislikes", "Tags", "Tagged_Clothing",
-            "User_Preferences", "Coordinates", "Relabeled_Clothing",
+            "User_Preferences", "Coordinates", "Relabeled_Clothing", "Item_Requests",
         )}
         self.failure = None
         self.tokens = {"alice-token": "alice", "bob-token": "bob"}
@@ -48,6 +48,24 @@ class MemoryQuery:
 
     def eq(self, column, value):
         self.filters.append(lambda row: row.get(column) == value)
+        return self
+
+    @property
+    def not_(self):
+        query = self
+        class Not:
+            def is_(self, column, value):
+                # Only `.not_.is_(column, "null")` is used: the column must be set.
+                query.filters.append(lambda row: row.get(column) is not None)
+                return query
+        return Not()
+
+    def update(self, payload):
+        self.operation, self.payload = "update", payload
+        return self
+
+    def gte(self, column, value):
+        self.filters.append(lambda row: row.get(column) is not None and row.get(column) >= value)
         return self
 
     def in_(self, column, values):
@@ -86,6 +104,9 @@ class MemoryQuery:
         selected = [row for row in rows if matches(row)]
         if self.operation == "delete":
             rows[:] = [row for row in rows if not matches(row)]
+        elif self.operation == "update":
+            for row in selected:
+                row.update(self.payload)
         elif self.operation in ("insert", "upsert"):
             payload = self.payload if isinstance(self.payload, list) else [self.payload]
             for row in payload:

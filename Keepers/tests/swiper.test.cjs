@@ -39,6 +39,8 @@ function screen({ recommend = async () => [row(1), row(2)], session = { user: { 
     'expo-web-browser': { openBrowserAsync: async (url) => calls.opened.push(url) },
     '../../components/Text': { Text: 'Text' }, '../../components/TagFilter': { TagFilter: 'TagFilter' },
     '../../components/ai/ImageLookupModal': { ImageLookupModal: 'LookupModal' },
+    '../../components/ReasonSheet': { ReasonSheet: 'ReasonSheet' },
+    '../../components/TrendingBadge': { TrendingBadge: 'TrendingBadge' },
     '../../contexts/PriceDisplayContext': { usePriceDisplay: () => ({ showPriceAsTier: false }) },
     '../../contexts/StackHeaderHeightContext': { useStackHeaderHeight: () => 80 },
     '../../hooks/useAppTheme': { useAppTheme: () => ({ theme: {} }) },
@@ -186,5 +188,92 @@ test('opening a listing keeps the final card and blocks insecure or malformed sh
     if (url.startsWith('https:')) assert.deepEqual(app.calls.opened, [url]);
     else { assert.equal(app.calls.opened.length, 0); assert.equal(app.calls.alerts.length, 1); }
     assert.equal(app.calls.swipes.length, 0);
+  }
+});
+
+test('only cards with a reason show the Why button, which opens and closes the reason sheet', async () => {
+  const reason = { kind: 'similar_to_like', text: 'Because you liked Piece 9', liked_item_id: 9,
+    liked_item_name: 'Piece 9', liked_item_img: 'https://images.test/9', tags: [] };
+  const app = screen({ recommend: async () => [row(1), { ...row(2), reason }, { ...row(3), reason: { kind: 'explore', text: '  ' } }] });
+  await app.flush();
+  const whyButton = (index) => app.nodes(app.deck().renderCard(app.deck().cards[index], index))
+    .find((node) => node.props.accessibilityLabel === 'Why am I seeing this?');
+  const sheet = () => app.nodes().find((node) => node.type === 'ReasonSheet').props;
+
+  assert.equal(whyButton(0), undefined);
+  // A reason with no text to show gets no button.
+  assert.equal(whyButton(2), undefined);
+  assert.equal(sheet().item, null);
+
+  whyButton(1).props.onPress(); await app.flush();
+  assert.equal(sheet().item.id, '2');
+  assert.deepEqual(plain(sheet().item.reason), { kind: 'similar_to_like', text: 'Because you liked Piece 9',
+    likedItemName: 'Piece 9', likedItemImageUrl: 'https://images.test/9', tags: [] });
+
+  // Closing puts the deck back on the explained card, and opening it never sent a swipe.
+  sheet().onClose(); await app.flush();
+  assert.equal(sheet().item, null);
+  assert.deepEqual(app.calls.jumps, [1]);
+  assert.equal(app.calls.swipes.length, 0);
+});
+
+test('only the trending card shows the Most liked badge, top left, without its like count', async () => {
+  const app = screen({ recommend: async () => [row(1), { ...row(2), is_trending: true, like_count: 9 },
+    { ...row(3), is_trending: false, like_count: null }, { ...row(4), is_trending: 'yes' }] });
+  await app.flush();
+  const cardNodes = (index) => app.nodes(app.deck().renderCard(app.deck().cards[index], index));
+  const badge = (index) => cardNodes(index).find((node) => node.type === 'TrendingBadge');
+
+  // Only a real `true` counts, so a malformed flag shows nothing.
+  assert.deepEqual(plain(app.deck().cards.map((item) => item.trending)), [false, true, false, false]);
+  assert.deepEqual([0, 1, 2, 3].map((i) => Boolean(badge(i))), [false, true, false, false]);
+  assert.deepEqual(plain(badge(1).props.style), { position: 'absolute', top: 12, left: 12 });
+  // The badge and the Why this? button mirror each other: same height from the top, same inset.
+  const styles = app.nodes(app.deck().renderCard({ ...app.deck().cards[1], reason: { kind: 'x', text: 'y', tags: [] } }, 1))
+    .find((node) => node.props.accessibilityLabel === 'Why am I seeing this?').props.style({ pressed: false })[0];
+  assert.deepEqual([styles.top, styles.right], [12, 12]);
+
+  // The like count reaches the app but is never put on the card.
+  assert.equal('likeCount' in app.deck().cards[1] || 'like_count' in app.deck().cards[1], false);
+  const shown = cardNodes(1).flatMap((node) => [node.props.children, node.props.accessibilityLabel]).flat().join(' ');
+  assert.doesNotMatch(shown, /\b9\b/);
+
+  // The rest of the card is unchanged, and the badge doesn't swallow swipes.
+  await app.deck().onSwipedRight(1);
+  assert.deepEqual(app.calls.swipes, [['2', true]]);
+});
+
+test('trending badge edge cases: odd flags and counts, several flags, other badges, later batches, web', async () => {
+  const reason = { kind: 'explore', text: 'Something new to try' };
+  let request = 0;
+  const batches = [
+    // Malformed or missing flags never show the badge; odd like counts never matter.
+    [{ ...row(1), is_trending: null }, { ...row(2), is_trending: 1 }, { ...row(3), is_trending: 'true' },
+      { ...row(4), is_trending: true, like_count: -5 }, { ...row(5), is_trending: true, like_count: 'many' },
+      { ...row(6), is_trending: true }],
+    // A later (prefetched) batch: trending alongside a reason and a request, and an old server with no field.
+    [{ ...row(7), is_trending: true, reason }, { ...row(8), is_trending: true, requested_by_you: true }, row(9)],
+  ];
+  for (const platform of ['ios', 'android', 'web']) {
+    request = 0;
+    const app = screen({ platform, recommend: async () => batches[request++] ?? [] });
+    await app.flush();
+    const card = (index) => app.nodes(app.deck().renderCard(app.deck().cards[index], index));
+    const has = (index, test) => card(index).some(test);
+    const badge = (node) => node.type === 'TrendingBadge';
+
+    assert.deepEqual([0, 1, 2, 3, 4, 5].map((i) => has(i, badge)), [false, false, false, true, true, true], platform);
+
+    // Swiping near the end fetches the next batch, and its trending cards get the badge too.
+    app.deck().onSwiped(1); await app.flush();
+    const ids = app.deck().cards.map((item) => item.id);
+    assert.deepEqual(plain(ids), ['1', '2', '3', '4', '5', '6', '7', '8', '9'], platform);
+    // Each badge still renders next to the Why button and the requested badge, which keep working.
+    assert.ok(has(6, badge) && has(6, (n) => n.props.accessibilityLabel === 'Why am I seeing this?'), platform);
+    assert.ok(has(7, badge) && has(7, (n) => n.props.style === undefined ? false : JSON.stringify(n.props.children).includes('You requested this')), platform);
+    assert.equal(has(8, badge), false, platform);
+
+    // A card the deck has already removed renders nothing, as before.
+    assert.equal(app.deck().renderCard(undefined, 99), null);
   }
 });
